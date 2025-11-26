@@ -1,65 +1,111 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+import Link from "next/link";
+import Image from "next/image";
+import { useState, useEffect } from "react";
+export default function Page() {
+   const fullText = "Learn English with Confidence";
+   const [typedText, setTypedText] = useState("");
+
+   useEffect(() => {
+      const interval = setInterval(() => {
+         setTypedText((prev) => {
+            // If we've already typed everything, stop updating
+            if (prev.length >= fullText.length) {
+               clearInterval(interval);
+               return prev;
+            }
+            // Take one more character from fullText
+            return fullText.slice(0, prev.length + 1);
+         });
+      }, 40); // speed: 80ms per character
+
+      // Cleanup if the component unmounts
+      return () => clearInterval(interval);
+   }, []);
+
+   return (
+      <main className="min-h-screen bg-slate-950 text-white px-4 flex items-center">
+         <section className="max-w-5xl mx-auto w-full flex flex-col md:flex-row items-center justify-between gap-12">
+            {/* LEFT */}
+            <div className="space-y-6">
+               <Image
+                  src="/logo-text-white.png"
+                  alt="TalkTime logo"
+                  width={200}
+                  height={60}
+                  className="w-auto h-12"
+               />
+
+               <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
+                  {typedText || fullText}
+                  <span className="border-r-2 border-emerald-400 ml-1 animate-pulse" />
+               </h1>
+
+               <p className="text-lg text-slate-300 max-w-md">
+                  Personalized exercises, vocabulary practice, and daily
+                  progress—all in one place.
+               </p>
+
+               <Link
+                  href="/login"
+                  className="inline-block px-6 py-3 rounded-full text-slate-900 bg-emerald-400 hover:bg-emerald-300 font-medium transition duration-200 ease-in-out shadow-lg">
+                  Log in
+               </Link>
+            </div>
+
+            {/* RIGHT */}
+            {/* RIGHT */}
+            <div className="w-full md:w-[380px]">
+               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-xl space-y-5">
+                  {/* Header */}
+                  <div className="flex items-center justify-between">
+                     <h2 className="text-sm font-semibold text-slate-200">
+                        Student dashboard
+                     </h2>
+                     <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                        Preview
+                     </span>
+                  </div>
+
+                  {/* Progress */}
+                  <div className="space-y-2">
+                     <div className="flex items-center justify-between text-xs text-slate-300">
+                        <span>Weekly progress</span>
+                        <span>72%</span>
+                     </div>
+                     <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+                        <div className="h-full w-3/4 bg-emerald-500" />
+                     </div>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 space-y-1">
+                        <p className="text-xs text-slate-400">Words learned</p>
+                        <p className="text-lg font-semibold">182</p>
+                     </div>
+                     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 space-y-1">
+                        <p className="text-xs text-slate-400">Current streak</p>
+                        <p className="text-lg font-semibold">7 days 🔥</p>
+                     </div>
+                  </div>
+
+                  {/* Upcoming lesson */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3 space-y-2">
+                     <p className="text-xs text-slate-400">Next up</p>
+                     <p className="text-sm font-medium">
+                        Listening: Daily conversations
+                     </p>
+                     <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside">
+                        <li>5 new phrases</li>
+                        <li>Short listening quiz</li>
+                        <li>Vocabulary review</li>
+                     </ul>
+                  </div>
+               </div>
+            </div>
+         </section>
       </main>
-    </div>
-  );
+   );
 }
