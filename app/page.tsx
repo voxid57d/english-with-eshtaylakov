@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
 export default function Page() {
-   const fullText = "Learn English with Confidence";
+   const fullText = "Learn English with Eshtaylakov"; //Need to change)
    const [typedText, setTypedText] = useState("");
 
    useEffect(() => {

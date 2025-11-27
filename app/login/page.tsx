@@ -3,10 +3,12 @@ import { supabase } from "@/lib/supabaseClient";
 
 export default function Login() {
    const handleLogIn = async () => {
+      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`;
+
       await supabase.auth.signInWithOAuth({
          provider: "google",
          options: {
-            redirectTo: "http://localhost:3000/auth/callback",
+            redirectTo,
          },
       });
    };
