@@ -1,4 +1,5 @@
 "use client";
+import { FcGoogle } from "react-icons/fc";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function Login() {
@@ -16,11 +17,11 @@ export default function Login() {
    return (
       <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white px-4">
          <section className="max-w-xl text-center space-y-6">
-            <h1 className="text-4xl">Welcome back</h1>
+            <h1 className="text-4xl">Welcome back!</h1>
             <button
                onClick={handleLogIn}
-               className="px-6 py-3 rounded-full text-slate-100 bg-emerald-500 hover:bg-emerald-600 font-medium transition duration-200 ease-in-out shadow-lg">
-               Continue with Google
+               className="flex cursor-pointer items-center justify-center gap-3 px-6 py-3 rounded-full text-slate-100 bg-emerald-500 hover:bg-emerald-600 font-medium transition duration-200 ease-in-out shadow-lg">
+               Continue with Google <FcGoogle size={22} />
             </button>
          </section>
       </main>
