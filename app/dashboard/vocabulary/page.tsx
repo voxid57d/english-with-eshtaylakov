@@ -128,7 +128,7 @@ export default function VocabularyPage() {
 
             <button
                onClick={() => setCreating((prev) => !prev)}
-               className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
+               className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
                {creating ? "Cancel" : "+ Create new deck"}
             </button>
          </header>
@@ -219,7 +219,7 @@ export default function VocabularyPage() {
                                  handleDeleteDeck(e, deck.id, deck.is_public)
                               }
                               disabled={deletingId === deck.id}
-                              className="text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                              className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
                               {deletingId === deck.id
                                  ? "Deleting..."
                                  : "Delete"}

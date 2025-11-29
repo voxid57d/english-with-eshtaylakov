@@ -16,6 +16,7 @@ type Card = {
    front: string;
    back: string;
    example_sentence: string | null;
+   transcription: string | null;
 };
 
 export default function DeckPage() {
@@ -149,7 +150,7 @@ export default function DeckPage() {
 
          const { data, error } = await supabase
             .from("vocabulary_cards")
-            .select("id, front, back, example_sentence")
+            .select("id, front, back, example_sentence, transcription")
             .eq("deck_id", deckId)
             .order("id", { ascending: true });
 
@@ -191,7 +192,7 @@ export default function DeckPage() {
                   }
                }}
                disabled={cards.length === 0}
-               className="px-4 py-2 rounded-full border border-emerald-500 text-sm font-medium
+               className="cursor-pointer px-4 py-2 rounded-full border border-emerald-500 text-sm font-medium
                  text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition">
                {isPracticing ? "Stop practice" : "Practice"}
             </button>
@@ -201,7 +202,7 @@ export default function DeckPage() {
                   setAddingCard((prev) => !prev);
                   setCardError(null);
                }}
-               className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
+               className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
                {addingCard ? "Cancel" : "+ Add card"}
             </button>
          </div>
@@ -255,7 +256,7 @@ export default function DeckPage() {
                   <button
                      type="submit"
                      disabled={cardSaving}
-                     className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed text-sm font-medium text-slate-950 transition">
+                     className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed text-sm font-medium text-slate-950 transition">
                      {cardSaving ? "Saving..." : "Save card"}
                   </button>
                   <button
@@ -267,7 +268,7 @@ export default function DeckPage() {
                         setNewExample("");
                         setCardError(null);
                      }}
-                     className="text-sm text-slate-400 hover:text-slate-200">
+                     className="cursor-pointer text-sm text-slate-400 hover:text-slate-200">
                      Cancel
                   </button>
                </div>
@@ -293,6 +294,12 @@ export default function DeckPage() {
                         <p className="text-2xl font-semibold">
                            {cards[currentIndex].front}
                         </p>
+
+                        {cards[currentIndex].transcription && (
+                           <p className="mt-2 text-lg text-emerald-300">
+                              /{cards[currentIndex].transcription}/
+                           </p>
+                        )}
                      </>
                   ) : (
                      <>
@@ -315,19 +322,19 @@ export default function DeckPage() {
                <div className="flex items-center justify-between">
                   <button
                      onClick={goToPrev}
-                     className="px-3 py-2 rounded-full border border-slate-700 text-sm text-slate-200 hover:bg-slate-800 transition">
+                     className="cursor-pointer px-3 py-2 rounded-full border border-slate-700 text-sm text-slate-200 hover:bg-slate-800 transition">
                      ← Previous
                   </button>
 
                   <button
                      onClick={flipCard}
-                     className="px-4 py-2 rounded-full bg-slate-800 hover:bg-slate-700 text-sm text-slate-100 transition">
+                     className="cursor-pointer px-4 py-2 rounded-full bg-slate-800 hover:bg-slate-700 text-sm text-slate-100 transition">
                      {showBack ? "Show word" : "Show definition"}
                   </button>
 
                   <button
                      onClick={goToNext}
-                     className="px-3 py-2 rounded-full border border-slate-700 text-sm text-slate-200 hover:bg-slate-800 transition">
+                     className="cursor-pointer px-3 py-2 rounded-full border border-slate-700 text-sm text-slate-200 hover:bg-slate-800 transition">
                      Next →
                   </button>
                </div>
@@ -353,10 +360,16 @@ export default function DeckPage() {
                      <div className="flex items-start justify-between gap-2">
                         <h2 className="text-lg font-semibold">{card.front}</h2>
 
+                        {card.transcription && (
+                           <p className="text-sm text-emerald-300 mt-1">
+                              /{card.transcription}/
+                           </p>
+                        )}
+
                         <button
                            onClick={() => handleDeleteCard(card.id)}
                            disabled={deletingId === card.id}
-                           className="text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                           className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
                            {deletingId === card.id ? "Deleting..." : "Delete"}
                         </button>
                      </div>
