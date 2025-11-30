@@ -3,7 +3,7 @@
 import { useEffect, useState, MouseEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
-import { getPremiumStatus } from "@/lib/premium"; // ✅ NEW
+import { getPremiumStatus } from "@/lib/premium";
 
 type Deck = {
    id: string;
@@ -11,7 +11,7 @@ type Deck = {
    description: string | null;
    is_public: boolean;
    created_at: string;
-   requires_premium: boolean; // ✅ NEW
+   requires_premium: boolean;
 };
 
 export default function VocabularyPage() {
@@ -132,7 +132,7 @@ export default function VocabularyPage() {
 
    return (
       <div className="space-y-6">
-         <header className="flex items-center justify-between">
+         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
                <h1 className="text-2xl font-semibold">Vocabulary</h1>
                <p className="text-sm text-slate-400">
@@ -142,7 +142,7 @@ export default function VocabularyPage() {
 
             <button
                onClick={() => setCreating((prev) => !prev)}
-               className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
+               className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition self-start sm:self-auto">
                {creating ? "Cancel" : "+ Create new deck"}
             </button>
          </header>
@@ -177,7 +177,7 @@ export default function VocabularyPage() {
                   />
                </div>
 
-               <div className="flex items-center gap-3">
+               <div className="flex flex-wrap items-center gap-3">
                   <button
                      type="submit"
                      disabled={saving}
@@ -192,7 +192,7 @@ export default function VocabularyPage() {
                         setNewDescription("");
                         setError(null);
                      }}
-                     className="text-sm text-slate-400 hover:text-slate-200">
+                     className="text-sm text-slate-400 hover:text-slate-200 cursor-pointer">
                      Cancel
                   </button>
                </div>
@@ -223,7 +223,7 @@ export default function VocabularyPage() {
                   const locked = deck.requires_premium && !isPremium;
 
                   const cardContent = (
-                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition block">
+                     <div className="group rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition block hover:border-emerald-500/60">
                         <div className="flex items-start justify-between gap-2">
                            <h2 className="text-lg font-semibold">
                               {deck.title}
@@ -250,16 +250,16 @@ export default function VocabularyPage() {
                            </p>
                         )}
 
-                        <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                           <span>
+                        <div className="mt-3 flex items-center justify-between text-xs text-slate-500 transition group-hover:text-slate-300">
+                           <span className="flex items-center gap-2 transition group-hover:text-slate-200">
                               {deck.is_public ? "Public deck" : "Your deck"}
                               {deck.requires_premium && (
-                                 <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                 <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 transition group-hover:bg-amber-500/30 group-hover:text-amber-200">
                                     Premium only
                                  </span>
                               )}
                            </span>
-                           <span>
+                           <span className="transition group-hover:text-slate-200">
                               {new Date(deck.created_at).toLocaleDateString()}
                            </span>
                         </div>
@@ -287,7 +287,7 @@ export default function VocabularyPage() {
                      <Link
                         key={deck.id}
                         href={`/dashboard/vocabulary/${deck.id}`}
-                        className="hover:border-emerald-500/60">
+                        className="block">
                         {cardContent}
                      </Link>
                   );
