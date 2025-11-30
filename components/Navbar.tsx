@@ -42,7 +42,7 @@ export default function Navbar({
                   alt="TalkTime logo"
                   width={144}
                   height={36}
-                  className="h-9 w-auto"
+                  className="h-5 w-auto md:h-9"
                />
             </Link>
          </div>
