@@ -1,4 +1,5 @@
 "use client";
+import { getPremiumStatus } from "@/lib/premium";
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -9,6 +10,8 @@ type Deck = {
    id: string;
    title: string;
    description: string | null;
+   is_public: boolean;
+   requires_premium: boolean; // ✅ NEW
 };
 
 type Card = {
@@ -37,17 +40,37 @@ export default function DeckPage() {
    const [currentIndex, setCurrentIndex] = useState(0);
    const [showBack, setShowBack] = useState(false);
    const [deletingId, setDeletingId] = useState<string | null>(null);
+   const [isPremium, setIsPremium] = useState(false); // ✅ is this user premium?
+   const [locked, setLocked] = useState(false); // ✅ is this deck locked for them?
+   const [history, setHistory] = useState<number[]>([]);
+   const [historyPosition, setHistoryPosition] = useState(0);
 
    useEffect(() => {
       const fetchDeck = async () => {
+         // 1) Get current user
+         const { data: userData } = await supabase.auth.getUser();
+
+         let premium = false;
+         if (userData.user) {
+            premium = await getPremiumStatus(userData.user.id);
+            setIsPremium(premium);
+         }
+
+         // 2) Load the deck, including requires_premium
          const { data, error } = await supabase
             .from("vocabulary_decks")
-            .select("id, title, description")
+            .select("id, title, description, is_public, requires_premium")
             .eq("id", deckId)
             .single();
 
-         if (!error) {
-            setDeck(data as Deck);
+         if (!error && data) {
+            const deckData = data as Deck;
+            setDeck(deckData);
+
+            // 3) If this deck is premium-only and user is not premium → lock it
+            if (deckData.requires_premium && !premium) {
+               setLocked(true);
+            }
          }
 
          setLoading(false);
@@ -116,28 +139,87 @@ export default function DeckPage() {
       setDeletingId(null);
    };
 
+   const getRandomIndex = (length: number, excludeIndex: number | null) => {
+      if (length <= 1) return 0;
+
+      let random = Math.floor(Math.random() * length);
+
+      // Try to avoid returning the same index as excludeIndex
+      if (excludeIndex !== null && length > 1) {
+         while (random === excludeIndex) {
+            random = Math.floor(Math.random() * length);
+         }
+      }
+
+      return random;
+   };
+
    const startPractice = () => {
       if (cards.length === 0) return;
+
+      // Pick a starting card (could be index 0 or random – let's go random)
+      const firstIndex = getRandomIndex(cards.length, null);
+
       setIsPracticing(true);
-      setCurrentIndex(0);
+      setCurrentIndex(firstIndex);
       setShowBack(false);
+
+      // Reset history to start with this card
+      setHistory([firstIndex]);
+      setHistoryPosition(0);
    };
 
    const stopPractice = () => {
       setIsPracticing(false);
       setShowBack(false);
+      setHistory([]);
+      setHistoryPosition(0);
    };
 
    const goToNext = () => {
       if (cards.length === 0) return;
-      setCurrentIndex((prev) => (prev + 1) % cards.length);
+
       setShowBack(false);
+
+      setHistory((prevHistory) => {
+         let newHistory = [...prevHistory];
+         let newPosition = historyPosition;
+
+         // If there is a future in history (user went back before)
+         if (newPosition < newHistory.length - 1) {
+            newPosition = newPosition + 1;
+            setCurrentIndex(newHistory[newPosition]);
+            setHistoryPosition(newPosition);
+            return newHistory;
+         }
+
+         // Otherwise we're at the end → choose a new random card
+         const currentIdx =
+            newHistory.length > 0 ? newHistory[newPosition] : null;
+         const randomIndex = getRandomIndex(cards.length, currentIdx);
+
+         newHistory.push(randomIndex);
+         newPosition = newHistory.length - 1;
+
+         setCurrentIndex(randomIndex);
+         setHistoryPosition(newPosition);
+
+         return newHistory;
+      });
    };
 
    const goToPrev = () => {
       if (cards.length === 0) return;
-      setCurrentIndex((prev) => (prev === 0 ? cards.length - 1 : prev - 1));
+      if (historyPosition === 0) return; // no previous
+
       setShowBack(false);
+
+      setHistoryPosition((prevPos) => {
+         const newPos = prevPos - 1;
+         const prevIndex = history[newPos];
+         setCurrentIndex(prevIndex);
+         return newPos;
+      });
    };
 
    const flipCard = () => {
@@ -146,6 +228,13 @@ export default function DeckPage() {
 
    useEffect(() => {
       const fetchCards = async () => {
+         // If deck is locked for this user, don't load cards at all
+         if (locked) {
+            setCards([]);
+            setCardsLoading(false);
+            return;
+         }
+
          setCardsLoading(true);
 
          const { data, error } = await supabase
@@ -162,7 +251,7 @@ export default function DeckPage() {
       };
 
       fetchCards();
-   }, [deckId]);
+   }, [deckId, locked]); // ✅ include locked here
 
    if (loading) {
       return <div>Loading deck...</div>;
@@ -170,6 +259,37 @@ export default function DeckPage() {
 
    if (!deck) {
       return <div>Deck not found.</div>;
+   }
+
+   if (locked && deck) {
+      return (
+         <div className="space-y-6">
+            <Link
+               href="/dashboard/vocabulary"
+               className="inline-flex items-center text-sm text-slate-400 hover:text-slate-200 transition">
+               ← Back to decks
+            </Link>
+
+            <h1 className="text-2xl font-semibold">{deck.title}</h1>
+            <p className="text-slate-400">
+               This deck is only available for{" "}
+               <span className="text-amber-300">premium users</span>.
+            </p>
+
+            <div className="flex gap-3">
+               <Link
+                  href="/premium"
+                  className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 text-slate-900 font-medium">
+                  Go premium
+               </Link>
+               <Link
+                  href="/dashboard/vocabulary"
+                  className="cursor-pointer px-4 py-2 rounded-full bg-slate-800 text-slate-100">
+                  Back to vocabulary
+               </Link>
+            </div>
+         </div>
+      );
    }
 
    return (
@@ -197,14 +317,16 @@ export default function DeckPage() {
                {isPracticing ? "Stop practice" : "Practice"}
             </button>
 
-            <button
-               onClick={() => {
-                  setAddingCard((prev) => !prev);
-                  setCardError(null);
-               }}
-               className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
-               {addingCard ? "Cancel" : "+ Add card"}
-            </button>
+            {!deck.is_public && (
+               <button
+                  onClick={() => {
+                     setAddingCard((prev) => !prev);
+                     setCardError(null);
+                  }}
+                  className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
+                  {addingCard ? "Cancel" : "+ Add card"}
+               </button>
+            )}
          </div>
 
          {addingCard && (

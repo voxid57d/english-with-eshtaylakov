@@ -3,6 +3,7 @@
 import { useEffect, useState, MouseEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
+import { getPremiumStatus } from "@/lib/premium"; // ✅ NEW
 
 type Deck = {
    id: string;
@@ -10,6 +11,7 @@ type Deck = {
    description: string | null;
    is_public: boolean;
    created_at: string;
+   requires_premium: boolean; // ✅ NEW
 };
 
 export default function VocabularyPage() {
@@ -21,12 +23,23 @@ export default function VocabularyPage() {
    const [newDescription, setNewDescription] = useState("");
    const [saving, setSaving] = useState(false);
    const [deletingId, setDeletingId] = useState<string | null>(null);
+   const [isPremium, setIsPremium] = useState(false);
 
    useEffect(() => {
       const fetchDecks = async () => {
          setLoading(true);
          setError(null);
 
+         // ✅ 1) Get current user
+         const { data: userData } = await supabase.auth.getUser();
+
+         if (userData.user) {
+            // ✅ 2) Check if they are premium
+            const premium = await getPremiumStatus(userData.user.id);
+            setIsPremium(premium);
+         }
+
+         // ✅ 3) Load decks as before
          const { data, error } = await supabase
             .from("vocabulary_decks")
             .select("*")
@@ -62,6 +75,7 @@ export default function VocabularyPage() {
             title: newTitle.trim(),
             description: newDescription.trim() || null,
             is_public: false, // user decks are private by default
+            requires_premium: false, // ✅ user decks are never premium-only
          })
          .select("*")
          .single();
@@ -205,44 +219,79 @@ export default function VocabularyPage() {
          {/* Decks grid */}
          {!loading && !error && decks.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-               {decks.map((deck) => (
-                  <Link
-                     key={deck.id}
-                     href={`/dashboard/vocabulary/${deck.id}`}
-                     className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 hover:border-emerald-500/60 cursor-pointer transition block">
-                     <div className="flex items-start justify-between gap-2">
-                        <h2 className="text-lg font-semibold">{deck.title}</h2>
+               {decks.map((deck) => {
+                  const locked = deck.requires_premium && !isPremium;
 
-                        {!deck.is_public && (
-                           <button
-                              onClick={(e) =>
-                                 handleDeleteDeck(e, deck.id, deck.is_public)
-                              }
-                              disabled={deletingId === deck.id}
-                              className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
-                              {deletingId === deck.id
-                                 ? "Deleting..."
-                                 : "Delete"}
-                           </button>
+                  const cardContent = (
+                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition block">
+                        <div className="flex items-start justify-between gap-2">
+                           <h2 className="text-lg font-semibold">
+                              {deck.title}
+                           </h2>
+
+                           {/* Delete button only for your own (non-public) decks */}
+                           {!deck.is_public && (
+                              <button
+                                 onClick={(e) =>
+                                    handleDeleteDeck(e, deck.id, deck.is_public)
+                                 }
+                                 disabled={deletingId === deck.id}
+                                 className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                                 {deletingId === deck.id
+                                    ? "Deleting..."
+                                    : "Delete"}
+                              </button>
+                           )}
+                        </div>
+
+                        {deck.description && (
+                           <p className="text-sm text-slate-400 mt-1 line-clamp-2">
+                              {deck.description}
+                           </p>
                         )}
-                     </div>
 
-                     {deck.description && (
-                        <p className="text-sm text-slate-400 mt-1 line-clamp-2">
-                           {deck.description}
-                        </p>
-                     )}
-
-                     <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                        <span>
-                           {deck.is_public ? "Public deck" : "Your deck"}
-                        </span>
-                        <span>
-                           {new Date(deck.created_at).toLocaleDateString()}
-                        </span>
+                        <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                           <span>
+                              {deck.is_public ? "Public deck" : "Your deck"}
+                              {deck.requires_premium && (
+                                 <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                    Premium only
+                                 </span>
+                              )}
+                           </span>
+                           <span>
+                              {new Date(deck.created_at).toLocaleDateString()}
+                           </span>
+                        </div>
                      </div>
-                  </Link>
-               ))}
+                  );
+
+                  // If locked → show as non-clickable, slightly faded
+                  if (locked) {
+                     return (
+                        <div
+                           key={deck.id}
+                           className="opacity-60 cursor-not-allowed"
+                           onClick={() =>
+                              alert(
+                                 "This deck is only available for premium users."
+                              )
+                           }>
+                           {cardContent}
+                        </div>
+                     );
+                  }
+
+                  // If not locked → normal Link
+                  return (
+                     <Link
+                        key={deck.id}
+                        href={`/dashboard/vocabulary/${deck.id}`}
+                        className="hover:border-emerald-500/60">
+                        {cardContent}
+                     </Link>
+                  );
+               })}
             </div>
          )}
       </div>
