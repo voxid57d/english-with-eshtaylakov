@@ -206,7 +206,7 @@ export default function ReadingArticlePage() {
       <div className="space-y-6">
          <button
             onClick={() => router.push("/dashboard/reading")}
-            className="text-sm text-slate-400 hover:text-emerald-300">
+            className="text-sm text-slate-400 hover:text-emerald-300 cursor-pointer">
             ← Back to reading list
          </button>
 

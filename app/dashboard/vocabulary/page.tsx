@@ -255,7 +255,7 @@ export default function VocabularyPage() {
                               {deck.is_public ? "Public deck" : "Your deck"}
                               {deck.requires_premium && (
                                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 transition group-hover:bg-amber-500/30 group-hover:text-amber-200">
-                                    Premium only
+                                    Premium
                                  </span>
                               )}
                            </span>
