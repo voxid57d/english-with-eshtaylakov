@@ -47,7 +47,7 @@ export default function Navbar({
             </Link>
          </div>
 
-         <div className="flex items-center gap-3 md:gap-4 flex-wrap justify-end">
+         <div className="flex items-center gap-2 md:gap-4 flex-wrap justify-end">
             {/* Hide email on very small screens to avoid overflow */}
             <span className="hidden sm:inline text-sm text-slate-200">
                {user.email}
@@ -60,7 +60,7 @@ export default function Navbar({
                   alt={user.email}
                   width={40}
                   height={40}
-                  className="h-10 w-10 rounded-full object-cover"
+                  className="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-cover"
                />
             ) : (
                <div className="h-10 w-10 flex items-center justify-center rounded-full bg-emerald-600 text-sm">
@@ -84,7 +84,7 @@ export default function Navbar({
             {/* Log out */}
             <button
                onClick={onLogout}
-               className="px-3 md:px-4 py-2 rounded-full bg-slate-800 hover:bg-slate-700 text-sm cursor-pointer">
+               className="px-3 md:px-4 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-sm cursor-pointer">
                Log out
             </button>
          </div>
