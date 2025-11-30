@@ -21,6 +21,12 @@ export const metadata: Metadata = {
    description:
       "Talk Time is an interactive English-learning platform offering vocabulary practice, reading and listening exercises, personalized decks, progress tracking, and IELTS CDI mock tests to help you prepare with confidence.",
 
+   icons: {
+      icon: "/favicon.ico",
+      shortcut: "/favicon.ico",
+      apple: "/apple-touch-icon.png", // optional, add if you upload it later
+   },
+
    // 👇 Open Graph = what Telegram / Facebook use for link previews
    openGraph: {
       title: "Talk Time",
