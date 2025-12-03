@@ -191,7 +191,25 @@ export default function DashboardPage() {
             return;
          }
 
-         // 3) Update streak in DB and get current value
+         const userId = user.id;
+
+         // 3) NEW: check if this user has a username; if not → /username
+         const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("username")
+            .eq("id", userId)
+            .maybeSingle();
+
+         if (profileError) {
+            console.error("Error loading profile:", profileError);
+         }
+
+         if (!profile || !profile.username) {
+            router.push("/username");
+            return;
+         }
+
+         // 4) Update streak in DB and get current value
          const currentStreak = await updateAndGetStreak(user.id);
          setStreak(currentStreak);
          setLoadingStreak(false);
