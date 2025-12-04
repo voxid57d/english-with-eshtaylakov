@@ -73,7 +73,7 @@ export default function PremiumPage() {
                </p>
                <button
                   onClick={() => router.push("/dashboard")}
-                  className="px-6 py-3 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-medium transition">
+                  className="cursor-pointer px-6 py-3 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-medium transition">
                   Go to dashboard
                </button>
             </main>

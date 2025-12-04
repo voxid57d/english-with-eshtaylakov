@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FiInstagram, FiSend, FiMail } from "react-icons/fi";
+import { FaYoutube } from "react-icons/fa";
 
 export default function Footer() {
    return (
@@ -49,6 +50,14 @@ export default function Footer() {
                      <FiMail className="h-4 w-4" />
                      <span>Email</span>
                   </a>
+
+                  {/* YouTube */}
+                  <Link
+                     href="https://youtube.com/@talktimelc?si=gSY0orOE9CiMPSkv"
+                     className="flex items-center gap-1.5 rounded-full border border-slate-700/70 px-3 py-1.5 text-xs hover:border-red-500 hover:text-red-400 hover:bg-slate-900/60 transition">
+                     <FaYoutube className="h-4 w-4" />
+                     <span>YouTube</span>
+                  </Link>
                </div>
 
                <p className="text-[11px] text-slate-600 mt-1">
