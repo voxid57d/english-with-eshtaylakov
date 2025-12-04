@@ -7,7 +7,7 @@ import { FiInstagram, FiSend, FiMail } from "react-icons/fi";
 export default function Footer() {
    return (
       <footer className="border-t border-slate-800 bg-slate-950 text-slate-400">
-         <div className="max-w-6xl mx-auto px-4 py-6 md:py-8 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+         <div className="max-w-6xl mx-auto px-4 py-3 md:py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             {/* Left: logo + short description */}
             <div className="flex items-center gap-3">
                <Image
@@ -25,8 +25,6 @@ export default function Footer() {
 
             {/* Right: social + contact + copyright */}
             <div className="flex flex-col items-start gap-2 md:items-end">
-               <p className="text-xs text-slate-500">Follow & contact</p>
-
                <div className="flex flex-wrap items-center gap-3">
                   {/* Instagram */}
                   <Link

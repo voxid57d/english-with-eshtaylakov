@@ -44,7 +44,7 @@ export default function HomePage() {
    return (
       <PageShellWithFooter>
          <main className="min-h-screen bg-slate-950 text-white px-4 flex items-center">
-            <section className="max-w-5xl mx-auto w-full flex flex-col md:flex-row items-center justify-between gap-12">
+            <section className="max-w-6xl mx-auto w-full flex flex-col md:flex-row items-center justify-between gap-12">
                <div className="space-y-6">
                   <Image
                      src="/logo-text-white.png"
