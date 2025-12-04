@@ -62,11 +62,21 @@ export default function HomePage() {
                   progress—all in one place.
                </p>
 
-               <Link
-                  href="/login"
-                  className="inline-block px-6 py-3 rounded-full text-slate-900 bg-emerald-400 hover:bg-emerald-300 font-medium">
-                  Log in
-               </Link>
+               <div className="mt-8 flex flex-wrap gap-4">
+                  {/* Primary button – Sign up / Get started */}
+                  <Link
+                     href="/signup"
+                     className="inline-block rounded-full px-6 py-3 bg-emerald-400 text-slate-900 font-semibold text-sm md:text-base hover:bg-emerald-300 transition">
+                     Sign Up
+                  </Link>
+
+                  {/* Secondary button – Log in */}
+                  <Link
+                     href="/login"
+                     className="inline-block rounded-full px-6 py-3 border border-emerald-400 text-emerald-300 text-sm md:text-base font-medium hover:bg-emerald-500/10 transition">
+                     Log in
+                  </Link>
+               </div>
             </div>
          </section>
       </main>
