@@ -127,6 +127,15 @@ export default function Login() {
                         )}
                      </button>
                   </div>
+                  {/* Forgot password link */}
+                  <div className="flex justify-end">
+                     <button
+                        type="button"
+                        onClick={() => router.push("/forgot-password")}
+                        className="cursor-pointer text-xs text-emerald-400 hover:text-emerald-300 hover:underline">
+                        Forgot your password?
+                     </button>
+                  </div>
                </div>
 
                <button
