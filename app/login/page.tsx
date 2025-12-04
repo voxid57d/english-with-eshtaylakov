@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { FcGoogle } from "react-icons/fc";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -14,6 +15,7 @@ export default function Login() {
    const [loadingEmail, setLoadingEmail] = useState(false);
    const [loadingGoogle, setLoadingGoogle] = useState(false);
    const [error, setError] = useState<string | null>(null);
+   const [showPassword, setShowPassword] = useState(false);
 
    // EMAIL + PASSWORD LOGIN ------------------------------
    const handleEmailLogin = async (e: React.FormEvent) => {
@@ -97,20 +99,34 @@ export default function Login() {
                      className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                      value={email}
                      onChange={(e) => setEmail(e.target.value)}
-                     placeholder="you@example.com"
                      required
                   />
                </div>
 
                <div>
                   <label className="block text-sm mb-1">Password</label>
-                  <input
-                     type="password"
-                     className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                     value={password}
-                     onChange={(e) => setPassword(e.target.value)}
-                     required
-                  />
+
+                  <div className="relative">
+                     <input
+                        type={showPassword ? "text" : "password"}
+                        className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 pr-16 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                     />
+
+                     <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="cursor-pointer absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200">
+                        <span>{showPassword ? "Hide" : "Show"}</span>
+                        {showPassword ? (
+                           <FiEyeOff className="w-4 h-4" />
+                        ) : (
+                           <FiEye className="w-4 h-4" />
+                        )}
+                     </button>
+                  </div>
                </div>
 
                <button

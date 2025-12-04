@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { FiEye, FiEyeOff } from "react-icons/fi";
+import { FcGoogle } from "react-icons/fc";
 
 export default function SignupPage() {
    const router = useRouter();
@@ -13,6 +15,29 @@ export default function SignupPage() {
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState<string | null>(null);
    const [message, setMessage] = useState<string | null>(null);
+   const [showPassword, setShowPassword] = useState(false);
+   const [loadingGoogle, setLoadingGoogle] = useState(false);
+
+   // GOOGLE LOGIN ----------------------------------------
+   const handleGoogleLogin = async () => {
+      try {
+         setError(null);
+         setLoadingGoogle(true);
+
+         const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`;
+
+         await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: {
+               redirectTo,
+            },
+         });
+      } catch (err) {
+         console.error(err);
+         setError("Google login failed.");
+         setLoadingGoogle(false);
+      }
+   };
 
    async function handleSignup(e: React.FormEvent) {
       e.preventDefault();
@@ -96,7 +121,6 @@ export default function SignupPage() {
                      className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                      value={email}
                      onChange={(e) => setEmail(e.target.value)}
-                     placeholder="you@example.com"
                      required
                   />
                </div>
@@ -107,23 +131,60 @@ export default function SignupPage() {
                      At least 8 characters. Use letters and numbers for a
                      stronger password.
                   </p>
-                  <input
-                     type="password"
-                     className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                     value={password}
-                     onChange={(e) => setPassword(e.target.value)}
-                     minLength={8}
-                     required
-                  />
+                  <div className="relative">
+                     <input
+                        type={showPassword ? "text" : "password"}
+                        className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        minLength={8}
+                        required
+                     />
+
+                     <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="cursor-pointer absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200">
+                        <span>{showPassword ? "Hide" : "Show"}</span>
+                        {showPassword ? (
+                           <FiEyeOff className="w-4 h-4" />
+                        ) : (
+                           <FiEye className="w-4 h-4" />
+                        )}
+                     </button>
+                  </div>
                </div>
 
                <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition px-3 py-2 text-sm font-semibold">
+                  className="cursor-pointer w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition px-3 py-2 text-sm font-semibold">
                   {loading ? "Creating account…" : "Sign up"}
                </button>
             </form>
+
+            {/* DIVIDER */}
+            <div className="flex items-center gap-3">
+               <div className="flex-1 h-px bg-slate-700"></div>
+               <span className="text-xs text-slate-400">OR</span>
+               <div className="flex-1 h-px bg-slate-700"></div>
+            </div>
+
+            {/* GOOGLE BUTTON (your original style) */}
+            <div className="flex justify-center">
+               <button
+                  onClick={handleGoogleLogin}
+                  disabled={loadingGoogle}
+                  className="flex items-center justify-center gap-3 px-6 py-3 rounded-full text-slate-100 bg-emerald-500 hover:bg-emerald-600 font-medium transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
+                  {loadingGoogle ? (
+                     "Redirecting…"
+                  ) : (
+                     <>
+                        Continue with Google <FcGoogle size={22} />
+                     </>
+                  )}
+               </button>
+            </div>
 
             <p className="text-xs text-center text-slate-400">
                Already have an account?{" "}
