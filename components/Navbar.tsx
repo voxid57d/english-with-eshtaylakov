@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { LuLogOut } from "react-icons/lu";
 
 type NavbarProps = {
    user: {
@@ -10,82 +11,111 @@ type NavbarProps = {
          avatar_url?: string;
       };
    };
+   username?: string;
    isPremium: boolean;
    onLogout: () => void;
-   /** Called when the user taps the hamburger menu on mobile. */
    onToggleSidebar: () => void;
 };
 
 export default function Navbar({
    user,
+   username,
    isPremium,
    onLogout,
    onToggleSidebar,
 }: NavbarProps) {
+   // ❌ no more fallback to email for the TEXT
+   const displayName = username ?? ""; // text in navbar
+   // ✅ but avatar can still fall back to email for the first letter
+   const avatarLetter = (username || user.email)[0]?.toUpperCase();
+
    return (
-      <header className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-slate-800">
-         <div className="flex items-center gap-3">
-            {/* Mobile menu button */}
+      <header className="flex items-center justify-between px-3 md:px-6 py-2 border-b border-slate-800">
+         {/* LEFT: menu + logo */}
+         <div className="flex items-center gap-2">
             <button
                onClick={onToggleSidebar}
-               className="md:hidden p-2 rounded-lg border border-slate-800 text-slate-100 hover:bg-slate-900 cursor-pointer"
-               aria-label="Open navigation menu">
-               ☰
+               className="md:hidden inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full
+                  border border-emerald-400/70 bg-slate-900/90
+                  text-slate-100 shadow-sm shadow-emerald-900/40
+                  hover:bg-emerald-500 hover:text-slate-950 hover:border-emerald-300
+                  transition">
+               <span className="flex flex-col gap-[3px]">
+                  <span className="w-3.5 h-[2px] rounded-full bg-current" />
+                  <span className="w-3.5 h-[2px] rounded-full bg-current" />
+                  <span className="w-3.5 h-[2px] rounded-full bg-current" />
+               </span>
+               <span className="inline text-xs font-medium">Menu</span>
             </button>
 
-            {/* Logo */}
             <Link
                href="/dashboard"
                className="hover:opacity-90 transition cursor-pointer">
                <Image
                   src="/logo-text-white.png"
                   alt="TalkTime logo"
-                  width={144}
-                  height={36}
-                  className="h-5 w-auto md:h-9"
+                  width={120}
+                  height={32}
+                  className="h-5 w-auto md:h-7"
                />
             </Link>
          </div>
 
-         <div className="flex items-center gap-2 md:gap-4 flex-wrap justify-end">
-            {/* Hide email on very small screens to avoid overflow */}
-            <span className="hidden sm:inline text-sm text-slate-200">
-               {user.email}
-            </span>
+         {/* RIGHT: name + avatar + premium + logout */}
+         <div className="flex items-center gap-1.5 md:gap-3 flex-nowrap">
+            {/* Username text only (no email fallback) */}
+            {displayName && (
+               <span className="hidden sm:inline text-xs md:text-sm text-slate-200 max-w-[140px] truncate">
+                  {displayName}
+               </span>
+            )}
 
             {/* Avatar */}
             {user.user_metadata?.avatar_url ? (
                <Image
                   src={user.user_metadata.avatar_url}
-                  alt={user.email}
-                  width={40}
-                  height={40}
-                  className="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-cover"
+                  alt={displayName || user.email}
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 rounded-full object-cover"
                />
             ) : (
-               <div className="h-10 w-10 flex items-center justify-center rounded-full bg-emerald-600 text-sm">
-                  {user.email[0].toUpperCase()}
+               <div className="h-8 w-8 flex items-center justify-center rounded-full bg-emerald-600 text-xs md:text-sm">
+                  {avatarLetter}
                </div>
             )}
 
             {/* Premium badge / link */}
             {isPremium ? (
-               <span className="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+               <span className="text-[11px] px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
                   Premium
                </span>
             ) : (
                <Link
                   href="/premium"
-                  className="text-xs px-3 py-1 rounded-full bg-emerald-600 hover:bg-emerald-500 text-slate-950 transition">
+                  className="text-[11px] md:text-xs px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-500 text-slate-950 transition whitespace-nowrap">
                   Go Premium
                </Link>
             )}
 
-            {/* Log out */}
+            {/* Logout desktop */}
             <button
                onClick={onLogout}
-               className="px-3 md:px-4 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-sm cursor-pointer">
-               Log out
+               className="cursor-pointer hidden sm:inline-flex items-center gap-1
+                  text-xs md:text-sm px-2.5 py-1 rounded-full border border-slate-700
+                  text-slate-300 hover:bg-slate-800 transition whitespace-nowrap">
+               <LuLogOut size={14} />
+               <span>Log out</span>
+            </button>
+
+            {/* Logout mobile */}
+            <button
+               onClick={onLogout}
+               className="cursor-pointer inline-flex sm:hidden items-center justify-center
+                  w-8 h-8 rounded-full border border-slate-700 text-slate-300
+                  hover:bg-slate-800 transition"
+               aria-label="Log out">
+               <LuLogOut size={16} />
             </button>
          </div>
       </header>
