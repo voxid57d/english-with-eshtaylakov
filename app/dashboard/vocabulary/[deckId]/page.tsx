@@ -1,20 +1,24 @@
 "use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-import Link from "next/link";
+import PracticeView from "@/components/vocabulary/PracticeView";
+import { useSRS, CardWithHealth, COOLDOWN_MS } from "@/app/hooks/useSRS";
 
+// Types for deck + raw card data from DB
 type Deck = {
    id: string;
    title: string;
    description: string | null;
    is_public: boolean;
-   requires_premium: boolean; // ✅ NEW
+   requires_premium: boolean;
 };
 
-type Card = {
+type CardRow = {
    id: string;
    front: string;
    back: string;
@@ -22,66 +26,206 @@ type Card = {
    transcription: string | null;
 };
 
+function formatCooldown(ms: number): string {
+   const mins = Math.floor(ms / 60000);
+   const secs = Math.floor((ms % 60000) / 1000);
+   if (mins <= 0 && secs <= 0) return "soon";
+   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
 export default function DeckPage() {
    const params = useParams();
    const deckId = params.deckId as string;
 
    const [deck, setDeck] = useState<Deck | null>(null);
-   const [loading, setLoading] = useState(true);
-   const [cards, setCards] = useState<Card[]>([]);
+   const [loadingDeck, setLoadingDeck] = useState(true);
+
+   const [rawCards, setRawCards] = useState<CardWithHealth[]>([]);
    const [cardsLoading, setCardsLoading] = useState(true);
+
+   const [userId, setUserId] = useState<string | null>(null);
+   const [isPremium, setIsPremium] = useState(false);
+   const [locked, setLocked] = useState(false);
+
    const [addingCard, setAddingCard] = useState(false);
    const [newWord, setNewWord] = useState("");
    const [newDefinition, setNewDefinition] = useState("");
    const [newExample, setNewExample] = useState("");
    const [cardSaving, setCardSaving] = useState(false);
    const [cardError, setCardError] = useState<string | null>(null);
-   const [isPracticing, setIsPracticing] = useState(false);
-   const [currentIndex, setCurrentIndex] = useState(0);
-   const [showBack, setShowBack] = useState(false);
    const [deletingId, setDeletingId] = useState<string | null>(null);
-   const [isPremium, setIsPremium] = useState(false); // ✅ is this user premium?
-   const [locked, setLocked] = useState(false); // ✅ is this deck locked for them?
-   const [history, setHistory] = useState<number[]>([]);
-   const [historyPosition, setHistoryPosition] = useState(0);
 
+   // For live countdowns (grid + practice message)
+   const [now, setNow] = useState(Date.now());
    useEffect(() => {
-      const fetchDeck = async () => {
-         // 1) Get current user
-         const { data: userData } = await supabase.auth.getUser();
+      const id = setInterval(() => setNow(Date.now()), 1000);
+      return () => clearInterval(id);
+   }, []);
+
+   // SRS hook – drives practice queue + cooldown + current card
+   const {
+      state: srsState,
+      startPractice,
+      stopPractice,
+      flipCard,
+      answer,
+      setGrindMode,
+      setSwipe,
+   } = useSRS(rawCards);
+
+   // ----- 1. Load user + deck + premium -----
+   useEffect(() => {
+      const loadDeck = async () => {
+         setLoadingDeck(true);
+
+         const { data: userData, error: userError } =
+            await supabase.auth.getUser();
+
+         if (userError) {
+            console.error("Error fetching user:", userError);
+         }
 
          let premium = false;
-         if (userData.user) {
-            premium = await getPremiumStatus(userData.user.id);
+         let uid: string | null = null;
+
+         if (userData?.user) {
+            uid = userData.user.id;
+            premium = await getPremiumStatus(uid);
+            setUserId(uid);
             setIsPremium(premium);
          }
 
-         // 2) Load the deck, including requires_premium
-         const { data, error } = await supabase
+         const { data: deckData, error: deckError } = await supabase
             .from("vocabulary_decks")
             .select("id, title, description, is_public, requires_premium")
             .eq("id", deckId)
             .single();
 
-         if (!error && data) {
-            const deckData = data as Deck;
-            setDeck(deckData);
-
-            // 3) If this deck is premium-only and user is not premium → lock it
-            if (deckData.requires_premium && !premium) {
+         if (deckError) {
+            console.error("Error loading deck:", deckError);
+            setDeck(null);
+         } else if (deckData) {
+            const d = deckData as Deck;
+            setDeck(d);
+            if (d.requires_premium && !premium) {
                setLocked(true);
             }
          }
 
-         setLoading(false);
+         setLoadingDeck(false);
       };
 
-      fetchDeck();
+      loadDeck();
    }, [deckId]);
 
+   // ----- 2. Load cards + progress from Supabase -----
+   useEffect(() => {
+      const fetchCards = async () => {
+         if (!userId || locked) {
+            setCardsLoading(false);
+            return;
+         }
+
+         setCardsLoading(true);
+
+         // Load all cards in this deck
+         const { data: cardsData, error: cardsError } = await supabase
+            .from("vocabulary_cards")
+            .select("id, front, back, example_sentence, transcription")
+            .eq("deck_id", deckId)
+            .order("id", { ascending: true });
+
+         if (cardsError) {
+            console.error("Error loading cards:", cardsError);
+            setRawCards([]);
+            setCardsLoading(false);
+            return;
+         }
+
+         if (!cardsData || cardsData.length === 0) {
+            setRawCards([]);
+            setCardsLoading(false);
+            return;
+         }
+
+         const ids = (cardsData as CardRow[]).map((c) => c.id);
+
+         // Load per-card progress for this user
+         const { data: progressData, error: progressError } = await supabase
+            .from("vocabulary_card_progress")
+            .select("card_id, health, last_reviewed_at")
+            .eq("user_id", userId)
+            .in("card_id", ids);
+
+         if (progressError) {
+            console.error("Error loading progress:", progressError);
+         }
+
+         const progressMap = new Map<
+            string,
+            { health: number; lastReviewed: string | null }
+         >();
+         (progressData || []).forEach((row) => {
+            progressMap.set(row.card_id, {
+               health: row.health ?? 1,
+               lastReviewed: row.last_reviewed_at,
+            });
+         });
+
+         const cardsWithHealth: CardWithHealth[] = (cardsData as CardRow[]).map(
+            (card) => {
+               const p = progressMap.get(card.id);
+               let health = 1;
+               let cooldownUntil: number | null = null;
+
+               if (p) {
+                  health = p.health ?? 1;
+                  if (p.lastReviewed) {
+                     const last = new Date(p.lastReviewed).getTime();
+                     const until = last + COOLDOWN_MS;
+                     if (until > Date.now()) {
+                        cooldownUntil = until;
+                     }
+                  }
+               }
+
+               return {
+                  ...card,
+                  health,
+                  cooldownUntil,
+               };
+            }
+         );
+
+         setRawCards(cardsWithHealth);
+         setCardsLoading(false);
+      };
+
+      fetchCards();
+   }, [deckId, userId, locked]);
+
+   // ----- 3. Derive all cards from SRS state (queue + cooldown) for the grid -----
+   const allCardsForGrid: CardWithHealth[] = useMemo(() => {
+      const map = new Map<string, CardWithHealth>();
+      [...srsState.practiceQueue, ...srsState.cooldownList].forEach((c) => {
+         map.set(c.id, c);
+      });
+
+      // If SRS hasn’t loaded yet (e.g. at mount), fall back to rawCards
+      if (map.size === 0 && rawCards.length > 0) {
+         rawCards.forEach((c) => map.set(c.id, c));
+      }
+
+      return Array.from(map.values()).sort(
+         (a, b) => a.health - b.health || a.front.localeCompare(b.front)
+      );
+   }, [srsState.practiceQueue, srsState.cooldownList, rawCards]);
+
+   const hasAnyCards = allCardsForGrid.length > 0;
+
+   // ----- 4. Add & delete cards -----
    const handleAddCard = async (e: React.FormEvent) => {
       e.preventDefault();
-
       if (!newWord.trim() || !newDefinition.trim()) {
          setCardError("Word and definition are required.");
          return;
@@ -98,176 +242,101 @@ export default function DeckPage() {
             back: newDefinition.trim(),
             example_sentence: newExample.trim() || null,
          })
-         .select("id, front, back, example_sentence")
+         .select("id, front, back, example_sentence, transcription")
          .single();
 
       if (error) {
-         console.error(error);
+         console.error("Error adding card:", error);
          setCardError("Failed to add card.");
-      } else if (data) {
-         // Add new card to the top of the list
-         setCards((prev) => [data as Card, ...prev]);
-         setAddingCard(false);
-         setNewWord("");
-         setNewDefinition("");
-         setNewExample("");
+         setCardSaving(false);
+         return;
       }
 
+      if (data) {
+         const newCard: CardWithHealth = {
+            ...(data as CardRow),
+            health: 1,
+            cooldownUntil: null,
+         };
+
+         // Update rawCards → triggers SRS reload via useSRS
+         setRawCards((prev) => [...prev, newCard]);
+      }
+
+      setNewWord("");
+      setNewDefinition("");
+      setNewExample("");
+      setAddingCard(false);
       setCardSaving(false);
    };
 
-   const handleDeleteCard = async (id: string) => {
-      const confirmed = window.confirm("Delete this card?");
-      if (!confirmed) return;
+   const handleDeleteCard = async (cardId: string) => {
+      if (!confirm("Delete this card?")) return;
 
-      setDeletingId(id);
-      setCardError(null);
-
+      setDeletingId(cardId);
       const { error } = await supabase
          .from("vocabulary_cards")
          .delete()
-         .eq("id", id);
+         .eq("id", cardId);
 
       if (error) {
-         console.error(error);
-         setCardError("Failed to delete card.");
-      } else {
-         // Remove the card from local state
-         setCards((prev) => prev.filter((card) => card.id !== id));
+         console.error("Error deleting card:", error);
+         alert("Failed to delete card.");
+         setDeletingId(null);
+         return;
       }
 
+      // Remove locally → SRS will reload from new rawCards
+      setRawCards((prev) => prev.filter((c) => c.id !== cardId));
       setDeletingId(null);
    };
 
-   const getRandomIndex = (length: number, excludeIndex: number | null) => {
-      if (length <= 1) return 0;
+   // ----- 5. Answer handler: combine SRS + DB update -----
+   const handleAnswer = async (known: boolean) => {
+      const current = srsState.currentCard;
+      if (!current || !userId) return;
 
-      let random = Math.floor(Math.random() * length);
+      const oldHealth = current.health;
+      const newHealth = known
+         ? Math.min(oldHealth + 1, 4)
+         : Math.max(oldHealth - 1, 0);
 
-      // Try to avoid returning the same index as excludeIndex
-      if (excludeIndex !== null && length > 1) {
-         while (random === excludeIndex) {
-            random = Math.floor(Math.random() * length);
-         }
+      // First update SRS state (queue, cooldown, next card)
+      answer(known);
+
+      // Then persist to Supabase
+      const { error } = await supabase.from("vocabulary_card_progress").upsert(
+         {
+            user_id: userId,
+            card_id: current.id,
+            deck_id: deckId,
+            health: newHealth,
+            last_reviewed_at: new Date().toISOString(),
+         },
+         { onConflict: "user_id,card_id" }
+      );
+
+      if (error) {
+         console.error("Error saving progress:", error);
       }
-
-      return random;
    };
 
-   const startPractice = () => {
-      if (cards.length === 0) return;
-
-      // Pick a starting card (could be index 0 or random – let's go random)
-      const firstIndex = getRandomIndex(cards.length, null);
-
-      setIsPracticing(true);
-      setCurrentIndex(firstIndex);
-      setShowBack(false);
-
-      // Reset history to start with this card
-      setHistory([firstIndex]);
-      setHistoryPosition(0);
-   };
-
-   const stopPractice = () => {
-      setIsPracticing(false);
-      setShowBack(false);
-      setHistory([]);
-      setHistoryPosition(0);
-   };
-
-   const goToNext = () => {
-      if (cards.length === 0) return;
-
-      setShowBack(false);
-
-      setHistory((prevHistory) => {
-         let newHistory = [...prevHistory];
-         let newPosition = historyPosition;
-
-         // If there is a future in history (user went back before)
-         if (newPosition < newHistory.length - 1) {
-            newPosition = newPosition + 1;
-            setCurrentIndex(newHistory[newPosition]);
-            setHistoryPosition(newPosition);
-            return newHistory;
-         }
-
-         // Otherwise we're at the end → choose a new random card
-         const currentIdx =
-            newHistory.length > 0 ? newHistory[newPosition] : null;
-         const randomIndex = getRandomIndex(cards.length, currentIdx);
-
-         newHistory.push(randomIndex);
-         newPosition = newHistory.length - 1;
-
-         setCurrentIndex(randomIndex);
-         setHistoryPosition(newPosition);
-
-         return newHistory;
-      });
-   };
-
-   const goToPrev = () => {
-      if (cards.length === 0) return;
-      if (historyPosition === 0) return; // no previous
-
-      setShowBack(false);
-
-      setHistoryPosition((prevPos) => {
-         const newPos = prevPos - 1;
-         const prevIndex = history[newPos];
-         setCurrentIndex(prevIndex);
-         return newPos;
-      });
-   };
-
-   const flipCard = () => {
-      setShowBack((prev) => !prev);
-   };
-
-   useEffect(() => {
-      const fetchCards = async () => {
-         // If deck is locked for this user, don't load cards at all
-         if (locked) {
-            setCards([]);
-            setCardsLoading(false);
-            return;
-         }
-
-         setCardsLoading(true);
-
-         const { data, error } = await supabase
-            .from("vocabulary_cards")
-            .select("id, front, back, example_sentence, transcription")
-            .eq("deck_id", deckId)
-            .order("id", { ascending: true });
-
-         if (!error) {
-            setCards(data as Card[]);
-         }
-
-         setCardsLoading(false);
-      };
-
-      fetchCards();
-   }, [deckId, locked]); // ✅ include locked here
-
-   if (loading) {
-      return <div>Loading deck...</div>;
+   // ----- 6. Render -----
+   if (loadingDeck) {
+      return <div className="text-slate-400">Loading deck...</div>;
    }
 
    if (!deck) {
-      return <div>Deck not found.</div>;
+      return <div className="text-slate-400">Deck not found.</div>;
    }
 
-   if (locked && deck) {
+   if (locked) {
       return (
          <div className="space-y-6">
             <Link
                href="/dashboard/vocabulary"
                className="inline-flex items-center text-sm text-slate-400 hover:text-slate-200 transition">
-               ← Back to decks
+               ← Back to vocabulary
             </Link>
 
             <h1 className="text-2xl font-semibold">{deck.title}</h1>
@@ -294,41 +363,53 @@ export default function DeckPage() {
 
    return (
       <div className="space-y-6">
-         {/* Back button */}
+         {/* Back link */}
          <Link
             href="/dashboard/vocabulary"
             className="inline-flex items-center text-sm text-slate-400 hover:text-slate-200 transition">
             ← Back to decks
          </Link>
 
-         {/* Deck title */}
-         <div className="flex items-center gap-3">
-            <button
-               onClick={() => {
-                  if (isPracticing) {
-                     stopPractice();
-                  } else {
-                     startPractice();
-                  }
-               }}
-               disabled={cards.length === 0}
-               className="cursor-pointer px-4 py-2 rounded-full border border-emerald-500 text-sm font-medium
-                 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition">
-               {isPracticing ? "Stop practice" : "Practice"}
-            </button>
+         {/* Header */}
+         <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+               <h1 className="text-2xl font-semibold">{deck.title}</h1>
+               {deck.description && (
+                  <p className="text-sm text-slate-400 mt-1">
+                     {deck.description}
+                  </p>
+               )}
+            </div>
 
-            {!deck.is_public && (
+            <div className="flex flex-wrap items-center gap-3">
                <button
                   onClick={() => {
-                     setAddingCard((prev) => !prev);
-                     setCardError(null);
+                     if (srsState.isPracticing) {
+                        stopPractice();
+                     } else {
+                        startPractice();
+                     }
                   }}
-                  className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
-                  {addingCard ? "Cancel" : "+ Add card"}
+                  disabled={!hasAnyCards}
+                  className="cursor-pointer px-4 py-2 rounded-full border border-emerald-500 text-sm font-medium
+                     text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                  {srsState.isPracticing ? "Stop practice" : "Start practice"}
                </button>
-            )}
+
+               {!deck.is_public && (
+                  <button
+                     onClick={() => {
+                        setAddingCard((prev) => !prev);
+                        setCardError(null);
+                     }}
+                     className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
+                     {addingCard ? "Cancel" : "+ Add card"}
+                  </button>
+               )}
+            </div>
          </div>
 
+         {/* Add card form */}
          {addingCard && (
             <form
                onSubmit={handleAddCard}
@@ -385,9 +466,6 @@ export default function DeckPage() {
                      type="button"
                      onClick={() => {
                         setAddingCard(false);
-                        setNewWord("");
-                        setNewDefinition("");
-                        setNewExample("");
                         setCardError(null);
                      }}
                      className="cursor-pointer text-sm text-slate-400 hover:text-slate-200">
@@ -397,114 +475,90 @@ export default function DeckPage() {
             </form>
          )}
 
-         {isPracticing && cards.length > 0 && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-               <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>
-                     Card {currentIndex + 1} of {cards.length}
-                  </span>
-                  <span>Tap the card to flip</span>
-               </div>
+         {/* Practice view (uses SRS state) */}
+         <PracticeView
+            state={srsState}
+            onFlip={flipCard}
+            onAnswer={handleAnswer}
+            onToggleGrindMode={setGrindMode}
+            setSwipe={setSwipe}
+         />
 
-               {/* Flashcard */}
-               <div
-                  onClick={flipCard}
-                  className="cursor-pointer rounded-xl bg-slate-950 border border-slate-800 px-6 py-10 flex flex-col justify-center items-center text-center transition hover:border-emerald-500/60">
-                  {!showBack ? (
-                     <>
-                        <p className="text-sm text-slate-400 mb-2">Word</p>
-                        <p className="text-2xl font-semibold">
-                           {cards[currentIndex].front}
-                        </p>
-
-                        {cards[currentIndex].transcription && (
-                           <p className="mt-2 text-lg text-emerald-300">
-                              /{cards[currentIndex].transcription}/
-                           </p>
-                        )}
-                     </>
-                  ) : (
-                     <>
-                        <p className="text-sm text-slate-400 mb-2">
-                           Definition
-                        </p>
-                        <p className="text-base text-slate-100">
-                           {cards[currentIndex].back}
-                        </p>
-                        {cards[currentIndex].example_sentence && (
-                           <p className="text-sm text-slate-400 mt-3 italic">
-                              {cards[currentIndex].example_sentence}
-                           </p>
-                        )}
-                     </>
-                  )}
-               </div>
-
-               {/* Controls */}
-               <div className="flex items-center justify-between">
-                  <button
-                     onClick={goToPrev}
-                     className="cursor-pointer px-3 py-2 rounded-full border border-slate-700 text-sm text-slate-200 hover:bg-slate-800 transition">
-                     ← Previous
-                  </button>
-
-                  <button
-                     onClick={flipCard}
-                     className="cursor-pointer px-4 py-2 rounded-full bg-slate-800 hover:bg-slate-700 text-sm text-slate-100 transition">
-                     {showBack ? "Show word" : "Show definition"}
-                  </button>
-
-                  <button
-                     onClick={goToNext}
-                     className="cursor-pointer px-3 py-2 rounded-full border border-slate-700 text-sm text-slate-200 hover:bg-slate-800 transition">
-                     Next →
-                  </button>
-               </div>
-            </div>
-         )}
-
-         {/* Cards will go here */}
-         {/* Cards */}
-         {cardsLoading && (
+         {/* Cards grid */}
+         {cardsLoading ? (
             <p className="text-slate-500 text-sm">Loading cards...</p>
-         )}
-
-         {!cardsLoading && cards.length === 0 && (
-            <p className="text-slate-500 text-sm">No cards yet in this deck.</p>
-         )}
-
-         {!cardsLoading && cards.length > 0 && (
+         ) : !hasAnyCards ? (
+            <p className="text-slate-500 text-sm">
+               No cards yet in this deck. Add some to get started.
+            </p>
+         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-               {cards.map((card) => (
-                  <div
-                     key={card.id}
-                     className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 hover:border-emerald-500/60 transition">
-                     <div className="flex items-start justify-between gap-2">
-                        <h2 className="text-lg font-semibold">{card.front}</h2>
+               {allCardsForGrid.map((card) => {
+                  const cooldownLeft =
+                     card.cooldownUntil && card.cooldownUntil > now
+                        ? card.cooldownUntil - now
+                        : 0;
 
-                        {card.transcription && (
-                           <p className="text-sm text-emerald-300 mt-1">
-                              /{card.transcription}/
+                  return (
+                     <div
+                        key={card.id}
+                        className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 hover:border-emerald-500/60 transition">
+                        <div className="flex items-start justify-between gap-2">
+                           <div>
+                              <h2 className="text-lg font-semibold">
+                                 {card.front}
+                              </h2>
+                              {card.transcription && (
+                                 <p className="text-sm text-emerald-300 mt-1">
+                                    /{card.transcription}/
+                                 </p>
+                              )}
+                           </div>
+
+                           {!deck.is_public && (
+                              <button
+                                 onClick={() => handleDeleteCard(card.id)}
+                                 disabled={deletingId === card.id}
+                                 className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                                 {deletingId === card.id
+                                    ? "Deleting..."
+                                    : "Delete"}
+                              </button>
+                           )}
+                        </div>
+
+                        <p className="text-slate-400 text-sm mt-2">
+                           {card.back}
+                        </p>
+
+                        {card.example_sentence && (
+                           <p className="text-slate-500 text-xs mt-2 italic">
+                              {card.example_sentence}
                            </p>
                         )}
 
-                        <button
-                           onClick={() => handleDeleteCard(card.id)}
-                           disabled={deletingId === card.id}
-                           className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
-                           {deletingId === card.id ? "Deleting..." : "Delete"}
-                        </button>
+                        {cooldownLeft > 0 && !srsState.grindMode && (
+                           <p className="text-xs text-amber-400 mt-2">
+                              Back in {formatCooldown(cooldownLeft)}
+                           </p>
+                        )}
+
+                        {/* Health bar */}
+                        <div className="flex gap-1 mt-3">
+                           {Array.from({ length: 4 }).map((_, i) => (
+                              <div
+                                 key={i}
+                                 className={`h-2 flex-1 rounded-full ${
+                                    i < card.health
+                                       ? "bg-emerald-500"
+                                       : "bg-slate-700"
+                                 }`}
+                              />
+                           ))}
+                        </div>
                      </div>
-
-                     <p className="text-slate-400 text-sm mt-2">{card.back}</p>
-
-                     {card.example_sentence && (
-                        <p className="text-slate-500 text-xs mt-2 italic">
-                           {card.example_sentence}
-                        </p>
-                     )}
-                  </div>
-               ))}
+                  );
+               })}
             </div>
          )}
       </div>
