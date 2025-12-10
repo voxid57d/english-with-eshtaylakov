@@ -117,6 +117,14 @@ export default function ListeningTestPage() {
             setLoading(true);
             setError(null);
 
+            // 🔐 1) Check if user is logged in
+            const { data: userData, error: userError } =
+               await supabase.auth.getUser();
+            if (userError || !userData.user) {
+               router.push("/login");
+               return; // ⛔ stop loading test
+            }
+
             // 1) Test by slug
             const { data: testData, error: testError } = await supabase
                .from("listening_tests")
