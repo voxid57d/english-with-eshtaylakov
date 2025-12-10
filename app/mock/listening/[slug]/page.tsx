@@ -89,6 +89,22 @@ export default function ListeningTestPage() {
       optionsByQuestion[opt.question_id].push(opt);
    });
 
+   // Group dropdown questions (like 27–30) by section
+   const dropdownGroupsBySection: Record<string, ListeningQuestion[]> = {};
+   questions.forEach((q) => {
+      if (q.type === "mcq_dropdown") {
+         if (!dropdownGroupsBySection[q.section_id]) {
+            dropdownGroupsBySection[q.section_id] = [];
+         }
+         dropdownGroupsBySection[q.section_id].push(q);
+      }
+   });
+
+   // Make sure each group is ordered by question number
+   Object.values(dropdownGroupsBySection).forEach((group) => {
+      group.sort((a, b) => a.question_number - b.question_number);
+   });
+
    const orderedQuestions = [...questions].sort(
       (a, b) => a.question_number - b.question_number
    );
@@ -205,11 +221,13 @@ export default function ListeningTestPage() {
          const userAnswer = userAnswerRaw.trim();
          if (!userAnswer) continue;
 
-         if (q.type === "mcq_single") {
+         if (q.type === "mcq_single" || q.type === "mcq_dropdown") {
+            // For both radio and dropdown, compare letters directly (A, B, C, ...)
             if (userAnswer === (q.correct_answer || "")) {
                score += 1;
             }
          } else {
+            // generic short-answer (gap-fill)
             const correct = (q.correct_answer || "").trim();
             if (correct && userAnswer.toLowerCase() === correct.toLowerCase()) {
                score += 1;
@@ -350,13 +368,26 @@ export default function ListeningTestPage() {
                   questionRefs.current[q.id] = el;
                }}
                className="mb-2 text-slate-200">
-               {extra.before || ""}
-               <input
-                  className="border-b border-emerald-400 bg-transparent px-1 mx-1 text-emerald-200 focus:outline-none"
-                  value={answers[q.id] || ""}
-                  onChange={(e) => handleAnswerChange(q.id, e.target.value)}
-               />
-               {extra.after || ""}
+               {/* Make everything inline: number + sentence + gap */}
+               <span className="inline-flex flex-wrap items-baseline gap-1">
+                  {/* 1. / 2. / 3. etc */}
+                  <span className="font-semibold mr-1">
+                     {q.question_number}.
+                  </span>
+
+                  {/* BEFORE text */}
+                  {extra.before && <span>{extra.before}</span>}
+
+                  {/* The gap itself */}
+                  <input
+                     className="inline-block border-b border-emerald-400 bg-transparent px-1 text-emerald-200 focus:outline-none min-w-[80px]"
+                     value={answers[q.id] || ""}
+                     onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                  />
+
+                  {/* AFTER text */}
+                  {extra.after && <span>{extra.after}</span>}
+               </span>
             </div>
          );
       }
@@ -368,6 +399,7 @@ export default function ListeningTestPage() {
          const opts = optionsByQuestion[q.id] || [];
 
          if (q.type === "mcq_single") {
+            // existing radio-button version stays the same
             return (
                <div
                   key={block.id}
@@ -405,7 +437,109 @@ export default function ListeningTestPage() {
             );
          }
 
-         // generic short-answer
+         /**
+          * Special handling for "matching" questions like 27–30:
+          * - One shared Opinions list (A–F) on top
+          * - Each question has a dropdown with letters A–F
+          * - When a letter is chosen anywhere, the corresponding opinion line is
+          *   shown with line-through.
+          */
+         if (q.type === "mcq_dropdown") {
+            const group = dropdownGroupsBySection[q.section_id] || [];
+            const isGroup = group.length > 1;
+
+            // If this is part of a group and it's NOT the first question in that group,
+            // we don't render anything here (the first block will render the whole group).
+            if (isGroup && group[0].id !== q.id) {
+               return null;
+            }
+
+            // Use the options of the first question in the group (A–F with full text)
+            const masterQuestion = isGroup ? group[0] : q;
+            const masterOptions = optionsByQuestion[masterQuestion.id] || [];
+
+            // Which letters are currently used by any question in this group?
+            const usedLetters = new Set(
+               group
+                  .map((g) => (answers[g.id] || "").trim())
+                  .filter((v) => v.length > 0)
+            );
+
+            return (
+               <div
+                  key={block.id}
+                  ref={(el) => {
+                     questionRefs.current[q.id] = el;
+                  }}
+                  className="mb-6">
+                  {/* Instructions / heading */}
+                  <p className="mb-2 text-slate-200">
+                     What opinion do the students give about each of the
+                     following modules on their veterinary science course?
+                  </p>
+                  <p className="mb-3 text-slate-300 text-sm">
+                     Choose FOUR answers from the box and write the correct
+                     letter,
+                     <span className="font-semibold"> A–F</span>, next to
+                     questions {group[0].question_number}–
+                     {group[group.length - 1].question_number}.
+                  </p>
+
+                  {/* Opinions list (A–F) */}
+                  <div className="mb-4 border border-slate-700 rounded-lg p-3 bg-slate-900/70">
+                     <p className="text-center font-semibold mb-2">Opinions</p>
+                     <ul className="space-y-1 text-sm">
+                        {masterOptions.map((opt) => {
+                           const isUsed = usedLetters.has(opt.label);
+                           return (
+                              <li
+                                 key={opt.id}
+                                 className={`flex gap-2 ${
+                                    isUsed ? "line-through opacity-60" : ""
+                                 }`}>
+                                 <span className="font-semibold w-5">
+                                    {opt.label}.
+                                 </span>
+                                 <span>{opt.text}</span>
+                              </li>
+                           );
+                        })}
+                     </ul>
+                  </div>
+
+                  {/* Modules with dropdowns */}
+                  <div className="space-y-2">
+                     {group.map((g) => (
+                        <div
+                           key={g.id}
+                           className="flex flex-wrap items-center gap-2 text-sm">
+                           <span className="font-semibold w-6">
+                              {g.question_number}.
+                           </span>
+                           <span className="flex-1 min-w-[160px]">
+                              {g.prompt}
+                           </span>
+                           <select
+                              className="bg-slate-900 border border-slate-600 rounded-md px-2 py-1 text-slate-100"
+                              value={answers[g.id] || ""}
+                              onChange={(e) =>
+                                 handleAnswerChange(g.id, e.target.value)
+                              }>
+                              <option value="">–</option>
+                              {masterOptions.map((opt) => (
+                                 <option key={opt.id} value={opt.label}>
+                                    {opt.label}
+                                 </option>
+                              ))}
+                           </select>
+                        </div>
+                     ))}
+                  </div>
+               </div>
+            );
+         }
+
+         // generic short-answer (text input)
          return (
             <div
                key={block.id}
