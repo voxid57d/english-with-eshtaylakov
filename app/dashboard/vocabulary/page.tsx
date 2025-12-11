@@ -4,6 +4,7 @@ import { useEffect, useState, MouseEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { getPremiumStatus } from "@/lib/premium";
+import { useRouter } from "next/navigation";
 
 type Deck = {
    id: string;
@@ -24,6 +25,7 @@ export default function VocabularyPage() {
    const [saving, setSaving] = useState(false);
    const [deletingId, setDeletingId] = useState<string | null>(null);
    const [isPremium, setIsPremium] = useState(false);
+   const router = useRouter();
 
    useEffect(() => {
       const fetchDecks = async () => {
@@ -269,16 +271,13 @@ export default function VocabularyPage() {
                   // If locked → show as non-clickable, slightly faded
                   if (locked) {
                      return (
-                        <div
+                        <button
                            key={deck.id}
-                           className="opacity-60 cursor-not-allowed"
-                           onClick={() =>
-                              alert(
-                                 "This deck is only available for premium users."
-                              )
-                           }>
+                           type="button"
+                           onClick={() => router.push("/premium")}
+                           className="w-full text-left opacity-70 hover:opacity-90 cursor-pointer transition">
                            {cardContent}
-                        </div>
+                        </button>
                      );
                   }
 
