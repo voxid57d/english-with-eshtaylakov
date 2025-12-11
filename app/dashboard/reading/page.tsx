@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
 
@@ -19,6 +20,8 @@ export default function ReadingPage() {
    const [loading, setLoading] = useState(true);
    const [error, setError] = useState<string | null>(null);
    const [isPremium, setIsPremium] = useState(false);
+
+   const router = useRouter();
 
    useEffect(() => {
       const load = async () => {
@@ -125,12 +128,16 @@ export default function ReadingPage() {
                   );
 
                   return locked ? (
-                     // Non-premium: show non-clickable card
-                     <div key={article.id} className="opacity-80">
+                     // Non-premium: clicking sends to premium page
+                     <button
+                        key={article.id}
+                        type="button"
+                        onClick={() => router.push("/premium")}
+                        className="w-full text-left opacity-80 hover:opacity-100 transition cursor-pointer">
                         {cardContent}
-                     </div>
+                     </button>
                   ) : (
-                     // Free or user is premium: clickable link
+                     // Free or user is premium: clickable link to article
                      <Link
                         key={article.id}
                         href={`/dashboard/reading/${article.slug}`}>

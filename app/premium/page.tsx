@@ -88,7 +88,13 @@ export default function PremiumPage() {
                {/* Top bar */}
                <div className="flex items-center justify-between gap-4">
                   <button
-                     onClick={() => router.push("/dashboard")}
+                     onClick={() => {
+                        if (window.history.length > 1) {
+                           router.back();
+                        } else {
+                           router.push("/dashboard");
+                        }
+                     }}
                      className="text-sm text-slate-400 hover:text-slate-200 cursor-pointer">
                      ← Back
                   </button>
@@ -111,11 +117,6 @@ export default function PremiumPage() {
                      Get access to all IELTS CDI Mock exams, Vocabulary decks
                      and more!
                   </h1>
-                  <p className="text-slate-300 max-w-2xl">
-                     Premium unlocks all advanced vocabulary decks and upcoming
-                     practice features. Upgrade to stay exam-ready and get early
-                     access to everything we release next.
-                  </p>
 
                   <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 md:p-5 space-y-3">
                      <h2 className="text-sm font-semibold text-emerald-300 flex items-center gap-2">
