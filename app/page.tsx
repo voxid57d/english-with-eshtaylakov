@@ -43,7 +43,7 @@ export default function HomePage() {
 
    return (
       <PageShellWithFooter>
-         <main className="min-h-screen bg-slate-950 text-white px-4 flex items-center">
+         <div className="w-full flex items-center px-4 py-10">
             <section className="max-w-6xl mx-auto w-full flex flex-col md:flex-row items-center justify-between gap-12">
                <div className="space-y-6">
                   <Image
@@ -65,23 +65,20 @@ export default function HomePage() {
                   </p>
 
                   <div className="mt-8 flex flex-wrap gap-4">
-                     {/* Primary button – Sign up / Get started */}
-                     <Link
-                        href="/signup"
-                        className="inline-block rounded-full px-6 py-3 bg-emerald-400 text-slate-900 font-semibold text-sm md:text-base hover:bg-emerald-300 transition">
-                        Sign Up
-                     </Link>
-
-                     {/* Secondary button – Log in */}
                      <Link
                         href="/login"
-                        className="inline-block rounded-full px-6 py-3 border border-emerald-400 text-emerald-300 text-sm md:text-base font-medium hover:bg-emerald-500/10 transition">
-                        Log in
+                        className="inline-flex items-center gap-2 rounded-full px-7 py-3
+      bg-emerald-400 text-slate-900 font-semibold text-sm md:text-base
+      hover:bg-emerald-300 transition">
+                        Continue
+                        <span aria-hidden className="text-lg leading-none">
+                           →
+                        </span>
                      </Link>
                   </div>
                </div>
             </section>
-         </main>
+         </div>
       </PageShellWithFooter>
    );
 }

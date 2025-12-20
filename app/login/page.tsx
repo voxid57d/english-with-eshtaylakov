@@ -71,7 +71,7 @@ export default function Login() {
 
    return (
       <PageShellWithFooter>
-         <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white px-4">
+         <main className="w-full flex items-center justify-center px-4 py-10">
             <div className="w-full max-w-md space-y-8 p-8 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl">
                {/* LOGO */}
                <div className="flex justify-center">

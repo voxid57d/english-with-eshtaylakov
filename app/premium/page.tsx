@@ -83,7 +83,7 @@ export default function PremiumPage() {
 
    return (
       <PageShellWithFooter>
-         <main className="min-h-screen bg-slate-950 text-slate-50 px-4">
+         <main className="w-full px-4 py-8">
             <div className="max-w-4xl mx-auto py-8 space-y-8">
                {/* Top bar */}
                <div className="flex items-center justify-between gap-4">
