@@ -174,48 +174,57 @@ export default function DashboardPage() {
    const quote = getQuoteOfToday();
 
    useEffect(() => {
-      async function load() {
-         // 1) Get current user
-         const { data, error } = await supabase.auth.getUser();
+      let cancelled = false;
 
+      async function load() {
+         // 1) Auth check
+         const { data, error } = await supabase.auth.getUser();
          if (error) {
             console.error("Error getting user:", error);
+            router.replace("/login");
             return;
          }
 
          const user = data.user;
-
-         // 2) If no user, redirect to login
          if (!user) {
-            router.push("/login");
+            router.replace("/login");
             return;
          }
 
          const userId = user.id;
 
-         // 3) NEW: check if this user has a username; if not → /username
+         // 2) Username gate (fast)
          const { data: profile, error: profileError } = await supabase
             .from("profiles")
             .select("username")
             .eq("id", userId)
-            .maybeSingle();
+            .single(); // now safe because profiles row always exists
 
          if (profileError) {
             console.error("Error loading profile:", profileError);
-         }
-
-         if (!profile || !profile.username) {
-            router.push("/username");
+            // Safe fallback: let them continue or force username. I recommend forcing:
+            router.replace("/username");
             return;
          }
 
-         // 4) Update streak in DB and get current value
-         const currentStreak = await updateAndGetStreak(user.id);
-         setStreak(currentStreak);
-         setLoadingStreak(false);
+         if (!profile.username) {
+            router.replace("/username");
+            return;
+         }
+
+         // 3) At this point dashboard can render immediately
+         if (!cancelled) setLoadingStreak(false);
+
+         // 4) Streak update runs AFTER gate, can be slower without blocking page
+         const currentStreak = await updateAndGetStreak(userId);
+         if (!cancelled) setStreak(currentStreak);
       }
 
       load();
+
+      return () => {
+         cancelled = true;
+      };
    }, [router]);
 
    return (

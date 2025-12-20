@@ -54,9 +54,15 @@ export default function TelegramLoginButton() {
    }, []);
 
    return (
-      <div className="w-full">
-         <div ref={containerRef} />
-         {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      <div className="w-full flex flex-col items-center">
+         {/* Centering wrapper */}
+         <div className="flex justify-center w-full">
+            <div ref={containerRef} className="telegram-login-wrapper" />
+         </div>
+
+         {error && (
+            <p className="mt-2 text-xs text-red-400 text-center">{error}</p>
+         )}
       </div>
    );
 }

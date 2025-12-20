@@ -133,7 +133,7 @@ export async function POST(req: Request) {
          type: "magiclink",
          email: pseudoEmail,
          options: {
-            redirectTo: `${siteUrl}/username`,
+            redirectTo: `${siteUrl}/dashboard`,
          },
       });
 
