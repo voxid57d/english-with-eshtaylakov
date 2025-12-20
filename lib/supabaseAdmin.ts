@@ -1,0 +1,27 @@
+import { createClient } from "@supabase/supabase-js";
+
+/**
+ * Server-only Supabase client.
+ * Uses the service role key (full access, bypasses RLS).
+ *
+ * IMPORTANT:
+ * - Never import this file into client components.
+ * - Use it only in server routes / server actions / API routes.
+ */
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl) {
+   throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL");
+}
+
+if (!serviceRoleKey) {
+   throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY");
+}
+
+export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+   auth: {
+      persistSession: false, // server doesn't need browser session storage
+      autoRefreshToken: false,
+   },
+});
