@@ -25,6 +25,7 @@ export default function ArticleReader({
    text,
    onSaveWord,
    saveStatus,
+   showHelper = true,
 }: {
    text: string;
    onSaveWord?: (data: {
@@ -37,6 +38,7 @@ export default function ArticleReader({
       state: "saving" | "saved" | "exists" | "error";
       message: string;
    } | null;
+   showHelper?: boolean;
 }) {
    const containerRef = useRef<HTMLDivElement | null>(null);
    const [selectedWord, setSelectedWord] = useState<string | null>(null);
@@ -58,30 +60,23 @@ export default function ArticleReader({
       const containerRect = containerRef.current.getBoundingClientRect();
 
       const containerWidth = containerRect.width;
-      const isMobile = containerWidth < 768; // tailwind md breakpoint
+      const isMobile = containerWidth < 768;
 
       const viewportHeight = window.innerHeight;
       const containerTopOnPage = containerRect.top;
 
-      // base Y: just under the word, *inside* container
       let yWithin = wordRect.bottom - containerRect.top;
 
-      // we estimate popup height (rough but good enough)
-      const estimatedPopupHeight = 220; // px
+      const estimatedPopupHeight = 220;
       const marginY = 16;
 
-      // max Y we can use so popup bottom stays visible in viewport
       const maxVisibleYWithin = viewportHeight - containerTopOnPage - marginY;
 
-      // if showing below would push popup off-screen, show it above instead
       if (yWithin + estimatedPopupHeight > maxVisibleYWithin) {
-         yWithin = wordRect.top - containerRect.top - estimatedPopupHeight - 8; // 8px gap above the word
-
-         // clamp so it doesn't go off the top of the container
+         yWithin = wordRect.top - containerRect.top - estimatedPopupHeight - 8;
          if (yWithin < marginY) yWithin = marginY;
       }
 
-      // X logic (same as before: center on mobile, follow word on desktop)
       let xWithin: number;
 
       if (isMobile) {
@@ -127,60 +122,55 @@ export default function ArticleReader({
    };
 
    return (
-      // 👇 relative so the popup can be absolutely positioned inside
       <div ref={containerRef} className="relative space-y-6">
-         {/* Article text */}
          <div className="bg-slate-900/60 rounded-xl p-4 md:p-6 leading-relaxed text-lg md:text-xl space-y-3">
-            {text
-               .split(/\n\s*\n/) // split on blank lines → paragraphs
-               .map((paragraph, pIndex) => {
-                  const tokens = paragraph.split(/(\s+|[,.!?;:"()]+)/);
+            {text.split(/\n\s*\n/).map((paragraph, pIndex) => {
+               const tokens = paragraph.split(/(\s+|[,.!?;:"()]+)/);
 
-                  return (
-                     <p key={pIndex}>
-                        {tokens.map((token, index) => {
-                           if (/^\s+$/.test(token)) {
-                              return <span key={index}>{token}</span>;
-                           }
+               return (
+                  <p key={pIndex}>
+                     {tokens.map((token, index) => {
+                        if (/^\s+$/.test(token)) {
+                           return <span key={index}>{token}</span>;
+                        }
 
-                           if (/^[,.!?;:"()]+$/.test(token)) {
-                              return <span key={index}>{token}</span>;
-                           }
+                        if (/^[,.!?;:"()]+$/.test(token)) {
+                           return <span key={index}>{token}</span>;
+                        }
 
-                           return (
-                              <button
-                                 key={index}
-                                 type="button"
-                                 onClick={(e) => handleWordClick(token, e)}
-                                 className="hover:text-emerald-300 transition-colors cursor-pointer">
-                                 {token}
-                              </button>
-                           );
-                        })}
-                     </p>
-                  );
-               })}
+                        return (
+                           <button
+                              key={index}
+                              type="button"
+                              onClick={(e) => handleWordClick(token, e)}
+                              className="hover:text-emerald-300 transition-colors cursor-pointer">
+                              {token}
+                           </button>
+                        );
+                     })}
+                  </p>
+               );
+            })}
          </div>
 
          {/* Helper text if nothing clicked yet */}
-         {!selectedWord && (
+         {showHelper && !selectedWord && (
             <p className="text-slate-400 text-sm">
                Click any word in the text to see its definition.
             </p>
          )}
 
-         {/* Popup */}
          {selectedWord && popupPos && (
             <div
                className="
-         absolute z-50
-         w-[calc(100vw-2.5rem)] max-w-xs
-         md:w-auto md:max-w-sm
-         bg-slate-900/95 border border-slate-700
-         rounded-xl p-3 shadow-xl
-      "
+                  absolute z-50
+                  w-[calc(100vw-2.5rem)] max-w-xs
+                  md:w-auto md:max-w-sm
+                  bg-slate-900/95 border border-slate-700
+                  rounded-xl p-3 shadow-xl
+               "
                style={{
-                  top: popupPos.y + 8, // 8px below the word, within container
+                  top: popupPos.y + 8,
                   left: popupPos.x,
                   transform: "translateX(-50%)",
                }}>
@@ -201,7 +191,7 @@ export default function ArticleReader({
                         setData(null);
                         setError(null);
                      }}
-                     className="text-slate-500 hover:text-slate-300 text-xs">
+                     className="text-slate-500 hover:text-slate-300 text-xs cursor-pointer">
                      ✕
                   </button>
                </div>
@@ -214,7 +204,6 @@ export default function ArticleReader({
 
                {!loading && !error && data && (
                   <div className="space-y-2">
-                     {/* meanings */}
                      {data.meanings.slice(0, 2).map((meaning, i) => (
                         <div key={i} className="space-y-1">
                            <p className="text-emerald-200 text-xs font-medium">
@@ -235,7 +224,6 @@ export default function ArticleReader({
                         </div>
                      ))}
 
-                     {/* decide button label & disabled state for THIS word */}
                      {(() => {
                         const statusForThisWord =
                            saveStatus &&

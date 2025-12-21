@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
 import ArticleReader from "@/components/ArticleReader";
+import { PiCheckCircleLight } from "react-icons/pi";
 
 type Article = {
    id: string;
@@ -34,6 +35,11 @@ export default function ReadingArticlePage() {
 
    const [saveStatus, setSaveStatus] = useState<SaveStatusState>(null);
 
+   // Reading progress state
+   const [isFinished, setIsFinished] = useState(false);
+   const [progressLoading, setProgressLoading] = useState(false);
+   const [progressError, setProgressError] = useState<string | null>(null);
+
    useEffect(() => {
       const load = async () => {
          try {
@@ -44,8 +50,8 @@ export default function ReadingArticlePage() {
             const { data: userData, error: userError } =
                await supabase.auth.getUser();
             if (userError) throw userError;
-            const user = userData.user;
 
+            const user = userData.user;
             if (!user) {
                router.push("/login");
                return;
@@ -65,6 +71,7 @@ export default function ReadingArticlePage() {
                .single();
 
             if (articleError) throw articleError;
+            if (!data) throw new Error("Article not found.");
 
             setArticle(data as Article);
          } catch (err: any) {
@@ -75,12 +82,73 @@ export default function ReadingArticlePage() {
          }
       };
 
-      if (slug) {
-         load();
-      }
+      if (slug) load();
    }, [slug, router]);
 
-   // 🧠 This function does the Supabase work when "Add to my deck" is clicked
+   // Load finished status (after userId + article.id are known)
+   useEffect(() => {
+      const loadProgress = async () => {
+         if (!userId || !article?.id) return;
+
+         try {
+            setProgressLoading(true);
+            setProgressError(null);
+
+            const { data, error } = await supabase
+               .from("reading_progress")
+               .select("finished")
+               .eq("user_id", userId)
+               .eq("article_id", article.id)
+               .maybeSingle();
+
+            if (error) throw error;
+
+            setIsFinished(Boolean(data?.finished));
+         } catch (err: any) {
+            console.warn(err);
+            setProgressError(
+               err?.message ?? "Could not load reading progress."
+            );
+         } finally {
+            setProgressLoading(false);
+         }
+      };
+
+      loadProgress();
+   }, [userId, article?.id]);
+
+   // Toggle finished/un-finished
+   const toggleFinished = async () => {
+      if (!userId || !article?.id) return;
+
+      try {
+         setProgressLoading(true);
+         setProgressError(null);
+
+         const nextFinished = !isFinished;
+
+         const { error } = await supabase.from("reading_progress").upsert(
+            {
+               user_id: userId,
+               article_id: article.id,
+               finished: nextFinished,
+               finished_at: nextFinished ? new Date().toISOString() : null,
+            },
+            { onConflict: "user_id,article_id" }
+         );
+
+         if (error) throw error;
+
+         setIsFinished(nextFinished);
+      } catch (err: any) {
+         console.error(err);
+         setProgressError(err?.message ?? "Could not update reading progress.");
+      } finally {
+         setProgressLoading(false);
+      }
+   };
+
+   // Save word to Reading deck
    const handleSaveWord = async (payload: {
       word: string;
       definition: string;
@@ -104,7 +172,7 @@ export default function ReadingArticlePage() {
 
          const deckName = "Reading – Saved words";
 
-         // 1) Find existing "Reading – Saved words" deck for this user
+         // 1) Find existing deck
          const { data: decks, error: deckError } = await supabase
             .from("vocabulary_decks")
             .select("id")
@@ -116,8 +184,8 @@ export default function ReadingArticlePage() {
          let deckId: string;
 
          if (!decks || decks.length === 0) {
-            // 2) If no such deck, create it
-            const { data: newDecks, error: createError } = await supabase
+            // 2) Create deck
+            const { data: newDeck, error: createError } = await supabase
                .from("vocabulary_decks")
                .insert({
                   user_id: userId,
@@ -130,12 +198,17 @@ export default function ReadingArticlePage() {
 
             if (createError) throw createError;
 
-            deckId = newDecks.id;
+            // ✅ Fix: newDeck can be null in types, so guard it
+            if (!newDeck?.id) {
+               throw new Error("Deck was not created. Please try again.");
+            }
+
+            deckId = newDeck.id;
          } else {
             deckId = decks[0].id;
          }
 
-         // 3) Check if this word is already in that deck
+         // 3) Check if this word already exists
          const { data: existingCards, error: cardError } = await supabase
             .from("vocabulary_cards")
             .select("id")
@@ -212,6 +285,7 @@ export default function ReadingArticlePage() {
 
          <div className="space-y-2">
             <h1 className="text-2xl font-semibold">{article.title}</h1>
+
             <div className="flex items-center gap-2 text-sm text-slate-400">
                {article.level && (
                   <span className="px-2 py-1 rounded-full bg-slate-800 text-slate-200 text-xs">
@@ -223,7 +297,16 @@ export default function ReadingArticlePage() {
                      Premium
                   </span>
                )}
+               {!locked && isFinished && (
+                  <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/40 text-xs">
+                     Finished
+                  </span>
+               )}
             </div>
+
+            {progressError && (
+               <p className="text-xs text-amber-300">{progressError}</p>
+            )}
          </div>
 
          {locked ? (
@@ -238,11 +321,37 @@ export default function ReadingArticlePage() {
                   text={article.content}
                   onSaveWord={handleSaveWord}
                   saveStatus={saveStatus}
+                  showHelper={false}
                />
 
-               {saveStatus && (
-                  <p className="text-xs text-slate-400">{saveStatus.message}</p>
-               )}
+               <div className="flex items-center justify-between gap-4">
+                  <p className="text-slate-400 text-sm">
+                     Click any word in the text to see its definition.
+                  </p>
+
+                  <button
+                     type="button"
+                     onClick={toggleFinished}
+                     disabled={progressLoading}
+                     className={[
+                        "inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm border transition",
+                        progressLoading
+                           ? "opacity-60 cursor-not-allowed"
+                           : "opacity-95 cursor-pointer",
+                        isFinished
+                           ? "border-slate-700/70 bg-slate-900/40 text-slate-200 hover:border-emerald-400/40"
+                           : "border-emerald-400/70 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300",
+                     ].join(" ")}>
+                     <PiCheckCircleLight className="text-base" />
+                     <span>
+                        {progressLoading
+                           ? "Saving…"
+                           : isFinished
+                           ? "Mark as unfinished"
+                           : "Mark as finished"}
+                     </span>
+                  </button>
+               </div>
             </>
          )}
       </div>
