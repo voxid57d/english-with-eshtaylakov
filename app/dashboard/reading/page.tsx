@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
+import { PiReadCvLogoLight } from "react-icons/pi";
 
 type Article = {
    id: string;
@@ -69,7 +70,11 @@ export default function ReadingPage() {
       <div className="space-y-6">
          <div className="flex items-center justify-between gap-2">
             <div>
-               <h1 className="text-2xl font-semibold">Reading</h1>
+               <h1 className="text-2xl font-semibold flex items-center gap-2">
+                  <PiReadCvLogoLight className="text-emerald-400" />
+                  <span>Reading</span>
+               </h1>
+
                <p className="text-slate-400 text-sm">
                   Choose an article and click on words to see definitions.
                </p>

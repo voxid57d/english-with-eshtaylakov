@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { getPremiumStatus } from "@/lib/premium";
 import { useRouter } from "next/navigation";
+import { PiBookOpenTextLight } from "react-icons/pi";
 
 type Deck = {
    id: string;
@@ -136,7 +137,11 @@ export default function VocabularyPage() {
       <div className="space-y-6">
          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-               <h1 className="text-2xl font-semibold">Vocabulary</h1>
+               <h1 className="text-2xl font-semibold flex items-center gap-2">
+                  <PiBookOpenTextLight className="text-emerald-400" />
+                  <span>Vocabulary</span>
+               </h1>
+
                <p className="text-sm text-slate-400">
                   Choose a deck to start practicing.
                </p>

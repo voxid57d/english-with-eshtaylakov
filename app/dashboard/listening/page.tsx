@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
+import { PiHeadphonesLight } from "react-icons/pi";
 
 // ---- Types ----
 type Level = "A1" | "A2" | "B1" | "B2" | "C1";
@@ -116,7 +117,11 @@ export default function ListeningPage() {
       <div className="space-y-8">
          {/* Header (no subscription status chip) */}
          <div>
-            <h1 className="text-2xl font-semibold">Listening</h1>
+            <h1 className="text-2xl font-semibold flex items-center gap-2">
+               <PiHeadphonesLight className="text-emerald-400" />
+               <span>Listening</span>
+            </h1>
+
             <p className="text-sm text-slate-400">
                Graded listening exercises and podcast-style listening practice.
             </p>
