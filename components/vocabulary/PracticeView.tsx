@@ -1,10 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Flashcard from "./Flashcard";
-import { SRSState, CardWithHealth } from "@/app/hooks/useSRS";
 
-// Simple health bar used under the card
 function HealthBar({ value, max }: { value: number; max: number }) {
    return (
       <div className="flex gap-1 mt-3">
@@ -20,28 +18,13 @@ function HealthBar({ value, max }: { value: number; max: number }) {
    );
 }
 
-function formatCooldown(ms: number): string {
-   const mins = Math.floor(ms / 60000);
-   const secs = Math.floor((ms % 60000) / 1000);
-   if (mins <= 0 && secs <= 0) return "soon";
-   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-}
-
-type PracticeViewProps = {
-   state: SRSState;
-   onFlip: () => void;
-   onAnswer: (known: boolean) => void;
-   onToggleGrindMode: (value: boolean) => void;
-   setSwipe: (dir: "left" | "right" | null) => void;
-};
-
 export default function PracticeView({
    state,
    onFlip,
    onAnswer,
    onToggleGrindMode,
    setSwipe,
-}: PracticeViewProps) {
+}: any) {
    const {
       currentCard,
       practiceQueue,
@@ -51,56 +34,40 @@ export default function PracticeView({
       isPracticing,
       grindMode,
    } = state;
+   const [isAudioOn, setIsAudioOn] = useState(false);
 
-   // Current index in the practice queue (for "Card X of Y")
-   const currentIndex =
-      currentCard && practiceQueue.length > 0
-         ? practiceQueue.findIndex((c) => c.id === currentCard.id)
-         : -1;
+   const speak = useCallback((text: string) => {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 0.95;
+      window.speechSynthesis.speak(utterance);
+   }, []);
 
-   const cardPosition =
-      currentIndex >= 0 ? currentIndex + 1 : currentCard ? 1 : 0;
-   const queueLength = practiceQueue.length;
+   useEffect(() => {
+      if (isAudioOn && currentCard && !showBack) {
+         speak(currentCard.front);
+      }
+   }, [currentCard?.id, isAudioOn, showBack, speak]);
 
-   // Compute nearest cooldown finish
-   const now = Date.now();
-   const nextCooldownTs = cooldownList
-      .map((c) => c.cooldownUntil ?? Infinity)
-      .reduce((min, ts) => Math.min(min, ts), Infinity);
-
-   const nextCooldownMs =
-      nextCooldownTs === Infinity ? null : Math.max(0, nextCooldownTs - now);
-
-   const allOnCooldown =
-      isPracticing &&
-      !currentCard &&
-      practiceQueue.length === 0 &&
-      cooldownList.length > 0 &&
-      !grindMode;
-
-   // Helper to trigger answer with animation (used by swipe, buttons, keyboard)
+   // Trigger logic for keyboard and drag
    const triggerAnswer = useCallback(
       (known: boolean) => {
-         if (!isPracticing || !currentCard) return;
-         if (swipeDirection) return; // ignore if already animating
-
+         if (!isPracticing || !currentCard || swipeDirection) return;
          setSwipe(known ? "right" : "left");
-
+         // Delay allows the exit animation to play before logic swaps the card
          setTimeout(() => {
             onAnswer(known);
-            setSwipe(null);
          }, 200);
       },
       [isPracticing, currentCard, swipeDirection, onAnswer, setSwipe]
    );
 
-   // Keyboard shortcuts: Space = flip, ← = don't know, → = know
    useEffect(() => {
       if (!isPracticing) return;
-
       const handler = (e: KeyboardEvent) => {
          if (!currentCard) return;
-
          if (e.key === " ") {
             e.preventDefault();
             onFlip();
@@ -112,7 +79,6 @@ export default function PracticeView({
             triggerAnswer(true);
          }
       };
-
       window.addEventListener("keydown", handler);
       return () => window.removeEventListener("keydown", handler);
    }, [isPracticing, currentCard, onFlip, triggerAnswer]);
@@ -121,80 +87,54 @@ export default function PracticeView({
 
    return (
       <div className="space-y-6">
-         {/* Grind mode toggle */}
-         <label className="inline-flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
-            <input
-               type="checkbox"
-               checked={grindMode}
-               onChange={(e) => onToggleGrindMode(e.target.checked)}
-               className="cursor-pointer rounded"
-            />
-            <span>Grind mode (ignore 5-minute cooldown)</span>
-         </label>
+         <div className="flex items-center justify-between">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
+               <input
+                  type="checkbox"
+                  checked={grindMode}
+                  onChange={(e) => onToggleGrindMode(e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-900"
+               />
+               <span>Grind mode</span>
+            </label>
+         </div>
 
-         {/* When all cards are cooling down */}
-         {allOnCooldown && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 text-center text-slate-300">
-               <p>All cards are on a 5-minute break.</p>
-               {nextCooldownMs !== null && (
-                  <p className="mt-2 text-lg font-semibold text-emerald-400">
-                     Next card in {formatCooldown(nextCooldownMs)}
-                  </p>
-               )}
-               <p className="mt-3 text-xs text-slate-500">
-                  You can also enable{" "}
-                  <span className="text-emerald-400">Grind mode</span> to keep
-                  practicing without breaks.
-               </p>
-            </div>
-         )}
-
-         {/* Active card view */}
-         {currentCard && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-6">
-               <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>
-                     Card {cardPosition > 0 ? cardPosition : 1} of{" "}
-                     {Math.max(queueLength, 1)}
-                  </span>
-                  <span className="hidden sm:block">
-                     ← Don&apos;t know &nbsp;&nbsp; → I know &nbsp;&nbsp; Space
-                     = Flip
-                  </span>
-               </div>
-
+         {currentCard ? (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 space-y-6">
                <Flashcard
                   card={currentCard}
                   showBack={showBack}
                   onFlip={onFlip}
-                  // We pass the existing answer function directly
-                  onAnswer={onAnswer}
+                  onAnswer={triggerAnswer}
+                  swipeDirection={swipeDirection}
+                  isAudioOn={isAudioOn}
+                  onToggleAudio={() => setIsAudioOn(!isAudioOn)}
+                  speak={speak}
                />
-
-               {/* Health bar under the card */}
-               <HealthBar value={currentCard.health} max={4} />
-
-               {/* Controls */}
-               <div className="flex flex-col sm:flex-row gap-4 items-center justify-between mt-4">
-                  <button
-                     onClick={onFlip}
-                     className="cursor-pointer px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-full text-sm text-slate-100 transition">
-                     {showBack ? "Show word" : "Show definition"}
-                  </button>
-
-                  <div className="flex gap-3">
+               <div className="pt-4 border-t border-slate-800/40">
+                  <HealthBar value={currentCard.health} max={4} />
+                  <div className="flex gap-4 mt-6">
+                     <button
+                        onClick={onFlip}
+                        className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 rounded-full text-sm font-medium transition">
+                        {showBack ? "Word" : "Meaning"}
+                     </button>
                      <button
                         onClick={() => triggerAnswer(false)}
-                        className="cursor-pointer px-5 py-2 rounded-full border border-red-500/60 text-red-300 hover:bg-red-500/10 text-sm transition">
-                        Don&apos;t know
+                        className="flex-1 py-3 rounded-full border border-red-500/30 text-red-400 hover:bg-red-500/5 transition">
+                        Don't know
                      </button>
                      <button
                         onClick={() => triggerAnswer(true)}
-                        className="cursor-pointer px-5 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-medium text-sm transition">
-                        I know
+                        className="flex-1 py-3 rounded-full bg-emerald-500 text-slate-950 font-bold transition">
+                        I know it
                      </button>
                   </div>
                </div>
+            </div>
+         ) : (
+            <div className="p-10 text-center border border-dashed border-slate-800 rounded-2xl text-slate-500">
+               No cards to practice right now.
             </div>
          )}
       </div>

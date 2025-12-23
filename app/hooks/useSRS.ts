@@ -8,7 +8,7 @@ export type CardWithHealth = {
    example_sentence: string | null;
    transcription: string | null;
    health: number;
-   cooldownUntil: number | null; // timestamp or null
+   cooldownUntil: number | null;
 };
 
 export type SRSState = {
@@ -44,17 +44,13 @@ function reducer(state: SRSState, action: Action): SRSState {
    switch (action.type) {
       case "LOAD_CARDS": {
          const now = Date.now();
-
          const queue = action.cards.filter(
             (c) => !c.cooldownUntil || c.cooldownUntil <= now
          );
-
          const cooldown = action.cards.filter(
             (c) => c.cooldownUntil && c.cooldownUntil > now
          );
-
          const sortedQueue = sortByHealth(queue);
-
          return {
             ...state,
             practiceQueue: sortedQueue,
@@ -86,11 +82,9 @@ function reducer(state: SRSState, action: Action): SRSState {
 
       case "ANSWER": {
          if (!state.currentCard) return state;
-
          const now = Date.now();
          const known = action.known;
          const card = state.currentCard;
-
          const newHealth = known
             ? Math.min(card.health + 1, MAX_HEALTH)
             : Math.max(card.health - 1, 0);
@@ -104,46 +98,39 @@ function reducer(state: SRSState, action: Action): SRSState {
          const newCooldown = state.grindMode
             ? state.cooldownList
             : [...state.cooldownList, updatedCard];
-
          const newQueue = state.practiceQueue.filter((c) => c.id !== card.id);
-
-         const nextCard = newQueue[0] ?? null;
 
          return {
             ...state,
             practiceQueue: newQueue,
             cooldownList: newCooldown,
-            currentCard: nextCard,
+            currentCard: newQueue[0] ?? null,
             showBack: false,
+            // ✅ FIX: Clear the swipe direction so the next card doesn't repeat the animation
+            swipeDirection: null,
          };
       }
 
       case "TICK": {
          const now = action.now;
-
          const ready = state.cooldownList.filter(
             (c) => c.cooldownUntil && c.cooldownUntil <= now
          );
-
          if (ready.length === 0) return state;
-
          const stillCooling = state.cooldownList.filter(
             (c) => !c.cooldownUntil || c.cooldownUntil > now
          );
-
          const newQueue = sortByHealth([...state.practiceQueue, ...ready]);
-
-         const current =
-            state.currentCard &&
-            newQueue.find((c) => c.id === state.currentCard!.id)
-               ? state.currentCard
-               : newQueue[0] ?? null;
-
          return {
             ...state,
             practiceQueue: newQueue,
             cooldownList: stillCooling,
-            currentCard: state.isPracticing ? current : null,
+            currentCard: state.isPracticing
+               ? state.currentCard &&
+                 newQueue.find((c) => c.id === state.currentCard!.id)
+                  ? state.currentCard
+                  : newQueue[0]
+               : null,
          };
       }
 
@@ -174,7 +161,6 @@ export function useSRS(initialCards: CardWithHealth[]) {
    useEffect(() => {
       dispatch({ type: "LOAD_CARDS", cards: initialCards });
    }, [initialCards]);
-
    useEffect(() => {
       const interval = setInterval(() => {
          dispatch({ type: "TICK", now: Date.now() });
@@ -184,7 +170,6 @@ export function useSRS(initialCards: CardWithHealth[]) {
 
    return {
       state,
-
       startPractice: () => dispatch({ type: "START_PRACTICE" }),
       stopPractice: () => dispatch({ type: "STOP_PRACTICE" }),
       flipCard: () => dispatch({ type: "FLIP_CARD" }),
