@@ -166,10 +166,9 @@ export default function PracticeView({
                <Flashcard
                   card={currentCard}
                   showBack={showBack}
-                  swipeDirection={swipeDirection}
                   onFlip={onFlip}
-                  onSwipeLeft={() => triggerAnswer(false)}
-                  onSwipeRight={() => triggerAnswer(true)}
+                  // We pass the existing answer function directly
+                  onAnswer={onAnswer}
                />
 
                {/* Health bar under the card */}
