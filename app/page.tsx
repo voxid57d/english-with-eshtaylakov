@@ -12,13 +12,26 @@ export default function HomePage() {
    const fullText = "Learn English with Eshtaylakov";
    const [typedText, setTypedText] = useState("");
    const [user, setUser] = useState<any>(null);
+   const [checkingAuth, setCheckingAuth] = useState(true);
 
    useEffect(() => {
+      let cancelled = false;
+
       const load = async () => {
          const { data } = await supabase.auth.getUser();
+         if (cancelled) return;
          setUser(data.user);
+         setCheckingAuth(false);
       };
       load();
+
+      const {
+         data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+         if (cancelled) return;
+         setUser(session?.user ?? null);
+         setCheckingAuth(false);
+      });
 
       const interval = setInterval(() => {
          setTypedText((prev) => {
@@ -30,8 +43,29 @@ export default function HomePage() {
          });
       }, 40);
 
-      return () => clearInterval(interval);
+      return () => {
+         cancelled = true;
+         subscription.unsubscribe();
+         clearInterval(interval);
+      };
    }, []);
+
+   if (checkingAuth) {
+      return (
+         <main className="min-h-screen bg-slate-950 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4">
+               <Image
+                  src="/logo-text-white.png"
+                  alt="TalkTime logo"
+                  width={140}
+                  height={46}
+                  className="w-auto h-10 opacity-90 animate-pulse"
+               />
+               <div className="w-8 h-8 border-4 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
+            </div>
+         </main>
+      );
+   }
 
    if (user) {
       return (

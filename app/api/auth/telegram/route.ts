@@ -62,6 +62,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
    }
 
+   if (
+      !payload ||
+      typeof payload !== "object" ||
+      typeof payload.id !== "number" ||
+      typeof payload.auth_date !== "number" ||
+      typeof payload.hash !== "string"
+   ) {
+      return NextResponse.json(
+         { error: "Invalid Telegram payload" },
+         { status: 400 }
+      );
+   }
+
    // Anti-replay: only accept logins from the last 5 minutes
    const now = Math.floor(Date.now() / 1000);
    if (!payload.auth_date || now - payload.auth_date > 300) {

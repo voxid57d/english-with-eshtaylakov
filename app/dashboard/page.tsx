@@ -212,12 +212,12 @@ export default function DashboardPage() {
             return;
          }
 
-         // 3) At this point dashboard can render immediately
-         if (!cancelled) setLoadingStreak(false);
-
-         // 4) Streak update runs AFTER gate, can be slower without blocking page
+         // 3) Streak update runs AFTER gate, can be slower without blocking page
          const currentStreak = await updateAndGetStreak(userId);
-         if (!cancelled) setStreak(currentStreak);
+         if (!cancelled) {
+            setStreak(currentStreak);
+            setLoadingStreak(false);
+         }
       }
 
       load();
