@@ -49,7 +49,7 @@ type ListeningOption = {
 };
 
 type AnswerMap = {
-   [questionId: string]: string;
+   [questionId: string]: string | string[];
 };
 
 export default function ListeningTestPage() {
@@ -139,6 +139,135 @@ export default function ListeningTestPage() {
    const orderedQuestions = [...questions].sort(
       (a, b) => a.question_number - b.question_number,
    );
+
+   type GroupConfig = {
+      groupKey: string;
+      maxSelect: number;
+      memberQuestionIds: string[];
+      masterQuestion: ListeningQuestion;
+      masterOptions: ListeningOption[];
+   };
+
+   function getGroupKey(groupKey: string) {
+      return `group:${groupKey}`;
+   }
+
+   function getGroupSelections(groupKey: string) {
+      const raw = answers[getGroupKey(groupKey)];
+      return Array.isArray(raw) ? raw : [];
+   }
+
+   function toggleGroupSelection(
+      groupKey: string,
+      letter: string,
+      maxSelect: number,
+   ) {
+      setAnswers((prev) => {
+         const key = getGroupKey(groupKey);
+         const current = Array.isArray(prev[key]) ? [...prev[key]] : [];
+
+         const exists = current.includes(letter);
+         if (exists) {
+            return {
+               ...prev,
+               [key]: current.filter((l) => l !== letter),
+            };
+         }
+
+         if (current.length >= maxSelect) {
+            return prev;
+         }
+
+         return {
+            ...prev,
+            [key]: [...current, letter],
+         };
+      });
+   }
+
+   function normalizeLetterList(str: string) {
+      return str
+         .split(",")
+         .map((s) => s.trim().toUpperCase())
+         .filter(Boolean);
+   }
+
+   function getAnswerAsString(value: string | string[] | undefined): string {
+      if (value === undefined) return "";
+      return Array.isArray(value) ? value.join(",") : value;
+   }
+
+   function normalizeLetterArray(list: string[]) {
+      return list.map((s) => s.trim().toUpperCase()).filter(Boolean);
+   }
+
+   function areSameLetterSet(a: string[], b: string[]) {
+      const aSet = new Set(normalizeLetterArray(a));
+      const bSet = new Set(normalizeLetterArray(b));
+      if (aSet.size !== bSet.size) return false;
+      for (const v of aSet) {
+         if (!bSet.has(v)) return false;
+      }
+      return true;
+   }
+
+   function resolveGroupConfig(block: ListeningBlock): GroupConfig | null {
+      if (!block.question_id) return null;
+      const masterQuestion = questionMap[block.question_id];
+      if (!masterQuestion) return null;
+
+      const extra = (block.extra_data || {}) as {
+         group_key?: string;
+         max_select?: number;
+         member_question_ids?: string[];
+      };
+
+      const groupKey = extra.group_key || `block:${block.id}`;
+      const maxSelect =
+         typeof extra.max_select === "number" ? extra.max_select : 2;
+
+      let memberQuestionIds = Array.isArray(extra.member_question_ids)
+         ? [...extra.member_question_ids]
+         : [];
+
+      if (memberQuestionIds.length === 0) {
+         const sameSection = orderedQuestions.filter(
+            (q) => q.section_id === masterQuestion.section_id,
+         );
+         const idx = sameSection.findIndex((q) => q.id === masterQuestion.id);
+         const next = idx >= 0 ? sameSection[idx + 1] : null;
+         memberQuestionIds = next
+            ? [masterQuestion.id, next.id]
+            : [masterQuestion.id];
+      }
+
+      if (!memberQuestionIds.includes(masterQuestion.id)) {
+         memberQuestionIds = [masterQuestion.id, ...memberQuestionIds];
+      }
+
+      const masterOptions = optionsByQuestion[masterQuestion.id] || [];
+
+      return {
+         groupKey,
+         maxSelect,
+         memberQuestionIds,
+         masterQuestion,
+         masterOptions,
+      };
+   }
+
+   const groupConfigs: GroupConfig[] = blocks
+      .filter((b) => b.type === "question_multi_group")
+      .map((b) => resolveGroupConfig(b))
+      .filter((v): v is GroupConfig => Boolean(v));
+
+   const groupMemberToKey: Record<string, string> = {};
+   groupConfigs.forEach((cfg) => {
+      cfg.memberQuestionIds.forEach((id) => {
+         groupMemberToKey[id] = cfg.groupKey;
+      });
+   });
+   const groupMemberIdSet = new Set(Object.keys(groupMemberToKey));
 
    // ---------- Load test / sections / blocks / questions / options ----------
 
@@ -255,9 +384,22 @@ export default function ListeningTestPage() {
    function computeScore() {
       let score = 0;
 
+      for (const cfg of groupConfigs) {
+         const selected = getGroupSelections(cfg.groupKey);
+         if (selected.length === 0) continue;
+
+         const correct = normalizeLetterList(
+            cfg.masterQuestion.correct_answer || "",
+         );
+
+         if (areSameLetterSet(selected, correct)) {
+            score += cfg.maxSelect;
+         }
+      }
+
       for (const q of questions) {
-         const userAnswerRaw = answers[q.id] ?? "";
-         const userAnswer = userAnswerRaw.trim();
+         if (groupMemberIdSet.has(q.id)) continue;
+         const userAnswer = getAnswerAsString(answers[q.id]).trim();
          if (!userAnswer) continue;
 
          if (q.type === "mcq_single" || q.type === "mcq_dropdown") {
@@ -312,13 +454,44 @@ export default function ListeningTestPage() {
          if (attemptError) throw attemptError;
          const attemptId = attemptData.id as string;
 
-         const answersToInsert = questions.map((q) => {
-            const userAnswerRaw = answers[q.id] ?? "";
-            const userAnswer = userAnswerRaw.trim();
+         const answersToInsert: {
+            attempt_id: string;
+            question_id: string;
+            answer_text: string;
+            is_correct: boolean | null;
+         }[] = [];
+
+         // Group answers: one row per member question id
+         for (const cfg of groupConfigs) {
+            const selected = getGroupSelections(cfg.groupKey);
+            const answerText = selected.join(",");
+            const correct = normalizeLetterList(
+               cfg.masterQuestion.correct_answer || "",
+            );
+            const isCorrect =
+               selected.length === 0
+                  ? null
+                  : areSameLetterSet(selected, correct);
+
+            cfg.memberQuestionIds.forEach((qid) => {
+               answersToInsert.push({
+                  attempt_id: attemptId,
+                  question_id: qid,
+                  answer_text: answerText,
+                  is_correct: isCorrect,
+               });
+            });
+         }
+
+         // Non-group answers: normal behavior
+         for (const q of questions) {
+            if (groupMemberIdSet.has(q.id)) continue;
+
+            const userAnswer = getAnswerAsString(answers[q.id]).trim();
 
             let isCorrect: boolean | null = null;
             if (userAnswer) {
-               if (q.type === "mcq_single") {
+               if (q.type === "mcq_single" || q.type === "mcq_dropdown") {
                   isCorrect = userAnswer === (q.correct_answer || "");
                } else {
                   const correct = (q.correct_answer || "").trim();
@@ -329,13 +502,13 @@ export default function ListeningTestPage() {
                }
             }
 
-            return {
+            answersToInsert.push({
                attempt_id: attemptId,
                question_id: q.id,
                answer_text: userAnswer,
                is_correct: isCorrect,
-            };
-         });
+            });
+         }
 
          const { error: answersError } = await supabase
             .from("listening_answers")
@@ -383,6 +556,17 @@ export default function ListeningTestPage() {
          );
       }
 
+      if (block.type === "image" && block.content) {
+         return (
+            <img
+               key={block.id}
+               src={block.content}
+               alt={(block.extra_data?.alt as string) || "Image"}
+               className="w-full max-w-4xl mx-auto my-4 rounded-lg border border-slate-700"
+            />
+         );
+      }
+
       if (block.type === "heading") {
          return (
             <div
@@ -427,7 +611,7 @@ export default function ListeningTestPage() {
                   {/* The gap itself */}
                   <input
                      className="inline-block border-b border-emerald-400 bg-transparent px-1 text-emerald-200 focus:outline-none min-w-[80px]"
-                     value={answers[q.id] || ""}
+                     value={getAnswerAsString(answers[q.id])}
                      onChange={(e) => handleAnswerChange(q.id, e.target.value)}
                   />
 
@@ -470,7 +654,8 @@ export default function ListeningTestPage() {
                   {/* Options */}
                   <div className="mt-4 grid gap-2">
                      {opts.map((opt) => {
-                        const selected = answers[q.id] === opt.label;
+                        const selected =
+                           getAnswerAsString(answers[q.id]) === opt.label;
 
                         return (
                            <label
@@ -550,7 +735,7 @@ export default function ListeningTestPage() {
             // Which letters are currently used by any question in this group?
             const usedLetters = new Set(
                group
-                  .map((g) => (answers[g.id] || "").trim())
+                  .map((g) => getAnswerAsString(answers[g.id]).trim())
                   .filter((v) => v.length > 0),
             );
 
@@ -610,7 +795,7 @@ export default function ListeningTestPage() {
                            </span>
                            <select
                               className="bg-slate-900 border border-slate-600 rounded-md px-2 py-1 text-slate-100"
-                              value={answers[g.id] || ""}
+                              value={getAnswerAsString(answers[g.id])}
                               onChange={(e) =>
                                  handleAnswerChange(g.id, e.target.value)
                               }>
@@ -641,9 +826,134 @@ export default function ListeningTestPage() {
                </p>
                <input
                   className="border-b border-emerald-400 bg-transparent px-1 text-emerald-200 focus:outline-none"
-                  value={answers[q.id] || ""}
+                  value={getAnswerAsString(answers[q.id])}
                   onChange={(e) => handleAnswerChange(q.id, e.target.value)}
                />
+            </div>
+         );
+      }
+
+      if (block.type === "question_multi_group") {
+         const cfg = resolveGroupConfig(block);
+         if (!cfg) return null;
+
+         const memberQuestions = cfg.memberQuestionIds
+            .map((id) => questionMap[id])
+            .filter(Boolean)
+            .sort((a, b) => a.question_number - b.question_number);
+
+         if (memberQuestions.length === 0) return null;
+
+         const selected = getGroupSelections(cfg.groupKey);
+         const maxReached = selected.length >= cfg.maxSelect;
+
+         const optionLabels = cfg.masterOptions.map((o) => o.label).sort();
+         const lettersRange =
+            optionLabels.length > 0
+               ? `${optionLabels[0]}–${optionLabels[optionLabels.length - 1]}`
+               : "A–E";
+
+         const numberWordMap: Record<number, string> = {
+            1: "ONE",
+            2: "TWO",
+            3: "THREE",
+            4: "FOUR",
+            5: "FIVE",
+            6: "SIX",
+         };
+         const chooseText = numberWordMap[cfg.maxSelect] || `${cfg.maxSelect}`;
+
+         return (
+            <div
+               key={block.id}
+               ref={(el) => {
+                  questionRefs.current[cfg.masterQuestion.id] = el;
+               }}
+               className="mb-6 rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+               <div className="flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-600 bg-slate-950 text-sm font-bold text-slate-100">
+                     {memberQuestions[0].question_number}
+                  </div>
+                  <div className="flex-1">
+                     <p className="text-slate-100 font-medium leading-relaxed">
+                        Questions {memberQuestions[0].question_number}–
+                        {
+                           memberQuestions[memberQuestions.length - 1]
+                              .question_number
+                        }
+                        : Choose {chooseText} letters, {lettersRange}.
+                     </p>
+                     <p className="mt-1 text-xs text-slate-400">
+                        Select exactly {cfg.maxSelect} options.
+                     </p>
+                  </div>
+               </div>
+
+               <div className="mt-3 space-y-1 text-sm text-slate-200">
+                  {memberQuestions.map((mq) => (
+                     <div key={mq.id} className="flex gap-2">
+                        <span className="font-semibold w-6">
+                           {mq.question_number}.
+                        </span>
+                        <span>{mq.prompt}</span>
+                     </div>
+                  ))}
+               </div>
+
+               <div className="mt-4 grid gap-2">
+                  {cfg.masterOptions.map((opt) => {
+                     const isSelected = selected.includes(opt.label);
+                     const isDisabled = !isSelected && maxReached;
+
+                     return (
+                        <button
+                           type="button"
+                           key={opt.id}
+                           onClick={() =>
+                              toggleGroupSelection(
+                                 cfg.groupKey,
+                                 opt.label,
+                                 cfg.maxSelect,
+                              )
+                           }
+                           disabled={isDisabled}
+                           className={`group flex items-center gap-3 rounded-lg border px-3 py-2 transition text-left
+                ${
+                   isSelected
+                      ? "border-emerald-400 bg-emerald-500/10"
+                      : "border-slate-700 bg-slate-950/30 hover:border-slate-500"
+                }
+                ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}>
+                           <div
+                              className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-bold transition
+                  ${
+                     isSelected
+                        ? "border-emerald-400 text-emerald-200"
+                        : "border-slate-600 text-slate-300 group-hover:border-slate-400"
+                  }`}>
+                              {opt.label}
+                           </div>
+                           <div className="text-slate-200">{opt.text}</div>
+                           <div className="ml-auto">
+                              <div
+                                 className={`h-4 w-4 rounded border transition
+                    ${
+                       isSelected
+                          ? "border-emerald-400 bg-emerald-400"
+                          : "border-slate-600 bg-transparent"
+                    }`}
+                              />
+                           </div>
+                        </button>
+                     );
+                  })}
+               </div>
+
+               {maxReached && (
+                  <p className="mt-2 text-xs text-slate-400">
+                     You can only choose {cfg.maxSelect} letters.
+                  </p>
+               )}
             </div>
          );
       }
@@ -762,8 +1072,11 @@ export default function ListeningTestPage() {
                            );
 
                            return activeQuestions.map((q) => {
-                              const answered =
-                                 (answers[q.id] ?? "").trim().length > 0;
+                              const groupKey = groupMemberToKey[q.id];
+                              const answered = groupKey
+                                 ? getGroupSelections(groupKey).length > 0
+                                 : getAnswerAsString(answers[q.id]).trim()
+                                      .length > 0;
 
                               return (
                                  <button
