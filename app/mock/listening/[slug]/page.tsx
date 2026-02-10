@@ -71,6 +71,37 @@ export default function ListeningTestPage() {
    const [answers, setAnswers] = useState<AnswerMap>({});
    const [submitting, setSubmitting] = useState(false);
 
+   const [activePart, setActivePart] = useState<1 | 2 | 3 | 4>(1);
+
+   const PARTS = [
+      { part: 1 as const, label: "Part 1", start: 1, end: 10 },
+      { part: 2 as const, label: "Part 2", start: 11, end: 20 },
+      { part: 3 as const, label: "Part 3", start: 21, end: 30 },
+      { part: 4 as const, label: "Part 4", start: 31, end: 40 },
+   ];
+
+   function getPartForQuestionNumber(n: number): 1 | 2 | 3 | 4 {
+      if (n <= 10) return 1;
+      if (n <= 20) return 2;
+      if (n <= 30) return 3;
+      return 4;
+   }
+
+   function setActivePartAndJump(part: 1 | 2 | 3 | 4) {
+      setActivePart(part);
+
+      // Optional: jump to the first question in that part (if exists)
+      const meta = PARTS.find((p) => p.part === part)!;
+      const firstQ = orderedQuestions.find(
+         (q) =>
+            q.question_number >= meta.start && q.question_number <= meta.end,
+      );
+
+      if (firstQ) {
+         handleQuestionJump(firstQ);
+      }
+   }
+
    // For scrolling to a specific question
    const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -106,7 +137,7 @@ export default function ListeningTestPage() {
    });
 
    const orderedQuestions = [...questions].sort(
-      (a, b) => a.question_number - b.question_number
+      (a, b) => a.question_number - b.question_number,
    );
 
    // ---------- Load test / sections / blocks / questions / options ----------
@@ -184,7 +215,7 @@ export default function ListeningTestPage() {
 
             // 5) Options
             const questionIds = (questionsData || []).map(
-               (q: any) => q.id as string
+               (q: any) => q.id as string,
             );
 
             if (questionIds.length > 0) {
@@ -324,6 +355,8 @@ export default function ListeningTestPage() {
    // ---------- Nav buttons: jump to question + switch section ----------
 
    function handleQuestionJump(q: ListeningQuestion) {
+      setActivePart(getPartForQuestionNumber(q.question_number));
+
       if (!section || section.id !== q.section_id) {
          const targetSection = sections.find((s) => s.id === q.section_id);
          if (targetSection) {
@@ -352,11 +385,13 @@ export default function ListeningTestPage() {
 
       if (block.type === "heading") {
          return (
-            <h3
+            <div
                key={block.id}
-               className="mt-4 mb-2 font-semibold text-slate-100">
-               {block.content}
-            </h3>
+               className="mt-4 mb-4 rounded-xl border border-slate-700 bg-slate-900/40 p-4">
+               <p className="text-sm font-semibold text-slate-100">
+                  {block.content}
+               </p>
+            </div>
          );
       }
 
@@ -378,13 +413,16 @@ export default function ListeningTestPage() {
                className="mb-2 text-slate-200">
                {/* Make everything inline: number + sentence + gap */}
                <span className="inline-flex flex-wrap items-baseline gap-1">
-                  {/* 1. / 2. / 3. etc */}
-                  <span className="font-semibold mr-1">
-                     {q.question_number}.
-                  </span>
-
                   {/* BEFORE text */}
                   {extra.before && <span>{extra.before}</span>}
+
+                  {/* Question number right before the gap */}
+                  <span
+                     className="inline-flex items-center justify-center
+                 w-5 h-5 rounded-full border border-emerald-400
+                 text-xs font-semibold text-emerald-300">
+                     {q.question_number}
+                  </span>
 
                   {/* The gap itself */}
                   <input
@@ -405,41 +443,84 @@ export default function ListeningTestPage() {
          if (!q) return null;
 
          const opts = optionsByQuestion[q.id] || [];
-
          if (q.type === "mcq_single") {
-            // existing radio-button version stays the same
             return (
                <div
                   key={block.id}
                   ref={(el) => {
                      questionRefs.current[q.id] = el;
                   }}
-                  className="mb-4">
-                  <p className="mb-2 text-slate-200">
-                     {q.question_number}. {q.prompt}
-                  </p>
-                  <div className="flex flex-col gap-1">
-                     {opts.map((opt) => (
-                        <label
-                           key={opt.id}
-                           className="flex items-center gap-2 text-slate-200">
-                           <input
-                              type="radio"
-                              name={q.id}
-                              value={opt.label}
-                              checked={answers[q.id] === opt.label}
-                              onChange={(e) =>
-                                 handleAnswerChange(q.id, e.target.value)
-                              }
-                           />
-                           <span>
-                              <span className="font-semibold mr-1">
-                                 {opt.label}.
-                              </span>
-                              {opt.text}
-                           </span>
-                        </label>
-                     ))}
+                  className="mb-5 rounded-xl border border-slate-700 bg-slate-900/50 p-4">
+                  {/* Question header */}
+                  <div className="flex items-start gap-3">
+                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-600 bg-slate-950 text-sm font-bold text-slate-100">
+                        {q.question_number}
+                     </div>
+
+                     <div className="flex-1">
+                        <p className="text-slate-100 font-medium leading-relaxed">
+                           {q.prompt}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">
+                           Choose one answer (A, B or C)
+                        </p>
+                     </div>
+                  </div>
+
+                  {/* Options */}
+                  <div className="mt-4 grid gap-2">
+                     {opts.map((opt) => {
+                        const selected = answers[q.id] === opt.label;
+
+                        return (
+                           <label
+                              key={opt.id}
+                              className={`group flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition
+                ${
+                   selected
+                      ? "border-emerald-400 bg-emerald-500/10"
+                      : "border-slate-700 bg-slate-950/30 hover:border-slate-500"
+                }`}>
+                              {/* Keep input for accessibility, but hide visually */}
+                              <input
+                                 type="radio"
+                                 name={q.id}
+                                 value={opt.label}
+                                 checked={selected}
+                                 onChange={(e) =>
+                                    handleAnswerChange(q.id, e.target.value)
+                                 }
+                                 className="sr-only"
+                              />
+
+                              {/* Option badge (A/B/C) */}
+                              <div
+                                 className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-bold transition
+                  ${
+                     selected
+                        ? "border-emerald-400 text-emerald-200"
+                        : "border-slate-600 text-slate-300 group-hover:border-slate-400"
+                  }`}>
+                                 {opt.label}
+                              </div>
+
+                              {/* Option text */}
+                              <div className="text-slate-200">{opt.text}</div>
+
+                              {/* Selected indicator dot on the right */}
+                              <div className="ml-auto">
+                                 <div
+                                    className={`h-3.5 w-3.5 rounded-full border transition
+                    ${
+                       selected
+                          ? "border-emerald-400 bg-emerald-400"
+                          : "border-slate-600 bg-transparent"
+                    }`}
+                                 />
+                              </div>
+                           </label>
+                        );
+                     })}
                   </div>
                </div>
             );
@@ -470,7 +551,7 @@ export default function ListeningTestPage() {
             const usedLetters = new Set(
                group
                   .map((g) => (answers[g.id] || "").trim())
-                  .filter((v) => v.length > 0)
+                  .filter((v) => v.length > 0),
             );
 
             return (
@@ -617,7 +698,21 @@ export default function ListeningTestPage() {
                {section.title || `Section ${section.section_number}`}
             </h2>
             {section.instructions && (
-               <p className="mb-4 text-slate-300">{section.instructions}</p>
+               <div className="mb-4 rounded-xl border border-slate-700 bg-slate-900/40 p-4">
+                  <div className="flex items-start gap-3">
+                     <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full border border-emerald-400/50 bg-emerald-500/10 text-emerald-300">
+                        i
+                     </div>
+                     <div>
+                        <p className="text-sm font-semibold text-slate-100">
+                           Instructions
+                        </p>
+                        <p className="mt-1 text-sm leading-relaxed text-slate-300">
+                           {section.instructions}
+                        </p>
+                     </div>
+                  </div>
+               </div>
             )}
 
             {/* Active section content */}
@@ -630,26 +725,61 @@ export default function ListeningTestPage() {
          {orderedQuestions.length > 0 && (
             <div className="fixed inset-x-0 bottom-0 bg-slate-950/95 border-t border-slate-800 z-50">
                <div className="w-full px-4 lg:px-10 py-2 flex items-center gap-3">
-                  {/* Scrollable question buttons */}
+                  {/* Part switcher + Active-part question buttons */}
                   <div className="flex-1 overflow-x-auto">
                      <div className="flex items-center gap-2 min-w-max">
-                        {orderedQuestions.map((q) => {
-                           const answered =
-                              (answers[q.id] ?? "").trim().length > 0;
+                        {/* Part buttons (always visible) */}
+                        {PARTS.map((p) => {
+                           const isActive = p.part === activePart;
+
                            return (
                               <button
-                                 key={q.id}
-                                 onClick={() => handleQuestionJump(q)}
-                                 className={`w-8 h-8 rounded-full text-xs font-semibold flex items-center justify-center border transition shrink-0
-                      ${
-                         answered
-                            ? "bg-emerald-500 text-slate-950 border-emerald-400"
-                            : "bg-slate-900 text-slate-200 border-slate-600 hover:border-emerald-400"
-                      }`}>
-                                 {q.question_number}
+                                 key={p.part}
+                                 onClick={() => setActivePartAndJump(p.part)}
+                                 className={`h-8 px-3 rounded-full text-xs font-semibold border transition shrink-0
+            ${
+               isActive
+                  ? "bg-emerald-500 text-slate-950 border-emerald-400"
+                  : "bg-slate-900 text-slate-200 border-slate-600 hover:border-emerald-400"
+            }`}>
+                                 {p.label}
                               </button>
                            );
                         })}
+
+                        {/* Divider (optional) */}
+                        <span className="mx-1 h-5 w-px bg-slate-700 shrink-0" />
+
+                        {/* Only show questions in the active part */}
+                        {(() => {
+                           const meta = PARTS.find(
+                              (p) => p.part === activePart,
+                           )!;
+                           const activeQuestions = orderedQuestions.filter(
+                              (q) =>
+                                 q.question_number >= meta.start &&
+                                 q.question_number <= meta.end,
+                           );
+
+                           return activeQuestions.map((q) => {
+                              const answered =
+                                 (answers[q.id] ?? "").trim().length > 0;
+
+                              return (
+                                 <button
+                                    key={q.id}
+                                    onClick={() => handleQuestionJump(q)}
+                                    className={`w-8 h-8 rounded-full text-xs font-semibold flex items-center justify-center border transition shrink-0
+              ${
+                 answered
+                    ? "bg-emerald-500 text-slate-950 border-emerald-400"
+                    : "bg-slate-900 text-slate-200 border-slate-600 hover:border-emerald-400"
+              }`}>
+                                    {q.question_number}
+                                 </button>
+                              );
+                           });
+                        })()}
                      </div>
                   </div>
 
