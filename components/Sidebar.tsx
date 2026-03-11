@@ -9,6 +9,7 @@ import {
    PiHeadphonesLight,
    PiExamLight,
    PiTrophyLight,
+   PiSwordLight,
    PiCaretDoubleLeftLight,
    PiCaretDoubleRightLight,
 } from "react-icons/pi";
@@ -38,6 +39,11 @@ const links = [
       href: "/dashboard/leaderboard",
       label: "Leaderboard",
       icon: PiTrophyLight,
+   },
+   {
+      href: "/dashboard/battle",
+      label: "Battle",
+      icon: PiSwordLight,
    },
 ];
 
