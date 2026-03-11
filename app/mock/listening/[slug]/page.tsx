@@ -525,6 +525,15 @@ export default function ListeningTestPage() {
       }
    }
 
+   function handleExitToDashboard() {
+      const shouldExit = window.confirm(
+         "Leave this mock test and return to the dashboard? Your current answers will not be submitted.",
+      );
+
+      if (!shouldExit) return;
+      router.push("/dashboard");
+   }
+
    // ---------- Nav buttons: jump to question + switch section ----------
 
    function handleQuestionJump(q: ListeningQuestion) {
@@ -1049,8 +1058,8 @@ export default function ListeningTestPage() {
                                  className={`h-8 px-3 rounded-full text-xs font-semibold border transition shrink-0
             ${
                isActive
-                  ? "bg-emerald-500 text-slate-950 border-emerald-400"
-                  : "bg-slate-900 text-slate-200 border-slate-600 hover:border-emerald-400"
+                  ? "bg-emerald-500 text-slate-950 border-emerald-400 cursor-pointer"
+                  : "bg-slate-900 text-slate-200 border-slate-600 hover:border-emerald-400 cursor-pointer"
             }`}>
                                  {p.label}
                               </button>
@@ -1085,8 +1094,8 @@ export default function ListeningTestPage() {
                                     className={`w-8 h-8 rounded-full text-xs font-semibold flex items-center justify-center border transition shrink-0
               ${
                  answered
-                    ? "bg-emerald-500 text-slate-950 border-emerald-400"
-                    : "bg-slate-900 text-slate-200 border-slate-600 hover:border-emerald-400"
+                    ? "bg-emerald-500 text-slate-950 border-emerald-400 cursor-pointer"
+                    : "bg-slate-900 text-slate-200 border-slate-600 hover:border-emerald-400 cursor-pointer"
               }`}>
                                     {q.question_number}
                                  </button>
@@ -1096,16 +1105,27 @@ export default function ListeningTestPage() {
                      </div>
                   </div>
 
-                  {/* Submit button */}
-                  <button
-                     onClick={handleSubmit}
-                     disabled={submitting}
-                     className="ml-2 inline-flex items-center px-4 py-2 rounded-full
-                         bg-emerald-500 text-slate-950 font-semibold text-xs sm:text-sm
-                         hover:bg-emerald-400 disabled:opacity-60
-                         disabled:cursor-not-allowed whitespace-nowrap transition">
-                     {submitting ? "Submitting..." : "Submit answers"}
-                  </button>
+                  <div className="ml-2 flex items-center gap-2 whitespace-nowrap">
+                     <button
+                        type="button"
+                        onClick={handleExitToDashboard}
+                        className="inline-flex items-center px-4 py-2 rounded-full
+                           border border-slate-600 bg-slate-900 text-slate-200
+                           font-semibold text-xs sm:text-sm cursor-pointer hover:border-slate-400
+                           hover:bg-slate-800 transition">
+                        Back to dashboard
+                     </button>
+
+                     <button
+                        onClick={handleSubmit}
+                        disabled={submitting}
+                        className="inline-flex items-center px-4 py-2 rounded-full
+                           bg-emerald-500 text-slate-950 font-semibold text-xs sm:text-sm cursor-pointer
+                           hover:bg-emerald-400 disabled:opacity-60
+                           disabled:cursor-not-allowed whitespace-nowrap transition">
+                        {submitting ? "Submitting..." : "Submit answers"}
+                     </button>
+                  </div>
                </div>
             </div>
          )}
