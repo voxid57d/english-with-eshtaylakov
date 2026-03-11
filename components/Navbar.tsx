@@ -95,7 +95,7 @@ export default function Navbar({
 
             <Link
                href="/username"
-               className="text-[11px] md:text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition whitespace-nowrap">
+               className="hidden sm:inline-flex text-[11px] md:text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition whitespace-nowrap">
                Edit username
             </Link>
 
