@@ -65,25 +65,39 @@ export default function Navbar({
          <div className="flex items-center gap-1.5 md:gap-3 flex-nowrap">
             {/* Username text only (no email fallback) */}
             {displayName && (
-               <span className="hidden sm:inline text-xs md:text-sm text-slate-200 max-w-[140px] truncate">
+               <Link
+                  href="/username"
+                  className="hidden sm:inline text-xs md:text-sm text-slate-200 max-w-[140px] truncate hover:text-emerald-300 transition cursor-pointer"
+                  title="Change username">
                   {displayName}
-               </span>
+               </Link>
             )}
 
             {/* Avatar */}
-            {user.user_metadata?.avatar_url ? (
-               <Image
-                  src={user.user_metadata.avatar_url}
-                  alt={displayName || user.email}
-                  width={32}
-                  height={32}
-                  className="h-8 w-8 rounded-full object-cover"
-               />
-            ) : (
-               <div className="h-8 w-8 flex items-center justify-center rounded-full bg-emerald-600 text-xs md:text-sm">
-                  {avatarLetter}
-               </div>
-            )}
+            <Link
+               href="/username"
+               className="cursor-pointer"
+               title="Change username">
+               {user.user_metadata?.avatar_url ? (
+                  <Image
+                     src={user.user_metadata.avatar_url}
+                     alt={displayName || user.email}
+                     width={32}
+                     height={32}
+                     className="h-8 w-8 rounded-full object-cover"
+                  />
+               ) : (
+                  <div className="h-8 w-8 flex items-center justify-center rounded-full bg-emerald-600 text-xs md:text-sm">
+                     {avatarLetter}
+                  </div>
+               )}
+            </Link>
+
+            <Link
+               href="/username"
+               className="text-[11px] md:text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition whitespace-nowrap">
+               Edit username
+            </Link>
 
             {/* Premium badge / link */}
             {isPremium ? (

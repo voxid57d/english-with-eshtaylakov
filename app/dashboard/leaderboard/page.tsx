@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 type LeaderboardEntry = {
    userId: string;
    username: string;
+   isPremium: boolean;
    rawStreak: number;
    lastActiveDate: string | null;
    isActive: boolean;
@@ -145,15 +146,29 @@ export default function LeaderboardPage() {
                         </div>
 
                         <div className="min-w-0">
-                           <p
-                              className={[
-                                 "truncate font-medium",
-                                 entry.isActive
-                                    ? "text-slate-100"
-                                    : "text-slate-400",
-                              ].join(" ")}>
-                              {entry.username}
-                           </p>
+                           <div className="flex items-center gap-2 min-w-0">
+                              <p
+                                 className={[
+                                    "truncate font-medium",
+                                    entry.isActive
+                                       ? "text-slate-100"
+                                       : "text-slate-400",
+                                 ].join(" ")}>
+                                 {entry.username}
+                              </p>
+
+                              {entry.isPremium && (
+                                 <span
+                                    className={[
+                                       "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                       entry.isActive
+                                          ? "border-amber-400/60 bg-amber-500/15 text-amber-200"
+                                          : "border-slate-600 bg-slate-800 text-slate-300",
+                                    ].join(" ")}>
+                                    Premium
+                                 </span>
+                              )}
+                           </div>
                            {isCurrentUser && (
                               <p className="text-xs text-emerald-300">
                                  You

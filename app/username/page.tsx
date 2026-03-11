@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -124,7 +125,7 @@ export default function UsernamePage() {
       <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white px-4">
          <div className="w-full max-w-md space-y-6 p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl">
             <h1 className="text-2xl font-semibold text-center">
-               Choose a username
+               {initialUsername ? "Change your username" : "Choose a username"}
             </h1>
             <p className="text-sm text-slate-400 text-center">
                This name will be shown on leaderboards and in your profile.
@@ -161,7 +162,7 @@ export default function UsernamePage() {
                <button
                   type="submit"
                   disabled={saving}
-                  className="w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition px-3 py-2 text-sm font-semibold">
+                  className="w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition px-3 py-2 text-sm font-semibold cursor-pointer">
                   {saving
                      ? "Saving…"
                      : initialUsername
@@ -173,6 +174,15 @@ export default function UsernamePage() {
             <p className="text-xs text-center text-slate-400">
                You can change this later, but other students will see this name.
             </p>
+            {initialUsername && (
+               <p className="text-xs text-center text-slate-500">
+                  <Link
+                     href="/dashboard"
+                     className="hover:text-emerald-400 hover:underline transition">
+                     Back to dashboard
+                  </Link>
+               </p>
+            )}
          </div>
       </main>
    );

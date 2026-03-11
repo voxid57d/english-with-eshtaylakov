@@ -10,6 +10,7 @@ type UserStatRow = {
 type ProfileRow = {
    id: string;
    username: string | null;
+   is_premium: boolean | null;
 };
 
 function isStreakActive(lastActiveDate: string | null) {
@@ -36,7 +37,7 @@ export async function GET() {
 
    const { data: profilesData, error: profilesError } = await supabaseAdmin
       .from("profiles")
-      .select("id, username");
+      .select("id, username, is_premium");
 
    if (profilesError) {
       console.error("Leaderboard profiles error:", profilesError);
@@ -49,14 +50,18 @@ export async function GET() {
    const profileMap = new Map(
       ((profilesData || []) as ProfileRow[]).map((profile) => [
          profile.id,
-         profile.username?.trim() || null,
+         {
+            username: profile.username?.trim() || null,
+            isPremium: profile.is_premium === true,
+         },
       ]),
    );
 
    const entries = ((statsData || []) as UserStatRow[])
       .map((row) => ({
          userId: row.user_id,
-         username: profileMap.get(row.user_id) || "Unknown user",
+         username: profileMap.get(row.user_id)?.username || "Unknown user",
+         isPremium: profileMap.get(row.user_id)?.isPremium === true,
          rawStreak: row.streak ?? 0,
          lastActiveDate: row.last_active_date,
          isActive: isStreakActive(row.last_active_date),
