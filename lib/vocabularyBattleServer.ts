@@ -69,6 +69,7 @@ type AnswerRow = {
 
 const WAITING_ROOM_TTL_HOURS = 6;
 const FINISHED_ROOM_TTL_HOURS = 24;
+const ACTIVE_ROOM_TTL_HOURS = 2;
 
 export async function getAuthenticatedUser(req: Request) {
    const authHeader = req.headers.get("authorization");
@@ -320,6 +321,10 @@ async function finalizeRoom(roomId: string) {
       .eq("id", roomId);
 }
 
+async function deleteRoom(roomId: string) {
+   await supabaseAdmin.from("vocab_battle_rooms").delete().eq("id", roomId);
+}
+
 export async function cleanupBattleRooms() {
    const now = Date.now();
    const waitingCutoff = new Date(
@@ -327,6 +332,9 @@ export async function cleanupBattleRooms() {
    ).toISOString();
    const finishedCutoff = new Date(
       now - FINISHED_ROOM_TTL_HOURS * 60 * 60 * 1000,
+   ).toISOString();
+   const activeCutoff = new Date(
+      now - ACTIVE_ROOM_TTL_HOURS * 60 * 60 * 1000,
    ).toISOString();
 
    await supabaseAdmin
@@ -340,6 +348,17 @@ export async function cleanupBattleRooms() {
       .delete()
       .eq("status", "finished")
       .lt("finished_at", finishedCutoff);
+
+   const { data: staleActiveRooms } = await supabaseAdmin
+      .from("vocab_battle_rooms")
+      .select("id")
+      .eq("status", "active")
+      .lt("current_question_started_at", activeCutoff)
+      .is("finished_at", null);
+
+   for (const room of staleActiveRooms || []) {
+      await finalizeRoom(room.id as string);
+   }
 }
 
 export async function loadRoomForParticipant(roomCode: string, userId: string) {
@@ -366,6 +385,7 @@ export async function buildBattleRoomSnapshot(
    roomCode: string,
    viewerUserId: string,
 ): Promise<BattleRoomSnapshot | null> {
+   await cleanupBattleRooms();
    const room = await getRoomByCode(roomCode);
    if (!room) {
       return null;
@@ -455,6 +475,60 @@ export async function markPlayerReady(roomCode: string, userId: string) {
          })
          .eq("id", room.id);
    }
+}
+
+export async function joinBattleRoom(
+   roomCode: string,
+   userId: string,
+   username: string,
+) {
+   await cleanupBattleRooms();
+
+   const room = await getRoomByCode(roomCode);
+   if (!room) {
+      throw new Error("Room not found.");
+   }
+
+   if (room.status === "finished") {
+      throw new Error("This battle has already finished.");
+   }
+
+   const players = await getRoomPlayers(room.id);
+   const participantIds = new Set(players.map((player) => player.user_id));
+   if (participantIds.has(userId)) {
+      return room.code;
+   }
+
+   if (players.length >= 2) {
+      throw new Error("This room already has two players.");
+   }
+
+   const { error: joinError } = await supabaseAdmin
+      .from("vocab_battle_players")
+      .insert({
+         room_id: room.id,
+         user_id: userId,
+         username,
+         score: 0,
+         total_response_ms: 0,
+         is_ready: false,
+      });
+
+   if (joinError) {
+      throw new Error("Failed to join the room.");
+   }
+
+   const refreshedPlayers = await getRoomPlayers(room.id);
+   if (refreshedPlayers.length > 2) {
+      await supabaseAdmin
+         .from("vocab_battle_players")
+         .delete()
+         .eq("room_id", room.id)
+         .eq("user_id", userId);
+      throw new Error("This room already has two players.");
+   }
+
+   return room.code;
 }
 
 export async function submitBattleResults(
@@ -643,4 +717,68 @@ export async function getBattleHistoryForUser(userId: string) {
             submittedAt: player.submitted_at,
          })),
       }));
+}
+
+export async function createBattleRoom(
+   deckId: string,
+   userId: string,
+   username: string,
+   questionCount: number,
+   timeLimitSeconds: number,
+) {
+   await cleanupBattleRooms();
+
+   const deck = await loadPublicDeck(deckId);
+   const questions = await buildBattleQuestions(deck.id);
+   const roomCode = await createUniqueBattleRoomCode();
+
+   const { data: room, error: roomError } = await supabaseAdmin
+      .from("vocab_battle_rooms")
+      .insert({
+         code: roomCode,
+         deck_id: deck.id,
+         host_user_id: userId,
+         status: "waiting",
+         question_count: Math.min(questions.length, questionCount),
+         time_limit_seconds: timeLimitSeconds,
+         current_question_index: 0,
+      })
+      .select("id, code")
+      .single();
+
+   if (roomError || !room) {
+      throw new Error("Failed to create room.");
+   }
+
+   const { error: playerError } = await supabaseAdmin
+      .from("vocab_battle_players")
+      .insert({
+         room_id: room.id,
+         user_id: userId,
+         username,
+         score: 0,
+         total_response_ms: 0,
+         is_ready: false,
+      });
+
+   if (playerError) {
+      await deleteRoom(room.id);
+      throw new Error("Failed to add the host to the room.");
+   }
+
+   const questionRows = questions.map((question) => ({
+      room_id: room.id,
+      ...question,
+   }));
+
+   const { error: questionError } = await supabaseAdmin
+      .from("vocab_battle_questions")
+      .insert(questionRows);
+
+   if (questionError) {
+      await deleteRoom(room.id);
+      throw new Error("Failed to save battle questions.");
+   }
+
+   return { roomCode: room.code, deckTitle: deck.title };
 }
