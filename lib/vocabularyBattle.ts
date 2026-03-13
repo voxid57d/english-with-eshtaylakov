@@ -2,6 +2,7 @@ export const BATTLE_ROOM_CODE_LENGTH = 6;
 export const BATTLE_QUESTION_COUNT = 10;
 export const BATTLE_TIME_LIMIT_SECONDS = 10;
 export const BATTLE_MINIMUM_CARD_COUNT = 10;
+export const BATTLE_START_COUNTDOWN_SECONDS = 5;
 
 export type BattleRoomStatus = "waiting" | "active" | "finished";
 
@@ -61,6 +62,7 @@ export type BattleRoomSnapshot = {
    viewerSelectedOptionIndex: number | null;
    players: BattlePlayerSnapshot[];
    currentQuestion: BattleQuestionPayload | null;
+   questionBank: BattleQuestionPayload[];
    completedQuestions: BattleQuestionReview[];
 };
 

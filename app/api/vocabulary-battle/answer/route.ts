@@ -36,6 +36,14 @@ export async function POST(req: Request) {
       const phaseStartedAt = activeRoom.current_question_started_at
          ? new Date(activeRoom.current_question_started_at).getTime()
          : Date.now();
+
+      if (phaseStartedAt > Date.now()) {
+         return NextResponse.json(
+            { error: "The round has not started yet." },
+            { status: 409 },
+         );
+      }
+
       const elapsedMs = Math.max(0, Date.now() - phaseStartedAt);
 
       if (elapsedMs > activeRoom.time_limit_seconds * 1000) {

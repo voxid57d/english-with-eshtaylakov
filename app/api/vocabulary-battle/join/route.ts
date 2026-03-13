@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { normalizeRoomCode } from "@/lib/vocabularyBattle";
+import {
+   BATTLE_START_COUNTDOWN_SECONDS,
+   normalizeRoomCode,
+} from "@/lib/vocabularyBattle";
 import {
    cleanupBattleRooms,
    getAuthenticatedUser,
@@ -79,7 +82,9 @@ export async function POST(req: Request) {
          .from("vocab_battle_rooms")
          .update({
             status: "active",
-            current_question_started_at: new Date().toISOString(),
+            current_question_started_at: new Date(
+               Date.now() + BATTLE_START_COUNTDOWN_SECONDS * 1000,
+            ).toISOString(),
          })
          .eq("id", room.id);
 

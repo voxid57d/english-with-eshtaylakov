@@ -390,6 +390,10 @@ export async function reconcileBattleRoom(roomCode: string) {
    const phaseStartedAt = room.current_question_started_at
       ? new Date(room.current_question_started_at).getTime()
       : 0;
+   if (phaseStartedAt > Date.now()) {
+      return room;
+   }
+
    const deadline =
       phaseStartedAt + room.time_limit_seconds * 1000 <= Date.now();
    const everyoneAnswered = (count || 0) >= players.length;
@@ -450,6 +454,10 @@ export async function buildBattleRoomSnapshot(
    const viewerAnswer = (viewerAnswerResult.data as AnswerRow | null) || null;
    const responseTotals = buildPlayerTotals(players, answers);
    const completedQuestions = buildQuestionReviews(questions, answers);
+   const questionBank = questions.map((question) => ({
+      prompt: question.prompt,
+      options: question.options,
+   }));
 
    return {
       roomCode: room.code,
@@ -479,6 +487,7 @@ export async function buildBattleRoomSnapshot(
               options: currentQuestion.options,
            }
          : null,
+      questionBank,
       completedQuestions,
    };
 }

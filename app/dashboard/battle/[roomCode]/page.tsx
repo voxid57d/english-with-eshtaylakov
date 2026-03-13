@@ -25,8 +25,31 @@ export default function BattleRoomPage() {
    const [answerLoading, setAnswerLoading] = useState(false);
    const [error, setError] = useState<string | null>(null);
    const [copied, setCopied] = useState(false);
-   const [now, setNow] = useState(Date.now());
+   const [now, setNow] = useState(0);
+   const [isPageHidden, setIsPageHidden] = useState(false);
    const latestQuestionKey = useRef<string>("");
+
+   useEffect(() => {
+      setNow(Date.now());
+      const handleVisibilityChange = () => {
+         setIsPageHidden(document.visibilityState !== "visible");
+      };
+      handleVisibilityChange();
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      return () => {
+         document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
+   }, []);
+
+   const pollMs = useMemo(() => {
+      if (!snapshot) return 1000;
+      if (snapshot.status === "active") {
+         return snapshot.viewerHasAnsweredCurrentQuestion ? 500 : 900;
+      }
+
+      return snapshot.status === "waiting" ? 1500 : 5000;
+   }, [snapshot]);
 
    useEffect(() => {
       let cancelled = false;
@@ -73,13 +96,16 @@ export default function BattleRoomPage() {
       };
 
       load();
-      const intervalId = window.setInterval(load, 2000);
+      const intervalId = window.setInterval(() => {
+         if (isPageHidden) return;
+         void load();
+      }, pollMs);
 
       return () => {
          cancelled = true;
          window.clearInterval(intervalId);
       };
-   }, [roomCode, router]);
+   }, [isPageHidden, pollMs, roomCode, router]);
 
    useEffect(() => {
       const intervalId = window.setInterval(() => setNow(Date.now()), 250);
@@ -101,12 +127,28 @@ export default function BattleRoomPage() {
          return 0;
       }
 
-      const deadline =
-         new Date(snapshot.phaseStartedAt).getTime() +
-         snapshot.timeLimitSeconds * 1000;
+      const phaseStartedAt = new Date(snapshot.phaseStartedAt).getTime();
+      if (phaseStartedAt > now) {
+         return 0;
+      }
+
+      const deadline = phaseStartedAt + snapshot.timeLimitSeconds * 1000;
 
       return Math.max(0, deadline - now);
    }, [now, snapshot]);
+
+   const countdownMs = useMemo(() => {
+      if (!snapshot?.phaseStartedAt || snapshot.status !== "active") {
+         return 0;
+      }
+
+      return Math.max(0, new Date(snapshot.phaseStartedAt).getTime() - now);
+   }, [now, snapshot]);
+
+   const displayedQuestion =
+      snapshot?.questionBank[snapshot.currentQuestionIndex] ||
+      snapshot?.currentQuestion ||
+      null;
 
    const sortedPlayers = useMemo(
       () =>
@@ -239,7 +281,7 @@ export default function BattleRoomPage() {
                   </div>
                )}
 
-               {snapshot.status === "active" && snapshot.currentQuestion && (
+               {snapshot.status === "active" && displayedQuestion && (
                   <div className="space-y-6">
                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -248,17 +290,33 @@ export default function BattleRoomPage() {
                               {snapshot.questionCount}
                            </p>
                            <h2 className="mt-2 text-3xl font-semibold">
-                              {snapshot.currentQuestion.prompt}
+                              {displayedQuestion.prompt}
                            </h2>
                         </div>
 
                         <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200">
-                           {Math.ceil(msRemaining / 1000)}s left
+                           {countdownMs > 0
+                              ? `Starts in ${Math.ceil(countdownMs / 1000)}s`
+                              : `${Math.ceil(msRemaining / 1000)}s left`}
                         </div>
                      </div>
 
-                     <div className="grid gap-3">
-                        {snapshot.currentQuestion.options.map((option, index) => {
+                     {countdownMs > 0 ? (
+                        <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 px-6 py-10 text-center">
+                           <p className="text-sm uppercase tracking-[0.2em] text-emerald-300">
+                              Battle starts soon
+                           </p>
+                           <p className="mt-3 text-6xl font-semibold text-slate-50">
+                              {Math.ceil(countdownMs / 1000)}
+                           </p>
+                           <p className="mt-3 text-sm text-slate-300">
+                              Questions are preloaded. The first round will open
+                              automatically.
+                           </p>
+                        </div>
+                     ) : (
+                        <div className="grid gap-3">
+                           {displayedQuestion.options.map((option, index) => {
                            const isSelected =
                               snapshot.viewerSelectedOptionIndex === index;
                            const isLocked =
@@ -280,11 +338,14 @@ export default function BattleRoomPage() {
                                  {option}
                               </button>
                            );
-                        })}
-                     </div>
+                           })}
+                        </div>
+                     )}
 
                      <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-400">
-                        {snapshot.viewerHasAnsweredCurrentQuestion
+                        {countdownMs > 0
+                           ? "Get ready. The first timer has not started yet."
+                           : snapshot.viewerHasAnsweredCurrentQuestion
                            ? "Answer locked in. Waiting for the next question."
                            : msRemaining === 0
                              ? "Time is up. Waiting for the room to advance."
