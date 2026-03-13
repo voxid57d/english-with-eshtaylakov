@@ -48,7 +48,9 @@ export default function BattleRoomPage() {
    const [readyLoading, setReadyLoading] = useState(false);
    const [submitLoading, setSubmitLoading] = useState(false);
    const [now, setNow] = useState(0);
-   const [localBattle, setLocalBattle] = useState<LocalBattleState | null>(null);
+   const [localBattle, setLocalBattle] = useState<LocalBattleState | null>(
+      null,
+   );
    const questionTimerRef = useRef<number | null>(null);
 
    useEffect(() => {
@@ -172,7 +174,10 @@ export default function BattleRoomPage() {
          return;
       }
 
-      const storageKey = getBattleStorageKey(snapshot.roomCode, snapshot.battleStartsAt);
+      const storageKey = getBattleStorageKey(
+         snapshot.roomCode,
+         snapshot.battleStartsAt,
+      );
       if (snapshot.status === "finished" || snapshot.viewerSubmitted) {
          window.localStorage.removeItem(storageKey);
          return;
@@ -283,7 +288,9 @@ export default function BattleRoomPage() {
 
    const localTimeRemaining = useMemo(() => {
       if (!snapshot || !localBattle || !activeQuestion) {
-         return snapshot?.timeLimitSeconds ? snapshot.timeLimitSeconds * 1000 : 0;
+         return snapshot?.timeLimitSeconds
+            ? snapshot.timeLimitSeconds * 1000
+            : 0;
       }
 
       const elapsed = now - localBattle.questionStartedAt;
@@ -305,9 +312,12 @@ export default function BattleRoomPage() {
       }
 
       clearQuestionTimer();
-      questionTimerRef.current = window.setTimeout(() => {
-         advanceBattle(null, snapshot.timeLimitSeconds * 1000);
-      }, Math.max(localTimeRemaining, 0));
+      questionTimerRef.current = window.setTimeout(
+         () => {
+            advanceBattle(null, snapshot.timeLimitSeconds * 1000);
+         },
+         Math.max(localTimeRemaining, 0),
+      );
 
       return () => {
          clearQuestionTimer();
@@ -396,7 +406,9 @@ export default function BattleRoomPage() {
    };
 
    if (loading) {
-      return <div className="text-sm text-slate-400">Loading battle room...</div>;
+      return (
+         <div className="text-sm text-slate-400">Loading battle room...</div>
+      );
    }
 
    if (error && !snapshot) {
@@ -462,8 +474,8 @@ export default function BattleRoomPage() {
                   </p>
                </div>
                <p className="max-w-md text-sm text-slate-300">
-                  Share this code with your student. Both of you will use the same
-                  ten questions.
+                  Share this code with your student. Both of you will use the
+                  same ten questions.
                </p>
             </div>
          </div>
@@ -486,8 +498,8 @@ export default function BattleRoomPage() {
                            Downloaded and waiting for both players
                         </h2>
                         <p className="text-sm text-slate-400">
-                           Questions are prepared. Once both players press ready,
-                           the shared countdown starts.
+                           Questions are prepared. Once both players press
+                           ready, the shared countdown starts.
                         </p>
                      </div>
 
@@ -500,7 +512,9 @@ export default function BattleRoomPage() {
                                  {player.username}
                               </p>
                               <p className="mt-2 text-sm text-slate-400">
-                                 {player.isReady ? "Ready to start" : "Not ready yet"}
+                                 {player.isReady
+                                    ? "Ready to start"
+                                    : "Not ready yet"}
                               </p>
                            </div>
                         ))}
@@ -517,7 +531,7 @@ export default function BattleRoomPage() {
                            onClick={handleReady}
                            disabled={readyLoading}
                            className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
-                           {readyLoading ? "Saving..." : "I'm ready"}
+                           {readyLoading ? "Loading..." : "I'm ready"}
                         </button>
                      )}
 
@@ -538,8 +552,8 @@ export default function BattleRoomPage() {
                         {Math.ceil(countdownMs / 1000)}
                      </p>
                      <p className="mx-auto max-w-lg text-sm text-slate-300">
-                        Both players are ready. The battle opens when the countdown
-                        reaches zero.
+                        Both players are ready. The battle opens when the
+                        countdown reaches zero.
                      </p>
                   </div>
                )}
@@ -552,7 +566,8 @@ export default function BattleRoomPage() {
                         <div className="space-y-4">
                            <div className="flex flex-wrap items-center justify-between gap-3">
                               <p className="text-sm uppercase tracking-[0.2em] text-slate-400">
-                                 Question {(localBattle?.currentIndex ?? 0) + 1} of {snapshot.questionCount}
+                                 Question {(localBattle?.currentIndex ?? 0) + 1}{" "}
+                                 of {snapshot.questionCount}
                               </p>
                               <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200">
                                  {Math.ceil(localTimeRemaining / 1000)}s left
@@ -588,21 +603,23 @@ export default function BattleRoomPage() {
                      </div>
                   )}
 
-               {snapshot.status === "active" && (snapshot.viewerSubmitted || submitLoading) && (
-                  <div className="space-y-5">
-                     <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6">
-                        <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
-                           Results sent
-                        </p>
-                        <p className="mt-3 text-2xl font-semibold text-slate-50">
-                           Your battle is complete.
-                        </p>
-                        <p className="mt-2 text-sm text-slate-300">
-                           Waiting for the other player to finish so we can compare the final scores.
-                        </p>
+               {snapshot.status === "active" &&
+                  (snapshot.viewerSubmitted || submitLoading) && (
+                     <div className="space-y-5">
+                        <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6">
+                           <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
+                              Results sent
+                           </p>
+                           <p className="mt-3 text-2xl font-semibold text-slate-50">
+                              Your battle is complete.
+                           </p>
+                           <p className="mt-2 text-sm text-slate-300">
+                              Waiting for the other player to finish so we can
+                              compare the final scores.
+                           </p>
+                        </div>
                      </div>
-                  </div>
-               )}
+                  )}
 
                {snapshot.status === "finished" && (
                   <div className="space-y-6">
@@ -611,13 +628,17 @@ export default function BattleRoomPage() {
                            Match finished
                         </p>
                         <p className="mt-3 text-3xl font-semibold text-slate-50">
-                           {winner ? `${winner.username} wins` : "The battle ended in a tie"}
+                           {winner
+                              ? `${winner.username} wins`
+                              : "The battle ended in a tie"}
                         </p>
                         <p className="mt-2 text-sm text-slate-300">
-                           You scored {viewer?.score ?? 0} out of {snapshot.questionCount}.
+                           You scored {viewer?.score ?? 0} out of{" "}
+                           {snapshot.questionCount}.
                         </p>
                         <p className="mt-1 text-sm text-slate-300">
-                           Total answer time {formatSeconds(viewer?.totalResponseMs || 0)}
+                           Total answer time{" "}
+                           {formatSeconds(viewer?.totalResponseMs || 0)}
                         </p>
                      </div>
 
@@ -627,7 +648,8 @@ export default function BattleRoomPage() {
                         </h3>
                         {snapshot.completedQuestions.map((question) => {
                            const viewerAnswer = question.answers.find(
-                              (answer) => answer.userId === snapshot.viewerUserId,
+                              (answer) =>
+                                 answer.userId === snapshot.viewerUserId,
                            );
 
                            return (
@@ -645,9 +667,11 @@ export default function BattleRoomPage() {
 
                                  <div className="grid gap-2">
                                     {question.options.map((option, index) => {
-                                       const isCorrect = index === question.correctOptionIndex;
+                                       const isCorrect =
+                                          index === question.correctOptionIndex;
                                        const isViewerChoice =
-                                          viewerAnswer?.selectedOptionIndex === index;
+                                          viewerAnswer?.selectedOptionIndex ===
+                                          index;
 
                                        return (
                                           <div
@@ -675,7 +699,9 @@ export default function BattleRoomPage() {
             <aside className="space-y-6">
                <div className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6">
                   <div className="flex items-center justify-between">
-                     <h2 className="text-lg font-semibold text-slate-50">Players</h2>
+                     <h2 className="text-lg font-semibold text-slate-50">
+                        Players
+                     </h2>
                      <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
                         Room
                      </span>
@@ -692,7 +718,9 @@ export default function BattleRoomPage() {
                            }`}>
                            <div className="flex items-center justify-between gap-3">
                               <div>
-                                 <p className="text-sm text-slate-500">#{index + 1}</p>
+                                 <p className="text-sm text-slate-500">
+                                    #{index + 1}
+                                 </p>
                                  <p className="text-base font-semibold text-slate-100">
                                     {player.username}
                                  </p>
@@ -708,7 +736,8 @@ export default function BattleRoomPage() {
 
                            {snapshot.status === "finished" && (
                               <div className="mt-3 text-sm text-slate-300">
-                                 {player.score} correct - {formatSeconds(player.totalResponseMs)}
+                                 {player.score} correct -{" "}
+                                 {formatSeconds(player.totalResponseMs)}
                               </div>
                            )}
                         </div>
@@ -732,5 +761,3 @@ export default function BattleRoomPage() {
       </div>
    );
 }
-
-
