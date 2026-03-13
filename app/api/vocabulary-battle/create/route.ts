@@ -9,10 +9,16 @@ import {
    getAuthenticatedUser,
 } from "@/lib/vocabularyBattleServer";
 
+type CreateBattleRequestBody = {
+   deckId?: string;
+   deckIds?: unknown[];
+   questionCount?: number;
+};
+
 export async function POST(req: Request) {
    try {
       const { userId, username } = await getAuthenticatedUser(req);
-      const body = await req.json();
+      const body = (await req.json()) as CreateBattleRequestBody;
       const deckIds = Array.isArray(body?.deckIds)
          ? body.deckIds
               .filter((value): value is string => typeof value === "string")

@@ -8,6 +8,7 @@ import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import {
    BATTLE_DEFAULT_QUESTION_COUNT,
    BATTLE_QUESTION_OPTIONS,
+   BattleQuestionCount,
    BattleHistoryEntry,
    normalizeRoomCode,
 } from "@/lib/vocabularyBattle";
@@ -27,7 +28,7 @@ export default function BattleLobbyPage() {
    const router = useRouter();
    const [decks, setDecks] = useState<PublicDeck[]>([]);
    const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
-   const [questionCount, setQuestionCount] = useState(
+   const [questionCount, setQuestionCount] = useState<BattleQuestionCount>(
       BATTLE_DEFAULT_QUESTION_COUNT,
    );
    const [roomCode, setRoomCode] = useState("");
