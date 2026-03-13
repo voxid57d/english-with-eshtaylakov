@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import {
-   BATTLE_START_COUNTDOWN_SECONDS,
-   normalizeRoomCode,
-} from "@/lib/vocabularyBattle";
+import { normalizeRoomCode } from "@/lib/vocabularyBattle";
 import {
    cleanupBattleRooms,
    getAuthenticatedUser,
@@ -27,7 +24,7 @@ export async function POST(req: Request) {
       const { data: room, error: roomError } = await supabaseAdmin
          .from("vocab_battle_rooms")
          .select(
-            "id, code, status, current_question_started_at, question_count, current_question_index",
+            "id, code, status",
          )
          .eq("code", roomCode)
          .maybeSingle();
@@ -72,21 +69,13 @@ export async function POST(req: Request) {
             user_id: userId,
             username,
             score: 0,
+            total_response_ms: 0,
+            is_ready: false,
          });
 
       if (joinError) {
          throw new Error("Failed to join the room.");
       }
-
-      await supabaseAdmin
-         .from("vocab_battle_rooms")
-         .update({
-            status: "active",
-            current_question_started_at: new Date(
-               Date.now() + BATTLE_START_COUNTDOWN_SECONDS * 1000,
-            ).toISOString(),
-         })
-         .eq("id", room.id);
 
       return NextResponse.json({ roomCode: room.code });
    } catch (error) {

@@ -1,11 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
-import type { BattleRoomSnapshot } from "@/lib/vocabularyBattle";
+import type {
+   BattleRoomSnapshot,
+   BattleSubmissionAnswer,
+} from "@/lib/vocabularyBattle";
+
+type LocalBattleState = {
+   startKey: string;
+   currentIndex: number;
+   questionStartedAt: number;
+   answers: BattleSubmissionAnswer[];
+   submitted: boolean;
+};
+
+function createInitialLocalState(startKey: string): LocalBattleState {
+   return {
+      startKey,
+      currentIndex: 0,
+      questionStartedAt: 0,
+      answers: [],
+      submitted: false,
+   };
+}
 
 export default function BattleRoomPage() {
    const params = useParams();
@@ -14,33 +35,54 @@ export default function BattleRoomPage() {
 
    const [snapshot, setSnapshot] = useState<BattleRoomSnapshot | null>(null);
    const [loading, setLoading] = useState(true);
-   const [answerLoading, setAnswerLoading] = useState(false);
    const [error, setError] = useState<string | null>(null);
    const [copied, setCopied] = useState(false);
+   const [readyLoading, setReadyLoading] = useState(false);
+   const [submitLoading, setSubmitLoading] = useState(false);
    const [now, setNow] = useState(0);
-   const [isPageHidden, setIsPageHidden] = useState(false);
-   const latestQuestionKey = useRef<string>("");
+   const [localBattle, setLocalBattle] = useState<LocalBattleState | null>(null);
+   const questionTimerRef = useRef<number | null>(null);
 
    useEffect(() => {
       setNow(Date.now());
-      const handleVisibilityChange = () => {
-         setIsPageHidden(document.visibilityState !== "visible");
-      };
-      handleVisibilityChange();
-
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-      return () => {
-         document.removeEventListener("visibilitychange", handleVisibilityChange);
-      };
+      const intervalId = window.setInterval(() => setNow(Date.now()), 250);
+      return () => window.clearInterval(intervalId);
    }, []);
 
-   const pollMs = useMemo(() => {
-      if (!snapshot) return 1000;
-      if (snapshot.status === "active") {
-         return snapshot.viewerHasAnsweredCurrentQuestion ? 500 : 900;
+   const loadSnapshot = useCallback(async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+         router.replace("/login");
+         return;
       }
 
-      return snapshot.status === "waiting" ? 1500 : 5000;
+      const token = await getSupabaseAccessToken();
+      const response = await fetch(
+         `/api/vocabulary-battle/rooms/${encodeURIComponent(roomCode)}`,
+         {
+            headers: {
+               Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+         },
+      );
+
+      const payload = await response.json();
+      if (!response.ok) {
+         throw new Error(payload.error || "Failed to load battle room.");
+      }
+
+      setSnapshot(payload);
+      setError(null);
+      setLoading(false);
+   }, [roomCode, router]);
+
+   const shouldPoll = useMemo(() => {
+      if (!snapshot) return true;
+      if (snapshot.status === "waiting") return true;
+      if (snapshot.status === "active" && !snapshot.battleStartsAt) return true;
+      if (snapshot.status === "active" && snapshot.viewerSubmitted) return true;
+      return false;
    }, [snapshot]);
 
    useEffect(() => {
@@ -48,33 +90,7 @@ export default function BattleRoomPage() {
 
       const load = async () => {
          try {
-            const { data: userData } = await supabase.auth.getUser();
-            if (!userData.user) {
-               router.replace("/login");
-               return;
-            }
-
-            const token = await getSupabaseAccessToken();
-            const response = await fetch(
-               `/api/vocabulary-battle/rooms/${encodeURIComponent(roomCode)}`,
-               {
-                  headers: {
-                     Authorization: `Bearer ${token}`,
-                  },
-                  cache: "no-store",
-               },
-            );
-
-            const payload = await response.json();
-            if (!response.ok) {
-               throw new Error(payload.error || "Failed to load battle room.");
-            }
-
-            if (!cancelled) {
-               setSnapshot(payload);
-               setError(null);
-               setLoading(false);
-            }
+            await loadSnapshot();
          } catch (requestError) {
             if (!cancelled) {
                setError(
@@ -87,66 +103,183 @@ export default function BattleRoomPage() {
          }
       };
 
-      load();
+      void load();
+
+      if (!shouldPoll) {
+         return () => {
+            cancelled = true;
+         };
+      }
+
       const intervalId = window.setInterval(() => {
-         if (isPageHidden) return;
          void load();
-      }, pollMs);
+      }, 1000);
 
       return () => {
          cancelled = true;
          window.clearInterval(intervalId);
       };
-   }, [isPageHidden, pollMs, roomCode, router]);
+   }, [loadSnapshot, shouldPoll]);
 
    useEffect(() => {
-      const intervalId = window.setInterval(() => setNow(Date.now()), 250);
-      return () => window.clearInterval(intervalId);
+      if (!snapshot?.battleStartsAt || snapshot.viewerSubmitted) {
+         return;
+      }
+
+      const startAt = new Date(snapshot.battleStartsAt).getTime();
+      const startKey = snapshot.battleStartsAt;
+
+      if (startAt > now) {
+         return;
+      }
+
+      setLocalBattle((current) => {
+         if (current?.startKey === startKey) {
+            return current;
+         }
+
+         return {
+            ...createInitialLocalState(startKey),
+            questionStartedAt: Date.now(),
+         };
+      });
+   }, [now, snapshot]);
+
+   const clearQuestionTimer = useCallback(() => {
+      if (questionTimerRef.current) {
+         window.clearTimeout(questionTimerRef.current);
+         questionTimerRef.current = null;
+      }
    }, []);
 
+   const submitBattle = useCallback(async (answers: BattleSubmissionAnswer[]) => {
+      if (!snapshot || submitLoading) return;
+
+      try {
+         clearQuestionTimer();
+         setSubmitLoading(true);
+         const totalResponseMs = answers.reduce(
+            (sum, answer) => sum + answer.responseMs,
+            0,
+         );
+
+         const token = await getSupabaseAccessToken();
+         const response = await fetch("/api/vocabulary-battle/submit", {
+            method: "POST",
+            headers: {
+               "Content-Type": "application/json",
+               Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+               roomCode: snapshot.roomCode,
+               answers,
+               totalResponseMs,
+            }),
+         });
+
+         const payload = await response.json();
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to submit battle.");
+         }
+
+         setSnapshot(payload);
+         setLocalBattle((current) =>
+            current ? { ...current, submitted: true } : current,
+         );
+         setError(null);
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to submit battle.",
+         );
+      } finally {
+         setSubmitLoading(false);
+      }
+   }, [clearQuestionTimer, snapshot, submitLoading]);
+
+   const advanceBattle = useCallback(
+      (selectedOptionIndex: number | null, responseMs: number) => {
+         setLocalBattle((current) => {
+            if (!current || !snapshot) return current;
+
+            const nextAnswers = [
+               ...current.answers,
+               {
+                  questionIndex: current.currentIndex,
+                  selectedOptionIndex,
+                  responseMs,
+               },
+            ];
+
+            if (current.currentIndex + 1 >= snapshot.questionBank.length) {
+               void submitBattle(nextAnswers);
+               return {
+                  ...current,
+                  answers: nextAnswers,
+                  currentIndex: current.currentIndex + 1,
+                  submitted: true,
+               };
+            }
+
+            return {
+               ...current,
+               answers: nextAnswers,
+               currentIndex: current.currentIndex + 1,
+               questionStartedAt: Date.now(),
+            };
+         });
+      },
+      [snapshot, submitBattle],
+   );
+
    useEffect(() => {
-      if (!snapshot) return;
-
-      const questionKey = `${snapshot.currentQuestionIndex}:${snapshot.phaseStartedAt}`;
-      if (latestQuestionKey.current !== questionKey) {
-         latestQuestionKey.current = questionKey;
-         setAnswerLoading(false);
-      }
-   }, [snapshot]);
-
-   const msRemaining = useMemo(() => {
-      if (!snapshot?.phaseStartedAt || snapshot.status !== "active") {
-         return 0;
+      if (
+         !snapshot ||
+         snapshot.viewerSubmitted ||
+         snapshot.status !== "active" ||
+         !localBattle ||
+         localBattle.submitted ||
+         localBattle.currentIndex >= snapshot.questionBank.length
+      ) {
+         clearQuestionTimer();
+         return;
       }
 
-      const phaseStartedAt = new Date(snapshot.phaseStartedAt).getTime();
-      if (phaseStartedAt > now) {
-         return 0;
+      clearQuestionTimer();
+      questionTimerRef.current = window.setTimeout(() => {
+         advanceBattle(null, snapshot.timeLimitSeconds * 1000);
+      }, snapshot.timeLimitSeconds * 1000);
+
+      return () => {
+         clearQuestionTimer();
+      };
+   }, [advanceBattle, clearQuestionTimer, localBattle, snapshot]);
+
+   const activeQuestion = useMemo(() => {
+      if (!snapshot || !localBattle) return null;
+      return snapshot.questionBank[localBattle.currentIndex] || null;
+   }, [localBattle, snapshot]);
+
+   const localTimeRemaining = useMemo(() => {
+      if (!snapshot || !localBattle || !activeQuestion) {
+         return snapshot?.timeLimitSeconds ? snapshot.timeLimitSeconds * 1000 : 0;
       }
 
-      const deadline = phaseStartedAt + snapshot.timeLimitSeconds * 1000;
-
-      return Math.max(0, deadline - now);
-   }, [now, snapshot]);
+      const elapsed = now - localBattle.questionStartedAt;
+      return Math.max(0, snapshot.timeLimitSeconds * 1000 - elapsed);
+   }, [activeQuestion, localBattle, now, snapshot]);
 
    const countdownMs = useMemo(() => {
-      if (!snapshot?.phaseStartedAt || snapshot.status !== "active") {
-         return 0;
-      }
-
-      return Math.max(0, new Date(snapshot.phaseStartedAt).getTime() - now);
+      if (!snapshot?.battleStartsAt) return 0;
+      return Math.max(0, new Date(snapshot.battleStartsAt).getTime() - now);
    }, [now, snapshot]);
-
-   const displayedQuestion =
-      snapshot?.questionBank[snapshot.currentQuestionIndex] ||
-      snapshot?.currentQuestion ||
-      null;
 
    const sortedPlayers = useMemo(
       () =>
          [...(snapshot?.players || [])].sort((a, b) => {
             if (b.score !== a.score) return b.score - a.score;
-            return a.joinedAt.localeCompare(b.joinedAt);
+            return a.totalResponseMs - b.totalResponseMs;
          }),
       [snapshot],
    );
@@ -157,42 +290,47 @@ export default function BattleRoomPage() {
       window.setTimeout(() => setCopied(false), 1500);
    };
 
-   const handleAnswer = async (selectedOptionIndex: number) => {
-      if (!snapshot || snapshot.viewerHasAnsweredCurrentQuestion || answerLoading) {
-         return;
-      }
+   const handleReady = async () => {
+      if (!snapshot || readyLoading || snapshot.viewerReady) return;
 
       try {
-         setAnswerLoading(true);
-         setError(null);
-
+         setReadyLoading(true);
          const token = await getSupabaseAccessToken();
-         const response = await fetch("/api/vocabulary-battle/answer", {
+         const response = await fetch("/api/vocabulary-battle/ready", {
             method: "POST",
             headers: {
                "Content-Type": "application/json",
                Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({
-               roomCode: snapshot.roomCode,
-               selectedOptionIndex,
-            }),
+            body: JSON.stringify({ roomCode: snapshot.roomCode }),
          });
 
          const payload = await response.json();
          if (!response.ok) {
-            throw new Error(payload.error || "Failed to submit answer.");
+            throw new Error(payload.error || "Failed to mark ready.");
          }
 
          setSnapshot(payload);
+         setError(null);
       } catch (requestError) {
          setError(
             requestError instanceof Error
                ? requestError.message
-               : "Failed to submit answer.",
+               : "Failed to mark ready.",
          );
-         setAnswerLoading(false);
+      } finally {
+         setReadyLoading(false);
       }
+   };
+
+   const handleSelectAnswer = (selectedOptionIndex: number) => {
+      if (!snapshot || !localBattle || !activeQuestion || submitLoading) return;
+
+      const responseMs = Math.min(
+         Math.max(Date.now() - localBattle.questionStartedAt, 0),
+         snapshot.timeLimitSeconds * 1000,
+      );
+      advanceBattle(selectedOptionIndex, responseMs);
    };
 
    if (loading) {
@@ -222,9 +360,9 @@ export default function BattleRoomPage() {
    const winner = snapshot.players.find(
       (player) => player.userId === snapshot.winnerUserId,
    );
-   const viewerPosition =
-      sortedPlayers.findIndex((player) => player.userId === snapshot.viewerUserId) +
-      1;
+   const bothPlayersJoined = snapshot.players.length === 2;
+   const everyoneReady =
+      bothPlayersJoined && snapshot.players.every((player) => player.isReady);
 
    return (
       <div className="space-y-6">
@@ -237,7 +375,10 @@ export default function BattleRoomPage() {
                </Link>
                <h1 className="text-3xl font-semibold">{snapshot.deckTitle}</h1>
                <p className="text-sm text-slate-400">
-                  Room <span className="font-semibold text-slate-200">{snapshot.roomCode}</span>
+                  Room{" "}
+                  <span className="font-semibold text-slate-200">
+                     {snapshot.roomCode}
+                  </span>
                </p>
             </div>
 
@@ -258,93 +399,109 @@ export default function BattleRoomPage() {
          <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
             <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 space-y-6">
                {snapshot.status === "waiting" && (
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                      <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
                         <p className="text-sm uppercase tracking-[0.2em] text-emerald-300">
-                           Waiting for opponent
+                           Ready room
                         </p>
                         <p className="mt-2 text-lg text-slate-100">
-                           Share room code <span className="font-semibold">{snapshot.roomCode}</span> to start the match.
+                           Both players download the same questions now. Press ready
+                           when you want to start.
                         </p>
                      </div>
-                     <p className="text-sm text-slate-400">
-                        The battle begins as soon as the second player joins.
+
+                     {!bothPlayersJoined && (
+                        <p className="text-sm text-slate-400">
+                           Waiting for the second player to join this room.
+                        </p>
+                     )}
+
+                     {bothPlayersJoined && !snapshot.viewerReady && (
+                        <button
+                           type="button"
+                           onClick={handleReady}
+                           disabled={readyLoading}
+                           className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
+                           {readyLoading ? "Saving..." : "I'm ready"}
+                        </button>
+                     )}
+
+                     {snapshot.viewerReady && !everyoneReady && (
+                        <p className="text-sm text-slate-300">
+                           You are ready. Waiting for the other player.
+                        </p>
+                     )}
+                  </div>
+               )}
+
+               {snapshot.status === "active" && countdownMs > 0 && (
+                  <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 px-6 py-12 text-center">
+                     <p className="text-sm uppercase tracking-[0.2em] text-emerald-300">
+                        Countdown
+                     </p>
+                     <p className="mt-4 text-7xl font-semibold text-slate-50">
+                        {Math.ceil(countdownMs / 1000)}
+                     </p>
+                     <p className="mt-4 text-sm text-slate-300">
+                        The battle starts as soon as the countdown ends.
                      </p>
                   </div>
                )}
 
-               {snapshot.status === "active" && displayedQuestion && (
-                  <div className="space-y-6">
-                     <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                           <p className="text-sm uppercase tracking-[0.2em] text-slate-400">
-                              Question {snapshot.currentQuestionIndex + 1} of{" "}
-                              {snapshot.questionCount}
-                           </p>
-                           <h2 className="mt-2 text-3xl font-semibold">
-                              {displayedQuestion.prompt}
-                           </h2>
+               {snapshot.status === "active" &&
+                  countdownMs <= 0 &&
+                  !snapshot.viewerSubmitted &&
+                  activeQuestion && (
+                     <div className="space-y-6">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                           <div>
+                              <p className="text-sm uppercase tracking-[0.2em] text-slate-400">
+                                 Question {(localBattle?.currentIndex ?? 0) + 1} of{" "}
+                                 {snapshot.questionCount}
+                              </p>
+                              <h2 className="mt-2 text-3xl font-semibold">
+                                 {activeQuestion.prompt}
+                              </h2>
+                           </div>
+
+                           <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200">
+                              {Math.ceil(localTimeRemaining / 1000)}s left
+                           </div>
                         </div>
 
-                        <div className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200">
-                           {countdownMs > 0
-                              ? `Starts in ${Math.ceil(countdownMs / 1000)}s`
-                              : `${Math.ceil(msRemaining / 1000)}s left`}
-                        </div>
-                     </div>
-
-                     {countdownMs > 0 ? (
-                        <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 px-6 py-10 text-center">
-                           <p className="text-sm uppercase tracking-[0.2em] text-emerald-300">
-                              Battle starts soon
-                           </p>
-                           <p className="mt-3 text-6xl font-semibold text-slate-50">
-                              {Math.ceil(countdownMs / 1000)}
-                           </p>
-                           <p className="mt-3 text-sm text-slate-300">
-                              Questions are preloaded. The first round will open
-                              automatically.
-                           </p>
-                        </div>
-                     ) : (
                         <div className="grid gap-3">
-                           {displayedQuestion.options.map((option, index) => {
-                           const isSelected =
-                              snapshot.viewerSelectedOptionIndex === index;
-                           const isLocked =
-                              snapshot.viewerHasAnsweredCurrentQuestion ||
-                              answerLoading ||
-                              msRemaining === 0;
-
-                           return (
+                           {activeQuestion.options.map((option, index) => (
                               <button
-                                 key={`${index}-${option}`}
+                                 key={`${activeQuestion.questionIndex}-${index}`}
                                  type="button"
-                                 onClick={() => handleAnswer(index)}
-                                 disabled={isLocked}
-                                 className={`cursor-pointer rounded-2xl border px-4 py-4 text-left text-sm transition ${
-                                    isSelected
-                                       ? "border-emerald-400 bg-emerald-500/10 text-emerald-100"
-                                       : "border-slate-800 bg-slate-950/70 text-slate-200 hover:border-slate-600 hover:bg-slate-900"
-                                 } disabled:cursor-not-allowed disabled:opacity-75`}>
+                                 onClick={() => handleSelectAnswer(index)}
+                                 disabled={submitLoading}
+                                 className="cursor-pointer rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-4 text-left text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
                                  {option}
                               </button>
-                           );
-                           })}
+                           ))}
                         </div>
-                     )}
-
-                     <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-400">
-                        {countdownMs > 0
-                           ? "Get ready. The first timer has not started yet."
-                           : snapshot.viewerHasAnsweredCurrentQuestion
-                           ? "Answer locked in. Waiting for the next question."
-                           : msRemaining === 0
-                             ? "Time is up. Waiting for the room to advance."
-                             : "Choose the correct meaning before the timer expires."}
                      </div>
-                  </div>
-               )}
+                  )}
+
+               {snapshot.status === "active" &&
+                  (snapshot.viewerSubmitted || submitLoading) && (
+                     <div className="space-y-4">
+                        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
+                           <p className="text-sm uppercase tracking-[0.2em] text-emerald-300">
+                              Results sent
+                           </p>
+                           <p className="mt-2 text-lg text-slate-100">
+                              Your battle is complete. Waiting for the other player to
+                              finish.
+                           </p>
+                        </div>
+                        <p className="text-sm text-slate-400">
+                           You can stay on this page. Final results will appear
+                           automatically.
+                        </p>
+                     </div>
+                  )}
 
                {snapshot.status === "finished" && (
                   <div className="space-y-5">
@@ -363,8 +520,7 @@ export default function BattleRoomPage() {
                         </p>
                         <p className="mt-1 text-sm text-slate-300">
                            Total answer time{" "}
-                           {((viewer?.totalResponseMs || 0) / 1000).toFixed(1)}s ·
-                           place #{viewerPosition}
+                           {((viewer?.totalResponseMs || 0) / 1000).toFixed(1)}s
                         </p>
                      </div>
 
@@ -413,29 +569,6 @@ export default function BattleRoomPage() {
                                        );
                                     })}
                                  </div>
-
-                                 <div className="flex flex-wrap gap-3 text-xs text-slate-400">
-                                    <span>
-                                       Your answer:{" "}
-                                       {viewerAnswer
-                                          ? viewerAnswer.selectedOptionIndex !== null
-                                             ? question.options[
-                                                  viewerAnswer.selectedOptionIndex
-                                               ]
-                                             : "No answer"
-                                          : "No answer"}
-                                    </span>
-                                    <span>
-                                       Result:{" "}
-                                       {viewerAnswer?.isCorrect ? "Correct" : "Incorrect"}
-                                    </span>
-                                    <span>
-                                       Time:{" "}
-                                       {viewerAnswer
-                                          ? `${(viewerAnswer.responseMs / 1000).toFixed(1)}s`
-                                          : "0.0s"}
-                                    </span>
-                                 </div>
                               </div>
                            );
                         })}
@@ -452,9 +585,9 @@ export default function BattleRoomPage() {
 
             <aside className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Scoreboard</h2>
+                  <h2 className="text-lg font-semibold">Players</h2>
                   <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                     Live
+                     Room
                   </span>
                </div>
 
@@ -474,18 +607,21 @@ export default function BattleRoomPage() {
                                  {player.username}
                               </p>
                            </div>
-                           <div className="text-right">
-                              <p className="text-2xl font-semibold text-slate-50">
-                                 {player.score}
-                              </p>
-                              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                                 correct
-                              </p>
-                            </div>
+                           <div className="text-right text-xs text-slate-400">
+                              {player.submittedAt
+                                 ? "Finished"
+                                 : player.isReady
+                                   ? "Ready"
+                                   : "Not ready"}
+                           </div>
                         </div>
-                        <p className="mt-2 text-xs text-slate-500">
-                           Total time {(player.totalResponseMs / 1000).toFixed(1)}s
-                        </p>
+
+                        {snapshot.status === "finished" && (
+                           <div className="mt-3 text-sm text-slate-300">
+                              {player.score} correct ·{" "}
+                              {(player.totalResponseMs / 1000).toFixed(1)}s
+                           </div>
+                        )}
                      </div>
                   ))}
                </div>

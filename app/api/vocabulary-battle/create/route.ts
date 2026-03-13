@@ -56,6 +56,8 @@ export async function POST(req: Request) {
             user_id: userId,
             username,
             score: 0,
+            total_response_ms: 0,
+            is_ready: false,
          });
 
       if (playerError) {

@@ -2,11 +2,12 @@ export const BATTLE_ROOM_CODE_LENGTH = 6;
 export const BATTLE_QUESTION_COUNT = 10;
 export const BATTLE_TIME_LIMIT_SECONDS = 10;
 export const BATTLE_MINIMUM_CARD_COUNT = 10;
-export const BATTLE_START_COUNTDOWN_SECONDS = 5;
+export const BATTLE_READY_COUNTDOWN_SECONDS = 10;
 
 export type BattleRoomStatus = "waiting" | "active" | "finished";
 
 export type BattleQuestionPayload = {
+   questionIndex: number;
    prompt: string;
    options: string[];
 };
@@ -17,6 +18,9 @@ export type BattlePlayerSnapshot = {
    score: number;
    joinedAt: string;
    totalResponseMs: number;
+   isReady: boolean;
+   readyAt: string | null;
+   submittedAt: string | null;
 };
 
 export type BattleQuestionAnswerReview = {
@@ -52,18 +56,22 @@ export type BattleRoomSnapshot = {
    deckTitle: string;
    questionCount: number;
    timeLimitSeconds: number;
-   currentQuestionIndex: number;
-   phaseStartedAt: string | null;
+   battleStartsAt: string | null;
    winnerUserId: string | null;
    createdAt: string;
    finishedAt: string | null;
    viewerUserId: string;
-   viewerHasAnsweredCurrentQuestion: boolean;
-   viewerSelectedOptionIndex: number | null;
+   viewerReady: boolean;
+   viewerSubmitted: boolean;
    players: BattlePlayerSnapshot[];
-   currentQuestion: BattleQuestionPayload | null;
    questionBank: BattleQuestionPayload[];
    completedQuestions: BattleQuestionReview[];
+};
+
+export type BattleSubmissionAnswer = {
+   questionIndex: number;
+   selectedOptionIndex: number | null;
+   responseMs: number;
 };
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
