@@ -708,7 +708,7 @@ export default function BattleRoomPage() {
 
                            {snapshot.status === "finished" && (
                               <div className="mt-3 text-sm text-slate-300">
-                                 {player.score} correct · {formatSeconds(player.totalResponseMs)}
+                                 {player.score} correct - {formatSeconds(player.totalResponseMs)}
                               </div>
                            )}
                         </div>
