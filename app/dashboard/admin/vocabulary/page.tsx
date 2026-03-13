@@ -37,6 +37,13 @@ type Card = {
    transcription: string | null;
 };
 
+type CardDraft = {
+   front: string;
+   back: string;
+   exampleSentence: string;
+   transcription: string;
+};
+
 async function getAccessToken() {
    const { data, error } = await supabase.auth.getSession();
    if (error || !data.session?.access_token) {
@@ -62,6 +69,7 @@ export default function AdminVocabularyPage() {
    const [folderDescription, setFolderDescription] = useState("");
    const [folderSortOrder, setFolderSortOrder] = useState("0");
    const [folderSaving, setFolderSaving] = useState(false);
+   const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
 
    const [deckTitle, setDeckTitle] = useState("");
    const [deckDescription, setDeckDescription] = useState("");
@@ -70,12 +78,18 @@ export default function AdminVocabularyPage() {
    const [deckRequiresPremium, setDeckRequiresPremium] = useState(false);
    const [deckSaving, setDeckSaving] = useState(false);
    const [deckUpdating, setDeckUpdating] = useState(false);
+   const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
 
    const [cardFront, setCardFront] = useState("");
    const [cardBack, setCardBack] = useState("");
    const [cardExample, setCardExample] = useState("");
    const [cardTranscription, setCardTranscription] = useState("");
    const [cardSaving, setCardSaving] = useState(false);
+   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+   const [editingCardDraft, setEditingCardDraft] = useState<CardDraft | null>(
+      null
+   );
 
    const selectedDeck = useMemo(
       () => decks.find((deck) => deck.id === selectedDeckId) || null,
@@ -281,6 +295,52 @@ export default function AdminVocabularyPage() {
       }
    };
 
+   const handleDeleteFolder = async (folderId: string) => {
+      const confirmed = window.confirm(
+         "Delete this folder? Decks inside it will become ungrouped."
+      );
+      if (!confirmed) return;
+
+      try {
+         setDeletingFolderId(folderId);
+         setError(null);
+         setSuccess(null);
+         const token = await getAccessToken();
+         const response = await fetch(`/api/admin/vocabulary/folders/${folderId}`, {
+            method: "DELETE",
+            headers: {
+               Authorization: `Bearer ${token}`,
+            },
+         });
+         const payload = await response.json();
+
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to delete folder.");
+         }
+
+         setFolders((prev) => prev.filter((folder) => folder.id !== folderId));
+         setDecks((prev) =>
+            prev.map((deck) =>
+               deck.folder_id === folderId
+                  ? { ...deck, folder_id: null, folder: null }
+                  : deck
+            )
+         );
+         if (deckFolderId === folderId) {
+            setDeckFolderId("");
+         }
+         setSuccess("Folder deleted.");
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to delete folder."
+         );
+      } finally {
+         setDeletingFolderId(null);
+      }
+   };
+
    const handleUpdateDeck = async (event: FormEvent) => {
       event.preventDefault();
       if (!selectedDeckId) return;
@@ -329,6 +389,49 @@ export default function AdminVocabularyPage() {
       }
    };
 
+   const handleDeleteDeck = async (deckId: string) => {
+      const confirmed = window.confirm(
+         "Delete this deck? Its cards will be removed as well."
+      );
+      if (!confirmed) return;
+
+      try {
+         setDeletingDeckId(deckId);
+         setError(null);
+         setSuccess(null);
+         const token = await getAccessToken();
+         const response = await fetch(`/api/admin/vocabulary/decks/${deckId}`, {
+            method: "DELETE",
+            headers: {
+               Authorization: `Bearer ${token}`,
+            },
+         });
+         const payload = await response.json();
+
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to delete deck.");
+         }
+
+         setDecks((prev) => prev.filter((deck) => deck.id !== deckId));
+         if (selectedDeckId === deckId) {
+            const remainingDeck = decks.find((deck) => deck.id !== deckId);
+            setSelectedDeckId(remainingDeck?.id || "");
+            setCards([]);
+            setEditingCardId(null);
+            setEditingCardDraft(null);
+         }
+         setSuccess("Deck deleted.");
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to delete deck."
+         );
+      } finally {
+         setDeletingDeckId(null);
+      }
+   };
+
    const handleCreateCard = async (event: FormEvent) => {
       event.preventDefault();
       if (!selectedDeckId) return;
@@ -374,6 +477,103 @@ export default function AdminVocabularyPage() {
          );
       } finally {
          setCardSaving(false);
+      }
+   };
+
+   const handleDeleteCard = async (cardId: string) => {
+      if (!selectedDeckId) return;
+
+      const confirmed = window.confirm("Delete this word from the deck?");
+      if (!confirmed) return;
+
+      try {
+         setDeletingCardId(cardId);
+         setError(null);
+         setSuccess(null);
+         const token = await getAccessToken();
+         const response = await fetch(
+            `/api/admin/vocabulary/decks/${selectedDeckId}/cards?cardId=${encodeURIComponent(cardId)}`,
+            {
+               method: "DELETE",
+               headers: {
+                  Authorization: `Bearer ${token}`,
+               },
+            }
+         );
+         const payload = await response.json();
+
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to delete card.");
+         }
+
+         setCards((prev) => prev.filter((card) => card.id !== cardId));
+         setSuccess("Card deleted.");
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to delete card."
+         );
+      } finally {
+         setDeletingCardId(null);
+      }
+   };
+
+   const startEditingCard = (card: Card) => {
+      setEditingCardId(card.id);
+      setEditingCardDraft({
+         front: card.front,
+         back: card.back,
+         exampleSentence: card.example_sentence || "",
+         transcription: card.transcription || "",
+      });
+   };
+
+   const cancelEditingCard = () => {
+      setEditingCardId(null);
+      setEditingCardDraft(null);
+   };
+
+   const handleSaveCard = async (cardId: string) => {
+      if (!selectedDeckId || !editingCardDraft) return;
+
+      try {
+         setDeletingCardId(cardId);
+         setError(null);
+         setSuccess(null);
+         const token = await getAccessToken();
+         const response = await fetch(
+            `/api/admin/vocabulary/decks/${selectedDeckId}/cards?cardId=${encodeURIComponent(cardId)}`,
+            {
+               method: "PATCH",
+               headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+               },
+               body: JSON.stringify(editingCardDraft),
+            }
+         );
+         const payload = await response.json();
+
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to update card.");
+         }
+
+         const updatedCard = payload.card as Card;
+         setCards((prev) =>
+            prev.map((card) => (card.id === cardId ? updatedCard : card))
+         );
+         setEditingCardId(null);
+         setEditingCardDraft(null);
+         setSuccess("Card updated.");
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to update card."
+         );
+      } finally {
+         setDeletingCardId(null);
       }
    };
 
@@ -457,6 +657,42 @@ export default function AdminVocabularyPage() {
                            {folderSaving ? "Creating..." : "Create folder"}
                         </button>
                      </form>
+
+                     {folders.length > 0 && (
+                        <div className="mt-6 grid gap-3">
+                           {folders.map((folder) => (
+                              <div
+                                 key={folder.id}
+                                 className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                                 <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                       <p className="font-semibold text-slate-100">
+                                          {folder.title}
+                                       </p>
+                                       <p className="mt-1 text-xs text-slate-500">
+                                          Slug: {folder.slug} | Sort:{" "}
+                                          {folder.sort_order}
+                                       </p>
+                                       {folder.description && (
+                                          <p className="mt-2 text-sm text-slate-400">
+                                             {folder.description}
+                                          </p>
+                                       )}
+                                    </div>
+                                    <button
+                                       type="button"
+                                       onClick={() => handleDeleteFolder(folder.id)}
+                                       disabled={deletingFolderId === folder.id}
+                                       className="cursor-pointer rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50">
+                                       {deletingFolderId === folder.id
+                                          ? "Deleting..."
+                                          : "Delete"}
+                                    </button>
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
+                     )}
                   </section>
 
                   <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6">
@@ -537,35 +773,49 @@ export default function AdminVocabularyPage() {
 
                      <div className="mt-6 grid gap-3">
                         {decks.map((deck) => (
-                           <button
+                           <div
                               key={deck.id}
-                              type="button"
-                              onClick={() => setSelectedDeckId(deck.id)}
-                              className={`rounded-2xl border p-4 text-left transition ${
+                              className={`rounded-2xl border p-4 transition ${
                                  selectedDeckId === deck.id
                                     ? "border-emerald-500 bg-emerald-500/10"
                                     : "border-slate-800 bg-slate-950/60 hover:border-slate-700"
                               }`}>
-                              <div className="flex items-start justify-between gap-3">
-                                 <div>
-                                    <p className="font-semibold text-slate-100">
-                                       {deck.title}
-                                    </p>
-                                    {deck.description && (
-                                       <p className="mt-1 text-sm text-slate-400">
-                                          {deck.description}
+                              <button
+                                 type="button"
+                                 onClick={() => setSelectedDeckId(deck.id)}
+                                 className="w-full text-left">
+                                 <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                       <p className="font-semibold text-slate-100">
+                                          {deck.title}
                                        </p>
-                                    )}
+                                       {deck.description && (
+                                          <p className="mt-1 text-sm text-slate-400">
+                                             {deck.description}
+                                          </p>
+                                       )}
+                                    </div>
+                                    <span className="text-xs text-slate-500">
+                                       {deck.is_public ? "Public" : "Private"}
+                                    </span>
                                  </div>
-                                 <span className="text-xs text-slate-500">
-                                    {deck.is_public ? "Public" : "Private"}
-                                 </span>
+                                 <p className="mt-3 text-xs text-slate-500">
+                                    Folder: {deck.folder?.title || "None"} | Premium:{" "}
+                                    {deck.requires_premium ? "Yes" : "No"}
+                                 </p>
+                              </button>
+                              <div className="mt-3 flex justify-end">
+                                 <button
+                                    type="button"
+                                    onClick={() => handleDeleteDeck(deck.id)}
+                                    disabled={deletingDeckId === deck.id}
+                                    className="cursor-pointer rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50">
+                                    {deletingDeckId === deck.id
+                                       ? "Deleting..."
+                                       : "Delete deck"}
+                                 </button>
                               </div>
-                              <p className="mt-3 text-xs text-slate-500">
-                                 Folder: {deck.folder?.title || "None"} | Premium:{" "}
-                                 {deck.requires_premium ? "Yes" : "No"}
-                              </p>
-                           </button>
+                           </div>
                         ))}
                      </div>
                   </section>
@@ -702,25 +952,126 @@ export default function AdminVocabularyPage() {
                               <div
                                  key={card.id}
                                  className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                                 <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                       <p className="font-semibold text-slate-100">
-                                          {card.front}
-                                       </p>
-                                       <p className="mt-1 text-sm text-slate-400">
-                                          {card.back}
-                                       </p>
+                                 {editingCardId === card.id && editingCardDraft ? (
+                                    <div className="space-y-3">
+                                       <input
+                                          value={editingCardDraft.front}
+                                          onChange={(event) =>
+                                             setEditingCardDraft((prev) =>
+                                                prev
+                                                   ? {
+                                                        ...prev,
+                                                        front: event.target.value,
+                                                     }
+                                                   : prev
+                                             )
+                                          }
+                                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                                       />
+                                       <textarea
+                                          value={editingCardDraft.back}
+                                          onChange={(event) =>
+                                             setEditingCardDraft((prev) =>
+                                                prev
+                                                   ? {
+                                                        ...prev,
+                                                        back: event.target.value,
+                                                     }
+                                                   : prev
+                                             )
+                                          }
+                                          rows={3}
+                                          className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                                       />
+                                       <textarea
+                                          value={editingCardDraft.exampleSentence}
+                                          onChange={(event) =>
+                                             setEditingCardDraft((prev) =>
+                                                prev
+                                                   ? {
+                                                        ...prev,
+                                                        exampleSentence:
+                                                           event.target.value,
+                                                     }
+                                                   : prev
+                                             )
+                                          }
+                                          rows={2}
+                                          className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                                       />
+                                       <input
+                                          value={editingCardDraft.transcription}
+                                          onChange={(event) =>
+                                             setEditingCardDraft((prev) =>
+                                                prev
+                                                   ? {
+                                                        ...prev,
+                                                        transcription:
+                                                           event.target.value,
+                                                     }
+                                                   : prev
+                                             )
+                                          }
+                                          className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                                       />
+                                       <div className="flex justify-end gap-2">
+                                          <button
+                                             type="button"
+                                             onClick={cancelEditingCard}
+                                             className="cursor-pointer rounded-full border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800">
+                                             Cancel
+                                          </button>
+                                          <button
+                                             type="button"
+                                             onClick={() => handleSaveCard(card.id)}
+                                             disabled={deletingCardId === card.id}
+                                             className="cursor-pointer rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50">
+                                             {deletingCardId === card.id
+                                                ? "Saving..."
+                                                : "Save"}
+                                          </button>
+                                       </div>
                                     </div>
-                                    {card.transcription && (
-                                       <span className="text-xs text-emerald-300">
-                                          /{card.transcription}/
-                                       </span>
-                                    )}
-                                 </div>
-                                 {card.example_sentence && (
-                                    <p className="mt-2 text-xs italic text-slate-500">
-                                       {card.example_sentence}
-                                    </p>
+                                 ) : (
+                                    <>
+                                       <div className="flex items-start justify-between gap-3">
+                                          <div>
+                                             <p className="font-semibold text-slate-100">
+                                                {card.front}
+                                             </p>
+                                             <p className="mt-1 text-sm text-slate-400">
+                                                {card.back}
+                                             </p>
+                                          </div>
+                                          {card.transcription && (
+                                             <span className="text-xs text-emerald-300">
+                                                /{card.transcription}/
+                                             </span>
+                                          )}
+                                       </div>
+                                       {card.example_sentence && (
+                                          <p className="mt-2 text-xs italic text-slate-500">
+                                             {card.example_sentence}
+                                          </p>
+                                       )}
+                                       <div className="mt-3 flex justify-end gap-2">
+                                          <button
+                                             type="button"
+                                             onClick={() => startEditingCard(card)}
+                                             className="cursor-pointer rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/10">
+                                             Edit
+                                          </button>
+                                          <button
+                                             type="button"
+                                             onClick={() => handleDeleteCard(card.id)}
+                                             disabled={deletingCardId === card.id}
+                                             className="cursor-pointer rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50">
+                                             {deletingCardId === card.id
+                                                ? "Deleting..."
+                                                : "Delete"}
+                                          </button>
+                                       </div>
+                                    </>
                                  )}
                               </div>
                            ))

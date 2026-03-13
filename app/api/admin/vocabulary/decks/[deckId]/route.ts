@@ -61,3 +61,30 @@ export async function PATCH(
       return jsonError(error, "Failed to update deck.");
    }
 }
+
+export async function DELETE(
+   req: Request,
+   context: { params: Promise<{ deckId: string }> }
+) {
+   try {
+      await requireAdminUser(req);
+      const { deckId } = await context.params;
+
+      if (!deckId) {
+         throw new Error("Deck id is required.");
+      }
+
+      const { error } = await supabaseAdmin
+         .from("vocabulary_decks")
+         .delete()
+         .eq("id", deckId);
+
+      if (error) {
+         throw new Error("Failed to delete deck.");
+      }
+
+      return NextResponse.json({ success: true });
+   } catch (error) {
+      return jsonError(error, "Failed to delete deck.");
+   }
+}
