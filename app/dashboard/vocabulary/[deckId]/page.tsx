@@ -9,13 +9,16 @@ import { getPremiumStatus } from "@/lib/premium";
 import PracticeView from "@/components/vocabulary/PracticeView";
 import { useSRS, CardWithHealth, COOLDOWN_MS } from "@/app/hooks/useSRS";
 
-// Types for deck + raw card data from DB
 type Deck = {
    id: string;
    title: string;
    description: string | null;
    is_public: boolean;
    requires_premium: boolean;
+   folder: {
+      slug: string;
+      title: string;
+   } | null;
 };
 
 type CardRow = {
@@ -44,7 +47,6 @@ export default function DeckPage() {
    const [cardsLoading, setCardsLoading] = useState(true);
 
    const [userId, setUserId] = useState<string | null>(null);
-   const [isPremium, setIsPremium] = useState(false);
    const [locked, setLocked] = useState(false);
 
    const [addingCard, setAddingCard] = useState(false);
@@ -55,14 +57,12 @@ export default function DeckPage() {
    const [cardError, setCardError] = useState<string | null>(null);
    const [deletingId, setDeletingId] = useState<string | null>(null);
 
-   // For live countdowns (grid + practice message)
-   const [now, setNow] = useState(Date.now());
+   const [now, setNow] = useState(() => Date.now());
    useEffect(() => {
       const id = setInterval(() => setNow(Date.now()), 1000);
       return () => clearInterval(id);
    }, []);
 
-   // SRS hook – drives practice queue + cooldown + current card
    const {
       state: srsState,
       startPractice,
@@ -73,10 +73,10 @@ export default function DeckPage() {
       setSwipe,
    } = useSRS(rawCards);
 
-   // ----- 1. Load user + deck + premium -----
    useEffect(() => {
       const loadDeck = async () => {
          setLoadingDeck(true);
+         setLocked(false);
 
          const { data: userData, error: userError } =
             await supabase.auth.getUser();
@@ -92,12 +92,13 @@ export default function DeckPage() {
             uid = userData.user.id;
             premium = await getPremiumStatus(uid);
             setUserId(uid);
-            setIsPremium(premium);
          }
 
          const { data: deckData, error: deckError } = await supabase
             .from("vocabulary_decks")
-            .select("id, title, description, is_public, requires_premium")
+            .select(
+               "id, title, description, is_public, requires_premium, folder:vocabulary_folders(slug, title)"
+            )
             .eq("id", deckId)
             .single();
 
@@ -105,9 +106,9 @@ export default function DeckPage() {
             console.error("Error loading deck:", deckError);
             setDeck(null);
          } else if (deckData) {
-            const d = deckData as Deck;
-            setDeck(d);
-            if (d.requires_premium && !premium) {
+            const loadedDeck = deckData as Deck;
+            setDeck(loadedDeck);
+            if (loadedDeck.requires_premium && !premium) {
                setLocked(true);
             }
          }
@@ -118,7 +119,6 @@ export default function DeckPage() {
       loadDeck();
    }, [deckId]);
 
-   // ----- 2. Load cards + progress from Supabase -----
    useEffect(() => {
       const fetchCards = async () => {
          if (!userId || locked) {
@@ -128,7 +128,6 @@ export default function DeckPage() {
 
          setCardsLoading(true);
 
-         // Load all cards in this deck
          const { data: cardsData, error: cardsError } = await supabase
             .from("vocabulary_cards")
             .select("id, front, back, example_sentence, transcription")
@@ -150,7 +149,6 @@ export default function DeckPage() {
 
          const ids = (cardsData as CardRow[]).map((c) => c.id);
 
-         // Load per-card progress for this user
          const { data: progressData, error: progressError } = await supabase
             .from("vocabulary_card_progress")
             .select("card_id, health, last_reviewed_at")
@@ -165,6 +163,7 @@ export default function DeckPage() {
             string,
             { health: number; lastReviewed: string | null }
          >();
+
          (progressData || []).forEach((row) => {
             progressMap.set(row.card_id, {
                health: row.health ?? 1,
@@ -174,14 +173,14 @@ export default function DeckPage() {
 
          const cardsWithHealth: CardWithHealth[] = (cardsData as CardRow[]).map(
             (card) => {
-               const p = progressMap.get(card.id);
+               const progress = progressMap.get(card.id);
                let health = 1;
                let cooldownUntil: number | null = null;
 
-               if (p) {
-                  health = p.health ?? 1;
-                  if (p.lastReviewed) {
-                     const last = new Date(p.lastReviewed).getTime();
+               if (progress) {
+                  health = progress.health ?? 1;
+                  if (progress.lastReviewed) {
+                     const last = new Date(progress.lastReviewed).getTime();
                      const until = last + COOLDOWN_MS;
                      if (until > Date.now()) {
                         cooldownUntil = until;
@@ -204,16 +203,15 @@ export default function DeckPage() {
       fetchCards();
    }, [deckId, userId, locked]);
 
-   // ----- 3. Derive all cards from SRS state (queue + cooldown) for the grid -----
    const allCardsForGrid: CardWithHealth[] = useMemo(() => {
       const map = new Map<string, CardWithHealth>();
-      [...srsState.practiceQueue, ...srsState.cooldownList].forEach((c) => {
-         map.set(c.id, c);
+
+      [...srsState.practiceQueue, ...srsState.cooldownList].forEach((card) => {
+         map.set(card.id, card);
       });
 
-      // If SRS hasn’t loaded yet (e.g. at mount), fall back to rawCards
       if (map.size === 0 && rawCards.length > 0) {
-         rawCards.forEach((c) => map.set(c.id, c));
+         rawCards.forEach((card) => map.set(card.id, card));
       }
 
       return Array.from(map.values()).sort(
@@ -222,8 +220,11 @@ export default function DeckPage() {
    }, [srsState.practiceQueue, srsState.cooldownList, rawCards]);
 
    const hasAnyCards = allCardsForGrid.length > 0;
+   const backHref = deck?.folder
+      ? `/dashboard/vocabulary/folders/${deck.folder.slug}`
+      : "/dashboard/vocabulary";
+   const backLabel = deck?.folder ? deck.folder.title : "vocabulary";
 
-   // ----- 4. Add & delete cards -----
    const handleAddCard = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newWord.trim() || !newDefinition.trim()) {
@@ -259,7 +260,6 @@ export default function DeckPage() {
             cooldownUntil: null,
          };
 
-         // Update rawCards → triggers SRS reload via useSRS
          setRawCards((prev) => [...prev, newCard]);
       }
 
@@ -286,12 +286,10 @@ export default function DeckPage() {
          return;
       }
 
-      // Remove locally → SRS will reload from new rawCards
-      setRawCards((prev) => prev.filter((c) => c.id !== cardId));
+      setRawCards((prev) => prev.filter((card) => card.id !== cardId));
       setDeletingId(null);
    };
 
-   // ----- 5. Answer handler: combine SRS + DB update -----
    const handleAnswer = async (known: boolean) => {
       const current = srsState.currentCard;
       if (!current || !userId) return;
@@ -301,10 +299,8 @@ export default function DeckPage() {
          ? Math.min(oldHealth + 1, 4)
          : Math.max(oldHealth - 1, 0);
 
-      // First update SRS state (queue, cooldown, next card)
       answer(known);
 
-      // Then persist to Supabase
       const { error } = await supabase.from("vocabulary_card_progress").upsert(
          {
             user_id: userId,
@@ -321,7 +317,6 @@ export default function DeckPage() {
       }
    };
 
-   // ----- 6. Render -----
    if (loadingDeck) {
       return <div className="text-slate-400">Loading deck...</div>;
    }
@@ -334,9 +329,9 @@ export default function DeckPage() {
       return (
          <div className="space-y-6">
             <Link
-               href="/dashboard/vocabulary"
-               className="inline-flex items-center text-sm text-slate-400 hover:text-slate-200 transition">
-               ← Back to vocabulary
+               href={backHref}
+               className="inline-flex items-center text-sm text-slate-400 transition hover:text-slate-200">
+               ← Back to {backLabel}
             </Link>
 
             <h1 className="text-2xl font-semibold">{deck.title}</h1>
@@ -348,13 +343,13 @@ export default function DeckPage() {
             <div className="flex gap-3">
                <Link
                   href="/premium"
-                  className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 text-slate-900 font-medium">
+                  className="cursor-pointer rounded-full bg-emerald-500 px-4 py-2 font-medium text-slate-900">
                   Go premium
                </Link>
                <Link
-                  href="/dashboard/vocabulary"
-                  className="cursor-pointer px-4 py-2 rounded-full bg-slate-800 text-slate-100">
-                  Back to vocabulary
+                  href={backHref}
+                  className="cursor-pointer rounded-full bg-slate-800 px-4 py-2 text-slate-100">
+                  Back to {backLabel}
                </Link>
             </div>
          </div>
@@ -363,19 +358,17 @@ export default function DeckPage() {
 
    return (
       <div className="space-y-6">
-         {/* Back link */}
          <Link
-            href="/dashboard/vocabulary"
-            className="inline-flex items-center text-sm text-slate-400 hover:text-slate-200 transition">
-            ← Back to decks
+            href={backHref}
+            className="inline-flex items-center text-sm text-slate-400 transition hover:text-slate-200">
+            ← Back to {deck.folder ? deck.folder.title : "decks"}
          </Link>
 
-         {/* Header */}
          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
                <h1 className="text-2xl font-semibold">{deck.title}</h1>
                {deck.description && (
-                  <p className="text-sm text-slate-400 mt-1">
+                  <p className="mt-1 text-sm text-slate-400">
                      {deck.description}
                   </p>
                )}
@@ -391,8 +384,7 @@ export default function DeckPage() {
                      }
                   }}
                   disabled={!hasAnyCards}
-                  className="cursor-pointer px-4 py-2 rounded-full border border-emerald-500 text-sm font-medium
-                     text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                  className="cursor-pointer rounded-full border border-emerald-500 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50">
                   {srsState.isPracticing ? "Stop practice" : "Start practice"}
                </button>
 
@@ -402,21 +394,18 @@ export default function DeckPage() {
                         setAddingCard((prev) => !prev);
                         setCardError(null);
                      }}
-                     className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition">
+                     className="cursor-pointer rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-600">
                      {addingCard ? "Cancel" : "+ Add card"}
                   </button>
                )}
             </div>
          </div>
 
-         {/* Add card form */}
          {addingCard && (
             <form
                onSubmit={handleAddCard}
                className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-               {cardError && (
-                  <p className="text-sm text-red-400">{cardError}</p>
-               )}
+               {cardError && <p className="text-sm text-red-400">{cardError}</p>}
 
                <div className="space-y-1">
                   <label className="block text-sm text-slate-300">Word</label>
@@ -424,7 +413,7 @@ export default function DeckPage() {
                      type="text"
                      value={newWord}
                      onChange={(e) => setNewWord(e.target.value)}
-                     className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
                      placeholder="e.g. tremendous"
                   />
                </div>
@@ -436,7 +425,7 @@ export default function DeckPage() {
                   <textarea
                      value={newDefinition}
                      onChange={(e) => setNewDefinition(e.target.value)}
-                     className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-500 resize-none"
+                     className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
                      rows={3}
                      placeholder="e.g. very great in amount, scale, or intensity"
                   />
@@ -449,7 +438,7 @@ export default function DeckPage() {
                   <textarea
                      value={newExample}
                      onChange={(e) => setNewExample(e.target.value)}
-                     className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-500 resize-none"
+                     className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
                      rows={2}
                      placeholder="e.g. She made a tremendous effort to learn English."
                   />
@@ -459,7 +448,7 @@ export default function DeckPage() {
                   <button
                      type="submit"
                      disabled={cardSaving}
-                     className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed text-sm font-medium text-slate-950 transition">
+                     className="cursor-pointer rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60">
                      {cardSaving ? "Saving..." : "Save card"}
                   </button>
                   <button
@@ -475,7 +464,6 @@ export default function DeckPage() {
             </form>
          )}
 
-         {/* Practice view (uses SRS state) */}
          <PracticeView
             state={srsState}
             onFlip={flipCard}
@@ -484,15 +472,14 @@ export default function DeckPage() {
             setSwipe={setSwipe}
          />
 
-         {/* Cards grid */}
          {cardsLoading ? (
-            <p className="text-slate-500 text-sm">Loading cards...</p>
+            <p className="text-sm text-slate-500">Loading cards...</p>
          ) : !hasAnyCards ? (
-            <p className="text-slate-500 text-sm">
+            <p className="text-sm text-slate-500">
                No cards yet in this deck. Add some to get started.
             </p>
          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                {allCardsForGrid.map((card) => {
                   const cooldownLeft =
                      card.cooldownUntil && card.cooldownUntil > now
@@ -502,14 +489,14 @@ export default function DeckPage() {
                   return (
                      <div
                         key={card.id}
-                        className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 hover:border-emerald-500/60 transition">
+                        className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition hover:border-emerald-500/60">
                         <div className="flex items-start justify-between gap-2">
                            <div>
                               <h2 className="text-lg font-semibold">
                                  {card.front}
                               </h2>
                               {card.transcription && (
-                                 <p className="text-sm text-emerald-300 mt-1">
+                                 <p className="mt-1 text-sm text-emerald-300">
                                     /{card.transcription}/
                                  </p>
                               )}
@@ -519,32 +506,27 @@ export default function DeckPage() {
                               <button
                                  onClick={() => handleDeleteCard(card.id)}
                                  disabled={deletingId === card.id}
-                                 className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
-                                 {deletingId === card.id
-                                    ? "Deleting..."
-                                    : "Delete"}
+                                 className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50">
+                                 {deletingId === card.id ? "Deleting..." : "Delete"}
                               </button>
                            )}
                         </div>
 
-                        <p className="text-slate-400 text-sm mt-2">
-                           {card.back}
-                        </p>
+                        <p className="mt-2 text-sm text-slate-400">{card.back}</p>
 
                         {card.example_sentence && (
-                           <p className="text-slate-500 text-xs mt-2 italic">
+                           <p className="mt-2 text-xs italic text-slate-500">
                               {card.example_sentence}
                            </p>
                         )}
 
                         {cooldownLeft > 0 && !srsState.grindMode && (
-                           <p className="text-xs text-amber-400 mt-2">
+                           <p className="mt-2 text-xs text-amber-400">
                               Back in {formatCooldown(cooldownLeft)}
                            </p>
                         )}
 
-                        {/* Health bar */}
-                        <div className="flex gap-1 mt-3">
+                        <div className="mt-3 flex gap-1">
                            {Array.from({ length: 4 }).map((_, i) => (
                               <div
                                  key={i}

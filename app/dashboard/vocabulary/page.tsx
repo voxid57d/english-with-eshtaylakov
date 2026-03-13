@@ -16,8 +16,21 @@ type Deck = {
    requires_premium: boolean;
 };
 
+type Folder = {
+   id: string;
+   slug: string;
+   title: string;
+   description: string | null;
+   created_at: string;
+};
+
 export default function VocabularyPage() {
-   const [decks, setDecks] = useState<Deck[]>([]);
+   const [userDecks, setUserDecks] = useState<Deck[]>([]);
+   const [publicStandaloneDecks, setPublicStandaloneDecks] = useState<Deck[]>([]);
+   const [publicFolders, setPublicFolders] = useState<Folder[]>([]);
+   const [folderDeckCounts, setFolderDeckCounts] = useState<Record<string, number>>(
+      {}
+   );
    const [loading, setLoading] = useState(true);
    const [error, setError] = useState<string | null>(null);
    const [creating, setCreating] = useState(false);
@@ -29,36 +42,84 @@ export default function VocabularyPage() {
    const router = useRouter();
 
    useEffect(() => {
-      const fetchDecks = async () => {
+      const fetchVocabularyHome = async () => {
          setLoading(true);
          setError(null);
 
-         // ✅ 1) Get current user
          const { data: userData } = await supabase.auth.getUser();
 
          if (userData.user) {
-            // ✅ 2) Check if they are premium
             const premium = await getPremiumStatus(userData.user.id);
             setIsPremium(premium);
          }
 
-         // ✅ 3) Load decks as before
-         const { data, error } = await supabase
-            .from("vocabulary_decks")
-            .select("*")
-            .order("created_at", { ascending: false });
+         const [
+            userDecksResult,
+            publicStandaloneDecksResult,
+            publicFoldersResult,
+            folderedPublicDecksResult,
+         ] = await Promise.all([
+            supabase
+               .from("vocabulary_decks")
+               .select(
+                  "id, title, description, is_public, created_at, requires_premium"
+               )
+               .eq("is_public", false)
+               .order("created_at", { ascending: false }),
+            supabase
+               .from("vocabulary_decks")
+               .select(
+                  "id, title, description, is_public, created_at, requires_premium"
+               )
+               .eq("is_public", true)
+               .is("folder_id", null)
+               .order("created_at", { ascending: false }),
+            supabase
+               .from("vocabulary_folders")
+               .select("id, slug, title, description, created_at")
+               .order("sort_order", { ascending: true })
+               .order("created_at", { ascending: false }),
+            supabase
+               .from("vocabulary_decks")
+               .select("folder_id")
+               .eq("is_public", true)
+               .not("folder_id", "is", null),
+         ]);
 
-         if (error) {
-            console.error(error);
-            setError("Failed to load decks.");
-         } else {
-            setDecks(data as Deck[]);
+         if (
+            userDecksResult.error ||
+            publicStandaloneDecksResult.error ||
+            publicFoldersResult.error ||
+            folderedPublicDecksResult.error
+         ) {
+            console.error(
+               userDecksResult.error ||
+                  publicStandaloneDecksResult.error ||
+                  publicFoldersResult.error ||
+                  folderedPublicDecksResult.error
+            );
+            setError("Failed to load vocabulary.");
+            setLoading(false);
+            return;
          }
 
+         setUserDecks((userDecksResult.data || []) as Deck[]);
+         setPublicStandaloneDecks(
+            (publicStandaloneDecksResult.data || []) as Deck[]
+         );
+         setPublicFolders((publicFoldersResult.data || []) as Folder[]);
+
+         const counts: Record<string, number> = {};
+         ((folderedPublicDecksResult.data || []) as { folder_id: string }[]).forEach(
+            (deck) => {
+               counts[deck.folder_id] = (counts[deck.folder_id] || 0) + 1;
+            }
+         );
+         setFolderDeckCounts(counts);
          setLoading(false);
       };
 
-      fetchDecks();
+      fetchVocabularyHome();
    }, []);
 
    const handleCreateDeck = async (e: React.FormEvent) => {
@@ -77,18 +138,19 @@ export default function VocabularyPage() {
          .insert({
             title: newTitle.trim(),
             description: newDescription.trim() || null,
-            is_public: false, // user decks are private by default
-            requires_premium: false, // ✅ user decks are never premium-only
+            is_public: false,
+            requires_premium: false,
          })
-         .select("*")
+         .select(
+            "id, title, description, is_public, created_at, requires_premium"
+         )
          .single();
 
       if (error) {
          console.error(error);
          setError("Failed to create deck.");
       } else if (data) {
-         // Add new deck to state so it shows up immediately
-         setDecks((prev) => [data as Deck, ...prev]);
+         setUserDecks((prev) => [data as Deck, ...prev]);
          setCreating(false);
          setNewTitle("");
          setNewDescription("");
@@ -102,12 +164,11 @@ export default function VocabularyPage() {
       id: string,
       isPublic: boolean
    ) => {
-      // Don’t follow the Link when clicking delete
       e.preventDefault();
       e.stopPropagation();
 
       if (isPublic) {
-         alert("You can’t delete a system/public deck.");
+         alert("You can't delete a system/public deck.");
          return;
       }
 
@@ -126,30 +187,98 @@ export default function VocabularyPage() {
          console.error(error);
          setError("Failed to delete deck.");
       } else {
-         // Remove from local state
-         setDecks((prev) => prev.filter((deck) => deck.id !== id));
+         setUserDecks((prev) => prev.filter((deck) => deck.id !== id));
       }
 
       setDeletingId(null);
    };
 
+   const renderDeckCard = (deck: Deck) => {
+      const locked = deck.requires_premium && !isPremium;
+
+      const cardContent = (
+         <div className="group rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition block hover:border-emerald-500/60">
+            <div className="flex items-start justify-between gap-2">
+               <h3 className="text-lg font-semibold">{deck.title}</h3>
+
+               {!deck.is_public && (
+                  <button
+                     onClick={(e) => handleDeleteDeck(e, deck.id, deck.is_public)}
+                     disabled={deletingId === deck.id}
+                     className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                     {deletingId === deck.id ? "Deleting..." : "Delete"}
+                  </button>
+               )}
+            </div>
+
+            {deck.description && (
+               <p className="mt-1 line-clamp-2 text-sm text-slate-400">
+                  {deck.description}
+               </p>
+            )}
+
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-500 transition group-hover:text-slate-300">
+               <span className="flex items-center gap-2 transition group-hover:text-slate-200">
+                  {deck.is_public ? "Public deck" : "Your deck"}
+                  {deck.requires_premium && (
+                     <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 text-amber-300 transition group-hover:bg-amber-500/30 group-hover:text-amber-200">
+                        Premium
+                     </span>
+                  )}
+               </span>
+               <span className="transition group-hover:text-slate-200">
+                  {new Date(deck.created_at).toLocaleDateString()}
+               </span>
+            </div>
+         </div>
+      );
+
+      if (locked) {
+         return (
+            <button
+               key={deck.id}
+               type="button"
+               onClick={() => router.push("/premium")}
+               className="w-full cursor-pointer text-left opacity-70 transition hover:opacity-90">
+               {cardContent}
+            </button>
+         );
+      }
+
+      return (
+         <Link
+            key={deck.id}
+            href={`/dashboard/vocabulary/${deck.id}`}
+            className="block">
+            {cardContent}
+         </Link>
+      );
+   };
+
+   const isEmpty =
+      !loading &&
+      !error &&
+      userDecks.length === 0 &&
+      publicFolders.length === 0 &&
+      publicStandaloneDecks.length === 0;
+
    return (
       <div className="space-y-6">
          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-               <h1 className="text-2xl font-semibold flex items-center gap-2">
+               <h1 className="flex items-center gap-2 text-2xl font-semibold">
                   <PiBookOpenTextLight className="text-emerald-400" />
                   <span>Vocabulary</span>
                </h1>
 
                <p className="text-sm text-slate-400">
-                  Choose a deck to start practicing.
+                  Browse public folders or open one of your own decks.
                </p>
             </div>
 
             <button
                onClick={() => setCreating((prev) => !prev)}
-               className="cursor-pointer px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-medium text-slate-950 transition self-start sm:self-auto">
+               className="self-start rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-600 sm:self-auto">
                {creating ? "Cancel" : "+ Create new deck"}
             </button>
          </header>
@@ -166,7 +295,7 @@ export default function VocabularyPage() {
                      type="text"
                      value={newTitle}
                      onChange={(e) => setNewTitle(e.target.value)}
-                     className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
                      placeholder="e.g. Travel phrases"
                   />
                </div>
@@ -178,7 +307,7 @@ export default function VocabularyPage() {
                   <textarea
                      value={newDescription}
                      onChange={(e) => setNewDescription(e.target.value)}
-                     className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-500 resize-none"
+                     className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
                      rows={3}
                      placeholder="Short description of this deck..."
                   />
@@ -188,7 +317,7 @@ export default function VocabularyPage() {
                   <button
                      type="submit"
                      disabled={saving}
-                     className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed text-sm font-medium text-slate-950 transition">
+                     className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60">
                      {saving ? "Creating..." : "Create deck"}
                   </button>
                   <button
@@ -199,104 +328,97 @@ export default function VocabularyPage() {
                         setNewDescription("");
                         setError(null);
                      }}
-                     className="text-sm text-slate-400 hover:text-slate-200 cursor-pointer">
+                     className="cursor-pointer text-sm text-slate-400 hover:text-slate-200">
                      Cancel
                   </button>
                </div>
             </form>
          )}
 
-         {/* Loading state */}
-         {loading && (
-            <div className="text-sm text-slate-400">Loading decks...</div>
-         )}
+         {loading && <div className="text-sm text-slate-400">Loading vocabulary...</div>}
 
-         {/* Error state */}
-         {!loading && error && (
-            <div className="text-sm text-red-400">{error}</div>
-         )}
+         {!loading && error && <div className="text-sm text-red-400">{error}</div>}
 
-         {/* Empty state */}
-         {!loading && !error && decks.length === 0 && (
+         {isEmpty && (
             <div className="text-sm text-slate-400">
                No decks yet. Click &quot;Create new deck&quot; to get started.
             </div>
          )}
 
-         {/* Decks grid */}
-         {!loading && !error && decks.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-               {decks.map((deck) => {
-                  const locked = deck.requires_premium && !isPremium;
+         {!loading && !error && publicFolders.length > 0 && (
+            <section className="space-y-3">
+               <div>
+                  <h2 className="text-lg font-semibold text-slate-100">
+                     Public folders
+                  </h2>
+                  <p className="text-sm text-slate-400">
+                     Start with a topic, then choose a public deck inside it.
+                  </p>
+               </div>
 
-                  const cardContent = (
-                     <div className="group rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition block hover:border-emerald-500/60">
+               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {publicFolders.map((folder) => (
+                     <Link
+                        key={folder.id}
+                        href={`/dashboard/vocabulary/folders/${folder.slug}`}
+                        className="group block rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition hover:border-emerald-500/60">
                         <div className="flex items-start justify-between gap-2">
-                           <h2 className="text-lg font-semibold">
-                              {deck.title}
-                           </h2>
-
-                           {/* Delete button only for your own (non-public) decks */}
-                           {!deck.is_public && (
-                              <button
-                                 onClick={(e) =>
-                                    handleDeleteDeck(e, deck.id, deck.is_public)
-                                 }
-                                 disabled={deletingId === deck.id}
-                                 className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
-                                 {deletingId === deck.id
-                                    ? "Deleting..."
-                                    : "Delete"}
-                              </button>
-                           )}
+                           <h3 className="text-lg font-semibold">{folder.title}</h3>
+                           <span className="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-slate-400">
+                              {folderDeckCounts[folder.id] || 0} decks
+                           </span>
                         </div>
 
-                        {deck.description && (
-                           <p className="text-sm text-slate-400 mt-1 line-clamp-2">
-                              {deck.description}
+                        {folder.description && (
+                           <p className="mt-1 line-clamp-2 text-sm text-slate-400">
+                              {folder.description}
                            </p>
                         )}
 
                         <div className="mt-3 flex items-center justify-between text-xs text-slate-500 transition group-hover:text-slate-300">
-                           <span className="flex items-center gap-2 transition group-hover:text-slate-200">
-                              {deck.is_public ? "Public deck" : "Your deck"}
-                              {deck.requires_premium && (
-                                 <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 transition group-hover:bg-amber-500/30 group-hover:text-amber-200">
-                                    Premium
-                                 </span>
-                              )}
-                           </span>
-                           <span className="transition group-hover:text-slate-200">
-                              {new Date(deck.created_at).toLocaleDateString()}
+                           <span>Public folder</span>
+                           <span>
+                              {new Date(folder.created_at).toLocaleDateString()}
                            </span>
                         </div>
-                     </div>
-                  );
-
-                  // If locked → show as non-clickable, slightly faded
-                  if (locked) {
-                     return (
-                        <button
-                           key={deck.id}
-                           type="button"
-                           onClick={() => router.push("/premium")}
-                           className="w-full text-left opacity-70 hover:opacity-90 cursor-pointer transition">
-                           {cardContent}
-                        </button>
-                     );
-                  }
-
-                  // If not locked → normal Link
-                  return (
-                     <Link
-                        key={deck.id}
-                        href={`/dashboard/vocabulary/${deck.id}`}
-                        className="block">
-                        {cardContent}
                      </Link>
-                  );
-               })}
-            </div>
+                  ))}
+               </div>
+            </section>
+         )}
+
+         {!loading && !error && userDecks.length > 0 && (
+            <section className="space-y-3">
+               <div>
+                  <h2 className="text-lg font-semibold text-slate-100">
+                     Your decks
+                  </h2>
+                  <p className="text-sm text-slate-400">
+                     Private decks you create and manage yourself.
+                  </p>
+               </div>
+
+               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {userDecks.map((deck) => renderDeckCard(deck))}
+               </div>
+            </section>
+         )}
+
+         {!loading && !error && publicStandaloneDecks.length > 0 && (
+            <section className="space-y-3">
+               <div>
+                  <h2 className="text-lg font-semibold text-slate-100">
+                     Public decks
+                  </h2>
+                  <p className="text-sm text-slate-400">
+                     Public decks that are not assigned to a folder yet.
+                  </p>
+               </div>
+
+               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {publicStandaloneDecks.map((deck) => renderDeckCard(deck))}
+               </div>
+            </section>
          )}
       </div>
    );
