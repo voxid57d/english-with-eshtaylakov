@@ -79,6 +79,7 @@ export default function AdminVocabularyPage() {
    const [deckSaving, setDeckSaving] = useState(false);
    const [deckUpdating, setDeckUpdating] = useState(false);
    const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
+   const [copiedDeckId, setCopiedDeckId] = useState<string | null>(null);
 
    const [cardFront, setCardFront] = useState("");
    const [cardBack, setCardBack] = useState("");
@@ -429,6 +430,18 @@ export default function AdminVocabularyPage() {
          );
       } finally {
          setDeletingDeckId(null);
+      }
+   };
+
+   const handleCopyDeckId = async (deckId: string) => {
+      try {
+         await navigator.clipboard.writeText(deckId);
+         setCopiedDeckId(deckId);
+         window.setTimeout(() => {
+            setCopiedDeckId((current) => (current === deckId ? null : current));
+         }, 1500);
+      } catch {
+         setError("Could not copy the deck ID.");
       }
    };
 
@@ -803,6 +816,20 @@ export default function AdminVocabularyPage() {
                                     Folder: {deck.folder?.title || "None"} | Premium:{" "}
                                     {deck.requires_premium ? "Yes" : "No"}
                                  </p>
+                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                                    <span className="break-all">
+                                       Deck ID: {deck.id}
+                                    </span>
+                                    <button
+                                       type="button"
+                                       onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleCopyDeckId(deck.id);
+                                       }}
+                                       className="cursor-pointer rounded-full border border-slate-700 px-2 py-0.5 text-[10px] text-slate-300 transition hover:bg-slate-800">
+                                       {copiedDeckId === deck.id ? "Copied" : "Copy ID"}
+                                    </button>
+                                 </div>
                               </button>
                               <div className="mt-3 flex justify-end">
                                  <button
