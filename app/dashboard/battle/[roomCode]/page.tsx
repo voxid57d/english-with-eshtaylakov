@@ -374,12 +374,6 @@ export default function BattleRoomPage() {
                   ← Back to battle lobby
                </Link>
                <h1 className="text-3xl font-semibold">{snapshot.deckTitle}</h1>
-               <p className="text-sm text-slate-400">
-                  Room{" "}
-                  <span className="font-semibold text-slate-200">
-                     {snapshot.roomCode}
-                  </span>
-               </p>
             </div>
 
             <button
@@ -388,6 +382,20 @@ export default function BattleRoomPage() {
                className="cursor-pointer rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-800">
                {copied ? "Code copied" : "Copy room code"}
             </button>
+         </div>
+
+         <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 px-6 py-5">
+            <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
+               Room code
+            </p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
+               <p className="text-4xl font-semibold tracking-[0.45em] text-slate-50 sm:text-5xl">
+                  {snapshot.roomCode}
+               </p>
+               <p className="text-sm text-slate-300">
+                  Share this code so your student can join the battle.
+               </p>
+            </div>
          </div>
 
          {error && (
@@ -408,6 +416,14 @@ export default function BattleRoomPage() {
                            Both players download the same questions now. Press ready
                            when you want to start.
                         </p>
+                        <div className="mt-5 rounded-2xl border border-emerald-400/30 bg-slate-950/40 px-5 py-4">
+                           <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
+                              Share this room code
+                           </p>
+                           <p className="mt-2 text-3xl font-semibold tracking-[0.4em] text-slate-50 sm:text-4xl">
+                              {snapshot.roomCode}
+                           </p>
+                        </div>
                      </div>
 
                      {!bothPlayersJoined && (
