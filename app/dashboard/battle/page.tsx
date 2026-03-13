@@ -1,11 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import {
+   BATTLE_DEFAULT_QUESTION_COUNT,
+   BATTLE_QUESTION_OPTIONS,
    BattleHistoryEntry,
    normalizeRoomCode,
 } from "@/lib/vocabularyBattle";
@@ -14,12 +16,20 @@ type PublicDeck = {
    id: string;
    title: string;
    description: string | null;
+   folder_id: string | null;
+   folder: {
+      title: string;
+      slug: string;
+   } | null;
 };
 
 export default function BattleLobbyPage() {
    const router = useRouter();
    const [decks, setDecks] = useState<PublicDeck[]>([]);
-   const [selectedDeckId, setSelectedDeckId] = useState("");
+   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
+   const [questionCount, setQuestionCount] = useState(
+      BATTLE_DEFAULT_QUESTION_COUNT,
+   );
    const [roomCode, setRoomCode] = useState("");
    const [loadingDecks, setLoadingDecks] = useState(true);
    const [createLoading, setCreateLoading] = useState(false);
@@ -41,8 +51,11 @@ export default function BattleLobbyPage() {
          const [decksResult, historyResult] = await Promise.all([
             supabase
                .from("vocabulary_decks")
-               .select("id, title, description")
+               .select(
+                  "id, title, description, folder_id, folder:vocabulary_folders(title, slug)",
+               )
                .eq("is_public", true)
+               .not("folder_id", "is", null)
                .order("title", { ascending: true }),
             fetch("/api/vocabulary-battle/history", {
                headers: {
@@ -67,9 +80,22 @@ export default function BattleLobbyPage() {
             setHistory((historyPayload.entries || []) as BattleHistoryEntry[]);
          }
 
-         const deckRows = (decksResult.data || []) as PublicDeck[];
+         const deckRows = ((decksResult.data || []) as (PublicDeck & {
+            folder?: { title: string; slug: string }[];
+         })[]).map((deck) => ({
+            id: deck.id,
+            title: deck.title,
+            description: deck.description,
+            folder_id: deck.folder_id,
+            folder: deck.folder?.[0]
+               ? {
+                    title: deck.folder[0].title,
+                    slug: deck.folder[0].slug,
+                 }
+               : null,
+         }));
          setDecks(deckRows);
-         setSelectedDeckId(deckRows[0]?.id || "");
+         setSelectedDeckIds(deckRows[0]?.id ? [deckRows[0].id] : []);
          setLoadingDecks(false);
       };
 
@@ -79,6 +105,45 @@ export default function BattleLobbyPage() {
          cancelled = true;
       };
    }, [router]);
+
+   const deckGroups = useMemo(() => {
+      const groups = new Map<
+         string,
+         { slug: string; title: string; decks: PublicDeck[] }
+      >();
+
+      decks.forEach((deck) => {
+         if (!deck.folder) return;
+         const existing = groups.get(deck.folder.slug);
+         if (existing) {
+            existing.decks.push(deck);
+            return;
+         }
+
+         groups.set(deck.folder.slug, {
+            slug: deck.folder.slug,
+            title: deck.folder.title,
+            decks: [deck],
+         });
+      });
+
+      return Array.from(groups.values()).sort((a, b) =>
+         a.title.localeCompare(b.title),
+      );
+   }, [decks]);
+
+   const selectedDecks = useMemo(
+      () => decks.filter((deck) => selectedDeckIds.includes(deck.id)),
+      [decks, selectedDeckIds],
+   );
+
+   const toggleDeck = (deckId: string) => {
+      setSelectedDeckIds((current) =>
+         current.includes(deckId)
+            ? current.filter((id) => id !== deckId)
+            : [...current, deckId],
+      );
+   };
 
    const handleCreate = async () => {
       try {
@@ -92,7 +157,10 @@ export default function BattleLobbyPage() {
                "Content-Type": "application/json",
                Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ deckId: selectedDeckId }),
+            body: JSON.stringify({
+               deckIds: selectedDeckIds,
+               questionCount,
+            }),
          });
 
          const payload = await response.json();
@@ -151,8 +219,8 @@ export default function BattleLobbyPage() {
          <div className="space-y-2">
             <h1 className="text-3xl font-semibold">Vocabulary battle</h1>
             <p className="max-w-2xl text-sm text-slate-400">
-               Create a private head-to-head room, pick one public deck, and
-               race through ten timed multiple-choice vocabulary questions.
+               Create a private head-to-head room, combine one or more public
+               decks from folders, and choose how many timed questions to play.
             </p>
          </div>
 
@@ -172,38 +240,103 @@ export default function BattleLobbyPage() {
                </div>
 
                {loadingDecks ? (
-                  <p className="text-sm text-slate-500">Loading public decks...</p>
+                  <p className="text-sm text-slate-500">
+                     Loading folder decks...
+                  </p>
                ) : decks.length === 0 ? (
                   <p className="text-sm text-slate-500">
-                     No public decks are available yet.
+                     No folder-based public decks are available yet.
                   </p>
                ) : (
                   <>
-                     <label className="block space-y-2">
-                        <span className="text-sm text-slate-300">Public deck</span>
-                        <select
-                           value={selectedDeckId}
-                           onChange={(event) => setSelectedDeckId(event.target.value)}
-                           className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-emerald-500">
-                           {decks.map((deck) => (
-                              <option key={deck.id} value={deck.id}>
-                                 {deck.title}
-                              </option>
-                           ))}
-                        </select>
-                     </label>
+                     <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                           <span className="text-sm text-slate-300">
+                              Decks from folders
+                           </span>
+                           <span className="text-xs text-slate-500">
+                              {selectedDeckIds.length} selected
+                           </span>
+                        </div>
 
-                     {selectedDeckId && (
+                        <div className="space-y-4">
+                           {deckGroups.map((group) => (
+                              <div
+                                 key={group.slug}
+                                 className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                                 <p className="text-sm font-semibold text-slate-100">
+                                    {group.title}
+                                 </p>
+                                 <div className="mt-3 grid gap-2">
+                                    {group.decks.map((deck) => {
+                                       const checked = selectedDeckIds.includes(
+                                          deck.id,
+                                       );
+
+                                       return (
+                                          <label
+                                             key={deck.id}
+                                             className={`flex cursor-pointer gap-3 rounded-2xl border px-4 py-3 transition ${
+                                                checked
+                                                   ? "border-emerald-500/50 bg-emerald-500/10"
+                                                   : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
+                                             }`}>
+                                             <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleDeck(deck.id)}
+                                                className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-500"
+                                             />
+                                             <span className="min-w-0">
+                                                <span className="block text-sm font-medium text-slate-100">
+                                                   {deck.title}
+                                                </span>
+                                                <span className="block text-xs text-slate-400">
+                                                   {deck.description ||
+                                                      "No description provided."}
+                                                </span>
+                                             </span>
+                                          </label>
+                                       );
+                                    })}
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+
+                     <div className="space-y-3">
+                        <span className="text-sm text-slate-300">
+                           Number of words
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                           {BATTLE_QUESTION_OPTIONS.map((option) => (
+                              <button
+                                 key={option}
+                                 type="button"
+                                 onClick={() => setQuestionCount(option)}
+                                 className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition ${
+                                    questionCount === option
+                                       ? "border-emerald-500 bg-emerald-500 text-slate-950"
+                                       : "border-slate-700 bg-slate-950 text-slate-300 hover:border-emerald-500/40"
+                                 }`}>
+                                 {option}
+                              </button>
+                           ))}
+                        </div>
+                     </div>
+
+                     {selectedDecks.length > 0 && (
                         <p className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-400">
-                           {decks.find((deck) => deck.id === selectedDeckId)
-                              ?.description || "No description provided."}
+                           Battle will use {questionCount} words from{" "}
+                           {selectedDecks.map((deck) => deck.title).join(", ")}.
                         </p>
                      )}
 
                      <button
                         type="button"
                         onClick={handleCreate}
-                        disabled={!selectedDeckId || createLoading}
+                        disabled={selectedDeckIds.length === 0 || createLoading}
                         className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
                         {createLoading ? "Creating room..." : "Create battle room"}
                      </button>
@@ -243,8 +376,8 @@ export default function BattleLobbyPage() {
                </form>
 
                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
-                  Match rules: 10 questions, 10 seconds each, same deck, same
-                  order, higher score wins.
+                  Match rules: {questionCount} questions, 10 seconds each, same
+                  shared set, higher score wins.
                </div>
             </section>
          </div>

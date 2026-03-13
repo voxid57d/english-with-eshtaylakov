@@ -475,7 +475,7 @@ export default function BattleRoomPage() {
                </div>
                <p className="max-w-md text-sm text-slate-300">
                   Share this code with your student. Both of you will use the
-                  same ten questions.
+                  same {snapshot.questionCount} questions.
                </p>
             </div>
          </div>
@@ -750,8 +750,8 @@ export default function BattleRoomPage() {
                      Match rules
                   </p>
                   <div className="mt-3 space-y-2">
-                     <p>10 questions</p>
-                     <p>10 seconds per question</p>
+                     <p>{snapshot.questionCount} questions</p>
+                     <p>{snapshot.timeLimitSeconds} seconds per question</p>
                      <p>Higher score wins</p>
                      <p>Faster total time breaks ties</p>
                   </div>

@@ -1,8 +1,11 @@
 export const BATTLE_ROOM_CODE_LENGTH = 6;
-export const BATTLE_QUESTION_COUNT = 10;
+export const BATTLE_QUESTION_OPTIONS = [10, 15, 20, 25] as const;
+export const BATTLE_DEFAULT_QUESTION_COUNT = BATTLE_QUESTION_OPTIONS[0];
 export const BATTLE_TIME_LIMIT_SECONDS = 10;
 export const BATTLE_MINIMUM_CARD_COUNT = 10;
 export const BATTLE_READY_COUNTDOWN_SECONDS = 10;
+
+export type BattleQuestionCount = (typeof BATTLE_QUESTION_OPTIONS)[number];
 
 export type BattleRoomStatus = "waiting" | "active" | "finished";
 
@@ -53,6 +56,7 @@ export type BattleRoomSnapshot = {
    roomCode: string;
    status: BattleRoomStatus;
    deckId: string;
+   deckIds: string[];
    deckTitle: string;
    questionCount: number;
    timeLimitSeconds: number;
@@ -96,4 +100,10 @@ export function shuffleArray<T>(items: T[]) {
       [copy[i], copy[j]] = [copy[j], copy[i]];
    }
    return copy;
+}
+
+export function isBattleQuestionCount(
+   value: number,
+): value is BattleQuestionCount {
+   return (BATTLE_QUESTION_OPTIONS as readonly number[]).includes(value);
 }

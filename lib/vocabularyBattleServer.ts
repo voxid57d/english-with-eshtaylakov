@@ -1,9 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
    BATTLE_MINIMUM_CARD_COUNT,
-   BATTLE_QUESTION_COUNT,
    BATTLE_READY_COUNTDOWN_SECONDS,
    BattleHistoryEntry,
+   BattleQuestionCount,
    BattleQuestionPayload,
    BattleQuestionReview,
    BattleRoomSnapshot,
@@ -17,10 +17,12 @@ type DeckRow = {
    id: string;
    title: string;
    is_public: boolean;
+    folder_id: string | null;
 };
 
 type CardRow = {
    id: string;
+   deck_id?: string;
    front: string;
    back: string;
 };
@@ -29,6 +31,8 @@ type RoomRow = {
    id: string;
    code: string;
    deck_id: string;
+   deck_ids: string[] | null;
+   deck_title: string | null;
    status: "waiting" | "active" | "finished";
    question_count: number;
    time_limit_seconds: number;
@@ -118,33 +122,72 @@ export async function createUniqueBattleRoomCode() {
    throw new Error("Failed to generate a unique room code.");
 }
 
-export async function loadPublicDeck(deckId: string) {
-   const { data, error } = await supabaseAdmin
-      .from("vocabulary_decks")
-      .select("id, title, is_public")
-      .eq("id", deckId)
-      .maybeSingle();
-
-   if (error || !data) {
-      throw new Error("Deck not found.");
-   }
-
-   const deck = data as DeckRow;
-   if (!deck.is_public) {
-      throw new Error("Only public decks can be used in battle mode.");
-   }
-
-   return deck;
+function getRoomDeckIds(room: RoomRow) {
+   return room.deck_ids?.length ? room.deck_ids : [room.deck_id];
 }
 
-export async function buildBattleQuestions(deckId: string) {
+function formatBattleDeckTitle(decks: DeckRow[]) {
+   if (decks.length === 1) {
+      return decks[0].title;
+   }
+
+   if (decks.length === 2) {
+      return `${decks[0].title} + ${decks[1].title}`;
+   }
+
+   return `${decks[0].title} + ${decks[1].title} + ${decks.length - 2} more`;
+}
+
+export async function loadBattleDecks(deckIds: string[]) {
+   const uniqueDeckIds = Array.from(
+      new Set(deckIds.map((deckId) => deckId.trim()).filter(Boolean)),
+   );
+
+   if (uniqueDeckIds.length === 0) {
+      throw new Error("Choose at least one deck.");
+   }
+
    const { data, error } = await supabaseAdmin
-      .from("vocabulary_cards")
-      .select("id, front, back")
-      .eq("deck_id", deckId);
+      .from("vocabulary_decks")
+      .select("id, title, is_public, folder_id")
+      .in("id", uniqueDeckIds);
 
    if (error) {
-      throw new Error("Failed to load deck cards.");
+      throw new Error("Failed to load selected decks.");
+   }
+
+   const decks = (data || []) as DeckRow[];
+   if (decks.length !== uniqueDeckIds.length) {
+      throw new Error("One or more selected decks were not found.");
+   }
+
+   const deckMap = new Map(decks.map((deck) => [deck.id, deck]));
+   const orderedDecks = uniqueDeckIds.map((deckId) => deckMap.get(deckId)!);
+
+   for (const deck of orderedDecks) {
+      if (!deck.is_public) {
+         throw new Error("Only public decks can be used in battle mode.");
+      }
+
+      if (!deck.folder_id) {
+         throw new Error("Battle mode only supports decks inside folders.");
+      }
+   }
+
+   return orderedDecks;
+}
+
+export async function buildBattleQuestions(
+   deckIds: string[],
+   questionCount: BattleQuestionCount,
+) {
+   const { data, error } = await supabaseAdmin
+      .from("vocabulary_cards")
+      .select("id, deck_id, front, back")
+      .in("deck_id", deckIds);
+
+   if (error) {
+      throw new Error("Failed to load selected deck cards.");
    }
 
    const cards = ((data || []) as CardRow[]).filter(
@@ -153,11 +196,17 @@ export async function buildBattleQuestions(deckId: string) {
 
    if (cards.length < BATTLE_MINIMUM_CARD_COUNT) {
       throw new Error(
-         `This deck needs at least ${BATTLE_MINIMUM_CARD_COUNT} usable cards.`,
+         `Selected decks need at least ${BATTLE_MINIMUM_CARD_COUNT} usable cards.`,
       );
    }
 
-   const selectedCards = shuffleArray(cards).slice(0, BATTLE_QUESTION_COUNT);
+   if (cards.length < questionCount) {
+      throw new Error(
+         `Selected decks need at least ${questionCount} usable cards for this battle length.`,
+      );
+   }
+
+   const selectedCards = shuffleArray(cards).slice(0, questionCount);
 
    return selectedCards.map((card, questionIndex) => {
       const distractorPool = shuffleArray(
@@ -195,7 +244,7 @@ async function getRoomByCode(roomCode: string) {
    const { data, error } = await supabaseAdmin
       .from("vocab_battle_rooms")
       .select(
-         "id, code, deck_id, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at",
+         "id, code, deck_id, deck_ids, deck_title, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at",
       )
       .eq("code", normalizedCode)
       .maybeSingle();
@@ -391,19 +440,10 @@ export async function buildBattleRoomSnapshot(
       return null;
    }
 
-   const [deckResult, players, questions] = await Promise.all([
-      supabaseAdmin
-         .from("vocabulary_decks")
-         .select("id, title")
-         .eq("id", room.deck_id)
-         .single(),
+   const [players, questions] = await Promise.all([
       getRoomPlayers(room.id),
       getRoomQuestions(room.id),
    ]);
-
-   if (deckResult.error || !deckResult.data) {
-      throw new Error("Failed to load deck details.");
-   }
 
    const viewer = players.find((player) => player.user_id === viewerUserId);
    const completedQuestions =
@@ -415,7 +455,8 @@ export async function buildBattleRoomSnapshot(
       roomCode: room.code,
       status: room.status,
       deckId: room.deck_id,
-      deckTitle: deckResult.data.title,
+      deckIds: getRoomDeckIds(room),
+      deckTitle: room.deck_title || "Battle deck",
       questionCount: room.question_count,
       timeLimitSeconds: room.time_limit_seconds,
       battleStartsAt: room.current_question_started_at,
@@ -667,7 +708,7 @@ export async function getBattleHistoryForUser(userId: string) {
       supabaseAdmin
          .from("vocab_battle_rooms")
          .select(
-            "id, code, deck_id, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at",
+            "id, code, deck_id, deck_ids, deck_title, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at",
          )
          .in("id", roomIds),
       supabaseAdmin.from("vocabulary_decks").select("id, title"),
@@ -700,7 +741,8 @@ export async function getBattleHistoryForUser(userId: string) {
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((room) => ({
          roomCode: room.code,
-         deckTitle: deckMap.get(room.deck_id) || "Unknown deck",
+         deckTitle:
+            room.deck_title || deckMap.get(room.deck_id) || "Unknown deck",
          status: room.status,
          createdAt: room.created_at,
          finishedAt: room.finished_at,
@@ -720,26 +762,32 @@ export async function getBattleHistoryForUser(userId: string) {
 }
 
 export async function createBattleRoom(
-   deckId: string,
+   deckIds: string[],
    userId: string,
    username: string,
-   questionCount: number,
+   questionCount: BattleQuestionCount,
    timeLimitSeconds: number,
 ) {
    await cleanupBattleRooms();
 
-   const deck = await loadPublicDeck(deckId);
-   const questions = await buildBattleQuestions(deck.id);
+   const decks = await loadBattleDecks(deckIds);
+   const questions = await buildBattleQuestions(
+      decks.map((deck) => deck.id),
+      questionCount,
+   );
    const roomCode = await createUniqueBattleRoomCode();
+   const deckTitle = formatBattleDeckTitle(decks);
 
    const { data: room, error: roomError } = await supabaseAdmin
       .from("vocab_battle_rooms")
       .insert({
          code: roomCode,
-         deck_id: deck.id,
+         deck_id: decks[0].id,
+         deck_ids: decks.map((deck) => deck.id),
+         deck_title: deckTitle,
          host_user_id: userId,
          status: "waiting",
-         question_count: Math.min(questions.length, questionCount),
+         question_count: questions.length,
          time_limit_seconds: timeLimitSeconds,
          current_question_index: 0,
       })
@@ -780,5 +828,5 @@ export async function createBattleRoom(
       throw new Error("Failed to save battle questions.");
    }
 
-   return { roomCode: room.code, deckTitle: deck.title };
+   return { roomCode: room.code, deckTitle };
 }
