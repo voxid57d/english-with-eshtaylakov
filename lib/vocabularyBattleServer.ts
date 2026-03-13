@@ -31,8 +31,8 @@ type RoomRow = {
    id: string;
    code: string;
    deck_id: string;
-   deck_ids: string[] | null;
-   deck_title: string | null;
+   deck_ids?: string[] | null;
+   deck_title?: string | null;
    status: "waiting" | "active" | "finished";
    question_count: number;
    time_limit_seconds: number;
@@ -74,6 +74,10 @@ type AnswerRow = {
 const WAITING_ROOM_TTL_HOURS = 6;
 const FINISHED_ROOM_TTL_HOURS = 24;
 const ACTIVE_ROOM_TTL_HOURS = 2;
+const ROOM_SELECT_BASE =
+   "id, code, deck_id, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at";
+const ROOM_SELECT_WITH_MULTI =
+   "id, code, deck_id, deck_ids, deck_title, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at";
 
 export async function getAuthenticatedUser(req: Request) {
    const authHeader = req.headers.get("authorization");
@@ -241,13 +245,21 @@ export async function buildBattleQuestions(
 
 async function getRoomByCode(roomCode: string) {
    const normalizedCode = normalizeRoomCode(roomCode);
-   const { data, error } = await supabaseAdmin
+   let query = supabaseAdmin
       .from("vocab_battle_rooms")
-      .select(
-         "id, code, deck_id, deck_ids, deck_title, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at",
-      )
+      .select(ROOM_SELECT_WITH_MULTI)
       .eq("code", normalizedCode)
       .maybeSingle();
+
+   let { data, error } = await query;
+
+   if (error && /deck_ids|deck_title/i.test(error.message)) {
+      ({ data, error } = await supabaseAdmin
+         .from("vocab_battle_rooms")
+         .select(ROOM_SELECT_BASE)
+         .eq("code", normalizedCode)
+         .maybeSingle());
+   }
 
    if (error || !data) {
       return null;
@@ -704,12 +716,10 @@ export async function getBattleHistoryForUser(userId: string) {
       return [] as BattleHistoryEntry[];
    }
 
-   const [roomsResult, decksResult, allPlayersResult] = await Promise.all([
+   const [initialRoomsResult, decksResult, allPlayersResult] = await Promise.all([
       supabaseAdmin
          .from("vocab_battle_rooms")
-         .select(
-            "id, code, deck_id, deck_ids, deck_title, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at",
-         )
+         .select(ROOM_SELECT_WITH_MULTI)
          .in("id", roomIds),
       supabaseAdmin.from("vocabulary_decks").select("id, title"),
       supabaseAdmin
@@ -721,7 +731,20 @@ export async function getBattleHistoryForUser(userId: string) {
          .order("joined_at", { ascending: true }),
    ]);
 
-   if (roomsResult.error || decksResult.error || allPlayersResult.error) {
+   let roomsError = initialRoomsResult.error;
+   let roomRows = (initialRoomsResult.data || []) as RoomRow[];
+
+   if (roomsError && /deck_ids|deck_title/i.test(roomsError.message)) {
+      const fallbackRoomsResult = await supabaseAdmin
+         .from("vocab_battle_rooms")
+         .select(ROOM_SELECT_BASE)
+         .in("id", roomIds);
+
+      roomsError = fallbackRoomsResult.error;
+      roomRows = (fallbackRoomsResult.data || []) as RoomRow[];
+   }
+
+   if (roomsError || decksResult.error || allPlayersResult.error) {
       throw new Error("Failed to load battle history.");
    }
 
@@ -737,7 +760,7 @@ export async function getBattleHistoryForUser(userId: string) {
       playersByRoom.set(roomId, existing);
    });
 
-   return ((roomsResult.data || []) as RoomRow[])
+   return roomRows
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((room) => ({
          roomCode: room.code,
@@ -794,14 +817,36 @@ export async function createBattleRoom(
       .select("id, code")
       .single();
 
-   if (roomError || !room) {
+   let createdRoom = room;
+   let createdRoomError = roomError;
+
+   if (createdRoomError && /deck_ids|deck_title/i.test(createdRoomError.message)) {
+      const fallbackInsert = await supabaseAdmin
+         .from("vocab_battle_rooms")
+         .insert({
+            code: roomCode,
+            deck_id: decks[0].id,
+            host_user_id: userId,
+            status: "waiting",
+            question_count: questions.length,
+            time_limit_seconds: timeLimitSeconds,
+            current_question_index: 0,
+         })
+         .select("id, code")
+         .single();
+
+      createdRoom = fallbackInsert.data;
+      createdRoomError = fallbackInsert.error;
+   }
+
+   if (createdRoomError || !createdRoom) {
       throw new Error("Failed to create room.");
    }
 
    const { error: playerError } = await supabaseAdmin
       .from("vocab_battle_players")
       .insert({
-         room_id: room.id,
+         room_id: createdRoom.id,
          user_id: userId,
          username,
          score: 0,
@@ -810,12 +855,12 @@ export async function createBattleRoom(
       });
 
    if (playerError) {
-      await deleteRoom(room.id);
+      await deleteRoom(createdRoom.id);
       throw new Error("Failed to add the host to the room.");
    }
 
    const questionRows = questions.map((question) => ({
-      room_id: room.id,
+      room_id: createdRoom.id,
       ...question,
    }));
 
@@ -824,9 +869,9 @@ export async function createBattleRoom(
       .insert(questionRows);
 
    if (questionError) {
-      await deleteRoom(room.id);
+      await deleteRoom(createdRoom.id);
       throw new Error("Failed to save battle questions.");
    }
 
-   return { roomCode: room.code, deckTitle };
+   return { roomCode: createdRoom.code, deckTitle };
 }

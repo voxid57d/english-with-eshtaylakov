@@ -24,10 +24,23 @@ type PublicDeck = {
    } | null;
 };
 
+type DeckFolderRelation =
+   | {
+        title: string;
+        slug: string;
+     }
+   | {
+        title: string;
+        slug: string;
+     }[]
+   | null
+   | undefined;
+
 export default function BattleLobbyPage() {
    const router = useRouter();
    const [decks, setDecks] = useState<PublicDeck[]>([]);
    const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
+   const [openFolderSlug, setOpenFolderSlug] = useState<string | null>(null);
    const [questionCount, setQuestionCount] = useState<BattleQuestionCount>(
       BATTLE_DEFAULT_QUESTION_COUNT,
    );
@@ -82,21 +95,28 @@ export default function BattleLobbyPage() {
          }
 
          const deckRows = ((decksResult.data || []) as (PublicDeck & {
-            folder?: { title: string; slug: string }[];
-         })[]).map((deck) => ({
+            folder?: DeckFolderRelation;
+         })[]).map((deck) => {
+            const folderRelation = Array.isArray(deck.folder)
+               ? deck.folder[0]
+               : deck.folder;
+
+            return {
             id: deck.id,
             title: deck.title,
             description: deck.description,
             folder_id: deck.folder_id,
-            folder: deck.folder?.[0]
+            folder: folderRelation
                ? {
-                    title: deck.folder[0].title,
-                    slug: deck.folder[0].slug,
+                    title: folderRelation.title,
+                    slug: folderRelation.slug,
                  }
                : null,
-         }));
+         };
+         });
          setDecks(deckRows);
          setSelectedDeckIds(deckRows[0]?.id ? [deckRows[0].id] : []);
+         setOpenFolderSlug((current) => current || deckRows[0]?.folder?.slug || null);
          setLoadingDecks(false);
       };
 
@@ -143,6 +163,12 @@ export default function BattleLobbyPage() {
          current.includes(deckId)
             ? current.filter((id) => id !== deckId)
             : [...current, deckId],
+      );
+   };
+
+   const toggleFolder = (folderSlug: string) => {
+      setOpenFolderSlug((current) =>
+         current === folderSlug ? null : folderSlug,
       );
    };
 
@@ -265,42 +291,55 @@ export default function BattleLobbyPage() {
                               <div
                                  key={group.slug}
                                  className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                                 <p className="text-sm font-semibold text-slate-100">
-                                    {group.title}
-                                 </p>
-                                 <div className="mt-3 grid gap-2">
-                                    {group.decks.map((deck) => {
-                                       const checked = selectedDeckIds.includes(
-                                          deck.id,
-                                       );
+                                 <button
+                                    type="button"
+                                    onClick={() => toggleFolder(group.slug)}
+                                    className="flex w-full items-center justify-between gap-3 text-left">
+                                    <span className="text-sm font-semibold text-slate-100">
+                                       {group.title}
+                                    </span>
+                                    <span className="text-xs text-slate-400">
+                                       {openFolderSlug === group.slug
+                                          ? "Hide decks"
+                                          : `${group.decks.length} deck${group.decks.length === 1 ? "" : "s"}`}
+                                    </span>
+                                 </button>
 
-                                       return (
-                                          <label
-                                             key={deck.id}
-                                             className={`flex cursor-pointer gap-3 rounded-2xl border px-4 py-3 transition ${
-                                                checked
-                                                   ? "border-emerald-500/50 bg-emerald-500/10"
-                                                   : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
-                                             }`}>
-                                             <input
-                                                type="checkbox"
-                                                checked={checked}
-                                                onChange={() => toggleDeck(deck.id)}
-                                                className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-500"
-                                             />
-                                             <span className="min-w-0">
-                                                <span className="block text-sm font-medium text-slate-100">
-                                                   {deck.title}
+                                 {openFolderSlug === group.slug && (
+                                    <div className="mt-3 grid gap-2">
+                                       {group.decks.map((deck) => {
+                                          const checked = selectedDeckIds.includes(
+                                             deck.id,
+                                          );
+
+                                          return (
+                                             <label
+                                                key={deck.id}
+                                                className={`flex cursor-pointer gap-3 rounded-2xl border px-4 py-3 transition ${
+                                                   checked
+                                                      ? "border-emerald-500/50 bg-emerald-500/10"
+                                                      : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
+                                                }`}>
+                                                <input
+                                                   type="checkbox"
+                                                   checked={checked}
+                                                   onChange={() => toggleDeck(deck.id)}
+                                                   className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-500"
+                                                />
+                                                <span className="min-w-0">
+                                                   <span className="block text-sm font-medium text-slate-100">
+                                                      {deck.title}
+                                                   </span>
+                                                   <span className="block text-xs text-slate-400">
+                                                      {deck.description ||
+                                                         "No description provided."}
+                                                   </span>
                                                 </span>
-                                                <span className="block text-xs text-slate-400">
-                                                   {deck.description ||
-                                                      "No description provided."}
-                                                </span>
-                                             </span>
-                                          </label>
-                                       );
-                                    })}
-                                 </div>
+                                             </label>
+                                          );
+                                       })}
+                                    </div>
+                                 )}
                               </div>
                            ))}
                         </div>
