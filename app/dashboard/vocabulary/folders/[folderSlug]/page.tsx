@@ -70,14 +70,20 @@ export default function VocabularyFolderPage() {
             .select("id, title, description, created_at, requires_premium")
             .eq("is_public", true)
             .eq("folder_id", folderData.id)
-            .order("title", { ascending: true });
+            .order("created_at", { ascending: false });
 
          if (decksError) {
             console.error(decksError);
             setError("Failed to load public decks.");
             setDecks([]);
          } else {
-            setDecks((decksData || []) as PublicDeck[]);
+            const sortedDecks = ((decksData || []) as PublicDeck[]).sort((a, b) =>
+               a.title.localeCompare(b.title, undefined, {
+                  numeric: true,
+                  sensitivity: "base",
+               })
+            );
+            setDecks(sortedDecks);
          }
 
          setLoading(false);
