@@ -21,6 +21,20 @@ type Deck = {
    } | null;
 };
 
+type DeckQueryRow = {
+   id: string;
+   title: string;
+   description: string | null;
+   is_public: boolean;
+   requires_premium: boolean;
+   folder:
+      | {
+           slug: string;
+           title: string;
+        }[]
+      | null;
+};
+
 type CardRow = {
    id: string;
    front: string;
@@ -106,7 +120,20 @@ export default function DeckPage() {
             console.error("Error loading deck:", deckError);
             setDeck(null);
          } else if (deckData) {
-            const loadedDeck = deckData as Deck;
+            const rawDeck = deckData as DeckQueryRow;
+            const loadedDeck: Deck = {
+               id: rawDeck.id,
+               title: rawDeck.title,
+               description: rawDeck.description,
+               is_public: rawDeck.is_public,
+               requires_premium: rawDeck.requires_premium,
+               folder: rawDeck.folder?.[0]
+                  ? {
+                       slug: rawDeck.folder[0].slug,
+                       title: rawDeck.folder[0].title,
+                    }
+                  : null,
+            };
             setDeck(loadedDeck);
             if (loadedDeck.requires_premium && !premium) {
                setLocked(true);
