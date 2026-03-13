@@ -4,16 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import type { BattleRoomSnapshot } from "@/lib/vocabularyBattle";
-
-async function getAccessToken() {
-   const { data, error } = await supabase.auth.getSession();
-   if (error || !data.session?.access_token) {
-      throw new Error("You must be logged in.");
-   }
-
-   return data.session.access_token;
-}
 
 export default function BattleRoomPage() {
    const params = useParams();
@@ -62,7 +54,7 @@ export default function BattleRoomPage() {
                return;
             }
 
-            const token = await getAccessToken();
+            const token = await getSupabaseAccessToken();
             const response = await fetch(
                `/api/vocabulary-battle/rooms/${encodeURIComponent(roomCode)}`,
                {
@@ -174,7 +166,7 @@ export default function BattleRoomPage() {
          setAnswerLoading(true);
          setError(null);
 
-         const token = await getAccessToken();
+         const token = await getSupabaseAccessToken();
          const response = await fetch("/api/vocabulary-battle/answer", {
             method: "POST",
             headers: {

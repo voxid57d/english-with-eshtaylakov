@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import {
    BattleHistoryEntry,
    normalizeRoomCode,
@@ -14,15 +15,6 @@ type PublicDeck = {
    title: string;
    description: string | null;
 };
-
-async function getAccessToken() {
-   const { data, error } = await supabase.auth.getSession();
-   if (error || !data.session?.access_token) {
-      throw new Error("You must be logged in.");
-   }
-
-   return data.session.access_token;
-}
 
 export default function BattleLobbyPage() {
    const router = useRouter();
@@ -45,7 +37,7 @@ export default function BattleLobbyPage() {
             return;
          }
 
-         const token = await getAccessToken();
+         const token = await getSupabaseAccessToken();
          const [decksResult, historyResult] = await Promise.all([
             supabase
                .from("vocabulary_decks")
@@ -93,7 +85,7 @@ export default function BattleLobbyPage() {
          setCreateLoading(true);
          setError(null);
 
-         const token = await getAccessToken();
+         const token = await getSupabaseAccessToken();
          const response = await fetch("/api/vocabulary-battle/create", {
             method: "POST",
             headers: {
@@ -127,7 +119,7 @@ export default function BattleLobbyPage() {
          setJoinLoading(true);
          setError(null);
 
-         const token = await getAccessToken();
+         const token = await getSupabaseAccessToken();
          const response = await fetch("/api/vocabulary-battle/join", {
             method: "POST",
             headers: {
