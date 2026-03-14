@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -60,7 +60,7 @@ type SidebarProps = {
    isPremium: boolean;
 };
 
-export default function Sidebar({
+function Sidebar({
    isOpenOnMobile,
    closeMobile,
    isPremium,
@@ -214,3 +214,5 @@ export default function Sidebar({
       </>
    );
 }
+
+export default memo(Sidebar);

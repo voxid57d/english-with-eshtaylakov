@@ -1,27 +1,43 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
 import Image from "next/image";
+import type { User } from "@supabase/supabase-js";
+import { memo, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import Navbar from "@/components/Navbar";
 import Sidebar from "@/components/Sidebar";
 import { getPremiumStatus } from "@/lib/premium";
+import { supabase } from "@/lib/supabaseClient";
+
+type DashboardViewer = {
+   user: User;
+   isPremium: boolean;
+   username: string | null;
+};
+
+const DashboardContent = memo(function DashboardContent({
+   children,
+}: {
+   children: React.ReactNode;
+}) {
+   return <section className="flex-1 p-4 md:p-6 space-y-6">{children}</section>;
+});
 
 export default function DashboardLayout({
    children,
 }: {
    children: React.ReactNode;
 }) {
-   const [user, setUser] = useState<any>(null);
-   const [isPremium, setIsPremium] = useState<boolean>(false);
+   const [viewer, setViewer] = useState<DashboardViewer | null>(null);
+   const [isLoadingUser, setIsLoadingUser] = useState(true);
    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-   const [username, setUsername] = useState<string | null>(null); // ✅ NEW
    const router = useRouter();
 
    useEffect(() => {
-      const checkUser = async () => {
+      let isActive = true;
+
+      async function checkUser() {
          const { data, error } = await supabase.auth.getUser();
 
          if (error) {
@@ -36,34 +52,54 @@ export default function DashboardLayout({
          }
 
          const authUser = data.user;
-         setUser(authUser);
+         const [premium, profileResult] = await Promise.all([
+            getPremiumStatus(authUser.id),
+            supabase
+               .from("profiles")
+               .select("username")
+               .eq("id", authUser.id)
+               .maybeSingle(),
+         ]);
 
-         // Premium status
-         const premium = await getPremiumStatus(authUser.id);
-         setIsPremium(premium);
+         if (!isActive) return;
 
-         // ✅ Load username from profiles
-         const { data: profile, error: profileError } = await supabase
-            .from("profiles")
-            .select("username")
-            .eq("id", authUser.id)
-            .maybeSingle();
-
-         if (profileError) {
-            console.error("Error loading profile:", profileError);
+         if (profileResult.error) {
+            console.error("Error loading profile:", profileResult.error);
          }
 
-         if (profile?.username) {
-            setUsername(profile.username);
-         } else {
+         if (!profileResult.data?.username) {
             console.log("No username found in profiles for user:", authUser.id);
          }
-      };
+
+         setViewer({
+            user: authUser,
+            isPremium: premium,
+            username: profileResult.data?.username ?? null,
+         });
+         setIsLoadingUser(false);
+      }
 
       checkUser();
+
+      return () => {
+         isActive = false;
+      };
    }, [router]);
 
-   if (!user) {
+   const handleLogOut = useCallback(async () => {
+      await supabase.auth.signOut();
+      router.push("/");
+   }, [router]);
+
+   const handleOpenSidebar = useCallback(() => {
+      setIsSidebarOpen(true);
+   }, []);
+
+   const handleCloseSidebar = useCallback(() => {
+      setIsSidebarOpen(false);
+   }, []);
+
+   if (isLoadingUser || !viewer) {
       return (
          <main className="min-h-screen bg-slate-950 flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
@@ -80,30 +116,23 @@ export default function DashboardLayout({
       );
    }
 
-   const handleLogOut = async () => {
-      await supabase.auth.signOut();
-      router.push("/");
-   };
-
    return (
       <main className="min-h-screen bg-slate-950 text-white flex flex-col">
          <Navbar
-            user={user}
-            username={username ?? undefined} // ✅ pass username
-            isPremium={isPremium}
+            user={viewer.user}
+            username={viewer.username ?? undefined}
+            isPremium={viewer.isPremium}
             onLogout={handleLogOut}
-            onToggleSidebar={() => setIsSidebarOpen(true)}
+            onToggleSidebar={handleOpenSidebar}
          />
 
          <div className="flex flex-1">
             <Sidebar
                isOpenOnMobile={isSidebarOpen}
-               closeMobile={() => setIsSidebarOpen(false)}
-               isPremium={isPremium}
+               closeMobile={handleCloseSidebar}
+               isPremium={viewer.isPremium}
             />
-            <section className="flex-1 p-4 md:p-6 space-y-6">
-               {children}
-            </section>
+            <DashboardContent>{children}</DashboardContent>
          </div>
       </main>
    );

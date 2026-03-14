@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { LuLogOut } from "react-icons/lu";
@@ -17,7 +18,7 @@ type NavbarProps = {
    onToggleSidebar: () => void;
 };
 
-export default function Navbar({
+function Navbar({
    user,
    username,
    isPremium,
@@ -135,3 +136,5 @@ export default function Navbar({
       </header>
    );
 }
+
+export default memo(Navbar);

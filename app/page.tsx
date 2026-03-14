@@ -1,18 +1,19 @@
 "use client";
 
+import type { User } from "@supabase/supabase-js";
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import DashboardLayout from "./dashboard/layout";
-import DashboardPage from "./dashboard/page";
 import PageShellWithFooter from "@/components/PageShellWithFooter";
 
 export default function HomePage() {
    const fullText = "Learn English with Eshtaylakov";
    const [typedText, setTypedText] = useState("");
-   const [user, setUser] = useState<any>(null);
+   const [user, setUser] = useState<User | null>(null);
    const [checkingAuth, setCheckingAuth] = useState(true);
+   const router = useRouter();
 
    useEffect(() => {
       let cancelled = false;
@@ -50,7 +51,13 @@ export default function HomePage() {
       };
    }, []);
 
-   if (checkingAuth) {
+   useEffect(() => {
+      if (!checkingAuth && user) {
+         router.replace("/dashboard");
+      }
+   }, [checkingAuth, router, user]);
+
+   if (checkingAuth || user) {
       return (
          <main className="min-h-screen bg-slate-950 flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
@@ -64,14 +71,6 @@ export default function HomePage() {
                <div className="w-8 h-8 border-4 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
             </div>
          </main>
-      );
-   }
-
-   if (user) {
-      return (
-         <DashboardLayout>
-            <DashboardPage />
-         </DashboardLayout>
       );
    }
 
