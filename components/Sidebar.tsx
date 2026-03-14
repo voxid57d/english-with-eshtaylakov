@@ -10,6 +10,7 @@ import {
    PiExamLight,
    PiTrophyLight,
    PiSwordLight,
+   PiCrownSimpleLight,
    PiCaretDoubleLeftLight,
    PiCaretDoubleRightLight,
 } from "react-icons/pi";
@@ -45,21 +46,34 @@ const links = [
       label: "Battle",
       icon: PiSwordLight,
    },
+   {
+      href: "/premium",
+      label: "Buy Premium",
+      icon: PiCrownSimpleLight,
+      accent: "premium",
+   },
 ];
 
 type SidebarProps = {
    isOpenOnMobile: boolean;
    closeMobile: () => void;
+   isPremium: boolean;
 };
 
-export default function Sidebar({ isOpenOnMobile, closeMobile }: SidebarProps) {
+export default function Sidebar({
+   isOpenOnMobile,
+   closeMobile,
+   isPremium,
+}: SidebarProps) {
    const pathname = usePathname();
    const [collapsed, setCollapsed] = useState(false);
 
    const navLinks = (
       // ⬇️ removed mt-4 here
       <nav className="space-y-3">
-         {links.map((link) => {
+         {links
+            .filter((link) => !(isPremium && link.accent === "premium"))
+            .map((link) => {
             const isActive = pathname.startsWith(link.href);
             const Icon = link.icon;
 
@@ -74,16 +88,24 @@ export default function Sidebar({ isOpenOnMobile, closeMobile }: SidebarProps) {
                      collapsed ? "justify-center" : "gap-3",
                      "px-3 py-3 rounded-xl text-base font-medium",
                      "transition-all duration-200 ease-out",
-                     isActive
-                        ? "bg-emerald-600/90 text-white shadow-md shadow-emerald-900/40"
+                     isActive && link.accent === "premium"
+                        ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-900/30"
+                        : isActive
+                          ? "bg-emerald-600/90 text-white shadow-md shadow-emerald-900/40"
+                          : link.accent === "premium"
+                            ? "bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 hover:text-white hover:shadow-md hover:shadow-amber-900/20"
                         : "bg-slate-900/60 text-slate-300 hover:bg-slate-800 hover:text-white hover:shadow-md hover:shadow-slate-900/40",
                      "hover:-translate-y-[1px]",
                   ].join(" ")}>
                   <Icon
                      size={22}
                      className={`transition-colors duration-200 ${
-                        isActive
+                        isActive && link.accent === "premium"
+                           ? "text-slate-950"
+                           : isActive
                            ? "text-white"
+                           : link.accent === "premium"
+                             ? "text-amber-300 group-hover:text-white"
                            : "text-slate-400 group-hover:text-white"
                      }`}
                   />
@@ -110,6 +132,25 @@ export default function Sidebar({ isOpenOnMobile, closeMobile }: SidebarProps) {
                </Link>
             );
          })}
+
+         {isPremium && (
+            <div
+               className={[
+                  "flex items-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3",
+                  collapsed ? "justify-center" : "gap-3",
+               ].join(" ")}>
+               <PiCrownSimpleLight
+                  size={22}
+                  className="shrink-0 text-emerald-300"
+               />
+               <span
+                  className={`whitespace-nowrap text-sm font-medium text-emerald-200 transition-all duration-150 ${
+                     collapsed ? "w-0 overflow-hidden opacity-0" : "opacity-100"
+                  }`}>
+                  You are premium user
+               </span>
+            </div>
+         )}
       </nav>
    );
 

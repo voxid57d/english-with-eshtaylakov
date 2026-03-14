@@ -99,6 +99,7 @@ export default function DashboardLayout({
             <Sidebar
                isOpenOnMobile={isSidebarOpen}
                closeMobile={() => setIsSidebarOpen(false)}
+               isPremium={isPremium}
             />
             <section className="flex-1 p-4 md:p-6 space-y-6">
                {children}
