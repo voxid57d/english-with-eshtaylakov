@@ -69,7 +69,9 @@ export default function AdminVocabularyPage() {
    const [folderDescription, setFolderDescription] = useState("");
    const [folderSortOrder, setFolderSortOrder] = useState("0");
    const [folderSaving, setFolderSaving] = useState(false);
+   const [folderUpdating, setFolderUpdating] = useState(false);
    const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
+   const [selectedFolderId, setSelectedFolderId] = useState("");
 
    const [deckTitle, setDeckTitle] = useState("");
    const [deckDescription, setDeckDescription] = useState("");
@@ -95,6 +97,10 @@ export default function AdminVocabularyPage() {
    const selectedDeck = useMemo(
       () => decks.find((deck) => deck.id === selectedDeckId) || null,
       [decks, selectedDeckId]
+   );
+   const selectedFolder = useMemo(
+      () => folders.find((folder) => folder.id === selectedFolderId) || null,
+      [folders, selectedFolderId]
    );
 
    useEffect(() => {
@@ -187,6 +193,21 @@ export default function AdminVocabularyPage() {
    }, [router, selectedDeckId]);
 
    useEffect(() => {
+      if (!selectedFolder) {
+         setFolderTitle("");
+         setFolderSlug("");
+         setFolderDescription("");
+         setFolderSortOrder("0");
+         return;
+      }
+
+      setFolderTitle(selectedFolder.title);
+      setFolderSlug(selectedFolder.slug);
+      setFolderDescription(selectedFolder.description || "");
+      setFolderSortOrder(String(selectedFolder.sort_order));
+   }, [selectedFolder]);
+
+   useEffect(() => {
       if (!selectedDeck) {
          setDeckTitle("");
          setDeckDescription("");
@@ -249,6 +270,71 @@ export default function AdminVocabularyPage() {
          );
       } finally {
          setFolderSaving(false);
+      }
+   };
+
+   const handleUpdateFolder = async (event: FormEvent) => {
+      event.preventDefault();
+      if (!selectedFolderId) return;
+
+      try {
+         setFolderUpdating(true);
+         setError(null);
+         setSuccess(null);
+         const token = await getAccessToken();
+         const response = await fetch(
+            `/api/admin/vocabulary/folders/${selectedFolderId}`,
+            {
+               method: "PATCH",
+               headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+               },
+               body: JSON.stringify({
+                  title: folderTitle,
+                  slug: folderSlug,
+                  description: folderDescription,
+                  sortOrder: Number(folderSortOrder || 0),
+               }),
+            }
+         );
+         const payload = await response.json();
+
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to update folder.");
+         }
+
+         const updatedFolder = payload.folder as Folder;
+         setFolders((prev) =>
+            prev
+               .map((folder) =>
+                  folder.id === updatedFolder.id ? updatedFolder : folder
+               )
+               .sort((a, b) => a.sort_order - b.sort_order)
+         );
+         setDecks((prev) =>
+            prev.map((deck) =>
+               deck.folder_id === updatedFolder.id
+                  ? {
+                       ...deck,
+                       folder: {
+                          id: updatedFolder.id,
+                          slug: updatedFolder.slug,
+                          title: updatedFolder.title,
+                       },
+                    }
+                  : deck
+            )
+         );
+         setSuccess("Folder updated.");
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to update folder."
+         );
+      } finally {
+         setFolderUpdating(false);
       }
    };
 
@@ -329,6 +415,9 @@ export default function AdminVocabularyPage() {
          );
          if (deckFolderId === folderId) {
             setDeckFolderId("");
+         }
+         if (selectedFolderId === folderId) {
+            setSelectedFolderId("");
          }
          setSuccess("Folder deleted.");
       } catch (requestError) {
@@ -634,7 +723,11 @@ export default function AdminVocabularyPage() {
                         </p>
                      </div>
 
-                     <form onSubmit={handleCreateFolder} className="grid gap-3">
+                     <form
+                        onSubmit={
+                           selectedFolderId ? handleUpdateFolder : handleCreateFolder
+                        }
+                        className="grid gap-3">
                         <input
                            value={folderTitle}
                            onChange={(event) => setFolderTitle(event.target.value)}
@@ -663,12 +756,32 @@ export default function AdminVocabularyPage() {
                            placeholder="Sort order"
                            className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-emerald-500"
                         />
-                        <button
-                           type="submit"
-                           disabled={folderSaving}
-                           className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
-                           {folderSaving ? "Creating..." : "Create folder"}
-                        </button>
+                        <div className="flex flex-wrap gap-3">
+                           <button
+                              type="submit"
+                              disabled={selectedFolderId ? folderUpdating : folderSaving}
+                              className={`cursor-pointer rounded-full px-5 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                 selectedFolderId
+                                    ? "border border-emerald-500 text-emerald-300 hover:bg-emerald-500/10"
+                                    : "bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+                              }`}>
+                              {selectedFolderId
+                                 ? folderUpdating
+                                    ? "Saving..."
+                                    : "Save folder changes"
+                                 : folderSaving
+                                   ? "Creating..."
+                                   : "Create folder"}
+                           </button>
+                           {selectedFolderId && (
+                              <button
+                                 type="button"
+                                 onClick={() => setSelectedFolderId("")}
+                                 className="cursor-pointer rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-300 transition hover:bg-slate-800">
+                                 New folder form
+                              </button>
+                           )}
+                        </div>
                      </form>
 
                      {folders.length > 0 && (
@@ -692,15 +805,23 @@ export default function AdminVocabularyPage() {
                                           </p>
                                        )}
                                     </div>
-                                    <button
-                                       type="button"
-                                       onClick={() => handleDeleteFolder(folder.id)}
-                                       disabled={deletingFolderId === folder.id}
-                                       className="cursor-pointer rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50">
-                                       {deletingFolderId === folder.id
-                                          ? "Deleting..."
-                                          : "Delete"}
-                                    </button>
+                                    <div className="flex gap-2">
+                                       <button
+                                          type="button"
+                                          onClick={() => setSelectedFolderId(folder.id)}
+                                          className="cursor-pointer rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/10">
+                                          Edit
+                                       </button>
+                                       <button
+                                          type="button"
+                                          onClick={() => handleDeleteFolder(folder.id)}
+                                          disabled={deletingFolderId === folder.id}
+                                          className="cursor-pointer rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50">
+                                          {deletingFolderId === folder.id
+                                             ? "Deleting..."
+                                             : "Delete"}
+                                       </button>
+                                    </div>
                                  </div>
                               </div>
                            ))}
@@ -793,10 +914,17 @@ export default function AdminVocabularyPage() {
                                     ? "border-emerald-500 bg-emerald-500/10"
                                     : "border-slate-800 bg-slate-950/60 hover:border-slate-700"
                               }`}>
-                              <button
-                                 type="button"
+                              <div
+                                 role="button"
+                                 tabIndex={0}
                                  onClick={() => setSelectedDeckId(deck.id)}
-                                 className="w-full text-left">
+                                 onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                       event.preventDefault();
+                                       setSelectedDeckId(deck.id);
+                                    }
+                                 }}
+                                 className="w-full cursor-pointer text-left">
                                  <div className="flex items-start justify-between gap-3">
                                     <div>
                                        <p className="font-semibold text-slate-100">
@@ -816,21 +944,16 @@ export default function AdminVocabularyPage() {
                                     Folder: {deck.folder?.title || "None"} | Premium:{" "}
                                     {deck.requires_premium ? "Yes" : "No"}
                                  </p>
-                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                                    <span className="break-all">
-                                       Deck ID: {deck.id}
-                                    </span>
-                                    <button
-                                       type="button"
-                                       onClick={(event) => {
-                                          event.stopPropagation();
-                                          handleCopyDeckId(deck.id);
-                                       }}
-                                       className="cursor-pointer rounded-full border border-slate-700 px-2 py-0.5 text-[10px] text-slate-300 transition hover:bg-slate-800">
-                                       {copiedDeckId === deck.id ? "Copied" : "Copy ID"}
-                                    </button>
-                                 </div>
-                              </button>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                                 <span className="break-all">Deck ID: {deck.id}</span>
+                                 <button
+                                    type="button"
+                                    onClick={() => handleCopyDeckId(deck.id)}
+                                    className="cursor-pointer rounded-full border border-slate-700 px-2 py-0.5 text-[10px] text-slate-300 transition hover:bg-slate-800">
+                                    {copiedDeckId === deck.id ? "Copied" : "Copy ID"}
+                                 </button>
+                              </div>
                               <div className="mt-3 flex justify-end">
                                  <button
                                     type="button"
