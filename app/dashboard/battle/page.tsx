@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PiSwordLight } from "react-icons/pi";
+import { PiCaretDownBold, PiSwordLight } from "react-icons/pi";
 import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import {
@@ -122,8 +122,8 @@ export default function BattleLobbyPage() {
             })
             .filter((deck) => deck.folder !== null);
          setDecks(deckRows);
-         setSelectedDeckIds(deckRows[0]?.id ? [deckRows[0].id] : []);
-         setOpenFolderSlug((current) => current || deckRows[0]?.folder?.slug || null);
+         setSelectedDeckIds([]);
+         setOpenFolderSlug(null);
          setLoadingDecks(false);
       };
 
@@ -155,9 +155,12 @@ export default function BattleLobbyPage() {
          });
       });
 
-      return Array.from(groups.values()).sort((a, b) =>
-         a.title.localeCompare(b.title),
-      );
+      return Array.from(groups.values())
+         .sort((a, b) => a.title.localeCompare(b.title))
+         .map((group) => ({
+            ...group,
+            decks: [...group.decks].sort((a, b) => a.title.localeCompare(b.title)),
+         }));
    }, [decks]);
 
    const selectedDecks = useMemo(
@@ -306,14 +309,22 @@ export default function BattleLobbyPage() {
                                  <button
                                     type="button"
                                     onClick={() => toggleFolder(group.slug)}
-                                    className="flex w-full items-center justify-between gap-3 text-left">
-                                    <span className="text-sm font-semibold text-slate-100">
-                                       {group.title}
+                                    className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-slate-900/70">
+                                    <span className="flex items-center gap-3">
+                                       <span
+                                          className={`text-slate-400 transition-transform ${
+                                             openFolderSlug === group.slug ? "rotate-180" : ""
+                                          }`}>
+                                          <PiCaretDownBold size={14} />
+                                       </span>
+                                       <span className="text-sm font-semibold text-slate-100">
+                                          {group.title}
+                                       </span>
                                     </span>
                                     <span className="text-xs text-slate-400">
                                        {openFolderSlug === group.slug
-                                          ? "Hide decks"
-                                          : `${group.decks.length} deck${group.decks.length === 1 ? "" : "s"}`}
+                                          ? "Click to collapse"
+                                          : `${group.decks.length} deck${group.decks.length === 1 ? "" : "s"} - click to expand`}
                                     </span>
                                  </button>
 
