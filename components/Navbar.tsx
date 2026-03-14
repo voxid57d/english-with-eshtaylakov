@@ -1,17 +1,13 @@
 "use client";
 
+import type { User } from "@supabase/supabase-js";
 import { memo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { LuLogOut } from "react-icons/lu";
 
 type NavbarProps = {
-   user: {
-      email: string;
-      user_metadata?: {
-         avatar_url?: string;
-      };
-   };
+   user: Pick<User, "email" | "user_metadata">;
    username?: string;
    isPremium: boolean;
    onLogout: () => void;
@@ -25,14 +21,12 @@ function Navbar({
    onLogout,
    onToggleSidebar,
 }: NavbarProps) {
-   // ❌ no more fallback to email for the TEXT
-   const displayName = username ?? ""; // text in navbar
-   // ✅ but avatar can still fall back to email for the first letter
-   const avatarLetter = (username || user.email)[0]?.toUpperCase();
+   const displayName = username ?? "";
+   const fallbackIdentity = user.email ?? "User";
+   const avatarLetter = (username || fallbackIdentity)[0]?.toUpperCase();
 
    return (
       <header className="flex items-center justify-between px-3 md:px-6 py-2 border-b border-slate-800">
-         {/* LEFT: menu + logo */}
          <div className="flex items-center gap-2">
             <button
                onClick={onToggleSidebar}
@@ -62,9 +56,7 @@ function Navbar({
             </Link>
          </div>
 
-         {/* RIGHT: name + avatar + premium + logout */}
          <div className="flex items-center gap-1.5 md:gap-3 flex-nowrap">
-            {/* Username text only (no email fallback) */}
             {displayName && (
                <Link
                   href="/username"
@@ -74,7 +66,6 @@ function Navbar({
                </Link>
             )}
 
-            {/* Avatar */}
             <Link
                href="/username"
                className="cursor-pointer"
@@ -82,7 +73,7 @@ function Navbar({
                {user.user_metadata?.avatar_url ? (
                   <Image
                      src={user.user_metadata.avatar_url}
-                     alt={displayName || user.email}
+                     alt={displayName || fallbackIdentity}
                      width={32}
                      height={32}
                      className="h-8 w-8 rounded-full object-cover"
@@ -100,7 +91,6 @@ function Navbar({
                Edit username
             </Link>
 
-            {/* Premium badge / link */}
             {isPremium ? (
                <span className="text-[11px] px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
                   Premium
@@ -113,7 +103,6 @@ function Navbar({
                </Link>
             )}
 
-            {/* Logout desktop */}
             <button
                onClick={onLogout}
                className="cursor-pointer hidden sm:inline-flex items-center gap-1
@@ -123,7 +112,6 @@ function Navbar({
                <span>Log out</span>
             </button>
 
-            {/* Logout mobile */}
             <button
                onClick={onLogout}
                className="cursor-pointer inline-flex sm:hidden items-center justify-center
