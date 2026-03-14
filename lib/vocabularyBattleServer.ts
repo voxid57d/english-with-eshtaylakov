@@ -17,7 +17,7 @@ type DeckRow = {
    id: string;
    title: string;
    is_public: boolean;
-    folder_id: string | null;
+   folder_id: string | null;
 };
 
 type CardRow = {
@@ -69,6 +69,11 @@ type AnswerRow = {
    selected_option_index: number | null;
    is_correct: boolean;
    response_ms: number | null;
+};
+
+type FolderBattleAccessRow = {
+   id: string;
+   is_available_for_battle: boolean | null;
 };
 
 const WAITING_ROOM_TTL_HOURS = 6;
@@ -167,6 +172,29 @@ export async function loadBattleDecks(deckIds: string[]) {
 
    const deckMap = new Map(decks.map((deck) => [deck.id, deck]));
    const orderedDecks = uniqueDeckIds.map((deckId) => deckMap.get(deckId)!);
+   const folderIds = Array.from(
+      new Set(
+         orderedDecks
+            .map((deck) => deck.folder_id)
+            .filter((folderId): folderId is string => Boolean(folderId)),
+      ),
+   );
+
+   const { data: folderRows, error: folderError } = await supabaseAdmin
+      .from("vocabulary_folders")
+      .select("id, is_available_for_battle")
+      .in("id", folderIds);
+
+   if (folderError) {
+      throw new Error("Failed to load battle folder settings.");
+   }
+
+   const folderMap = new Map(
+      ((folderRows || []) as FolderBattleAccessRow[]).map((folder) => [
+         folder.id,
+         folder.is_available_for_battle === true,
+      ]),
+   );
 
    for (const deck of orderedDecks) {
       if (!deck.is_public) {
@@ -175,6 +203,10 @@ export async function loadBattleDecks(deckIds: string[]) {
 
       if (!deck.folder_id) {
          throw new Error("Battle mode only supports decks inside folders.");
+      }
+
+      if (!folderMap.get(deck.folder_id)) {
+         throw new Error("One or more selected folders are not available for battle.");
       }
    }
 
@@ -245,7 +277,7 @@ export async function buildBattleQuestions(
 
 async function getRoomByCode(roomCode: string) {
    const normalizedCode = normalizeRoomCode(roomCode);
-   let query = supabaseAdmin
+   const query = supabaseAdmin
       .from("vocab_battle_rooms")
       .select(ROOM_SELECT_WITH_MULTI)
       .eq("code", normalizedCode)

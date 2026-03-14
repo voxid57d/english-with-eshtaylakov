@@ -3,6 +3,7 @@ create table if not exists public.vocabulary_folders (
    slug text not null unique,
    title text not null,
    description text,
+   is_available_for_battle boolean not null default true,
    sort_order integer not null default 0,
    created_at timestamptz not null default timezone('utc', now())
 );
@@ -24,3 +25,6 @@ comment on table public.vocabulary_folders is
 
 comment on column public.vocabulary_decks.folder_id is
 'Optional folder assignment for public decks. Private decks should remain without a folder.';
+
+comment on column public.vocabulary_folders.is_available_for_battle is
+'Controls whether decks in this folder can appear in vocabulary battle.';

@@ -29,7 +29,9 @@ export async function GET(req: Request) {
       const [foldersResult, decksResult] = await Promise.all([
          supabaseAdmin
             .from("vocabulary_folders")
-            .select("id, slug, title, description, sort_order, created_at")
+            .select(
+               "id, slug, title, description, sort_order, created_at, is_available_for_battle",
+            )
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: false }),
          supabaseAdmin
@@ -82,7 +84,9 @@ export async function POST(req: Request) {
                description: description || null,
                sort_order: sortOrder,
             })
-            .select("id, slug, title, description, sort_order, created_at")
+            .select(
+               "id, slug, title, description, sort_order, created_at, is_available_for_battle",
+            )
             .single();
 
          if (error || !data) {

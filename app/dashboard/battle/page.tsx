@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { PiSwordLight } from "react-icons/pi";
 import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import {
@@ -10,6 +11,7 @@ import {
    BATTLE_QUESTION_OPTIONS,
    BattleQuestionCount,
    BattleHistoryEntry,
+   BATTLE_TIME_LIMIT_SECONDS,
    normalizeRoomCode,
 } from "@/lib/vocabularyBattle";
 
@@ -28,10 +30,12 @@ type DeckFolderRelation =
    | {
         title: string;
         slug: string;
+        is_available_for_battle?: boolean;
      }
    | {
         title: string;
         slug: string;
+        is_available_for_battle?: boolean;
      }[]
    | null
    | undefined;
@@ -66,7 +70,7 @@ export default function BattleLobbyPage() {
             supabase
                .from("vocabulary_decks")
                .select(
-                  "id, title, description, folder_id, folder:vocabulary_folders(title, slug)",
+                  "id, title, description, folder_id, folder:vocabulary_folders(title, slug, is_available_for_battle)",
                )
                .eq("is_public", true)
                .not("folder_id", "is", null)
@@ -96,24 +100,27 @@ export default function BattleLobbyPage() {
 
          const deckRows = ((decksResult.data || []) as (PublicDeck & {
             folder?: DeckFolderRelation;
-         })[]).map((deck) => {
-            const folderRelation = Array.isArray(deck.folder)
-               ? deck.folder[0]
-               : deck.folder;
+         })[])
+            .map((deck) => {
+               const folderRelation = Array.isArray(deck.folder)
+                  ? deck.folder[0]
+                  : deck.folder;
 
-            return {
-            id: deck.id,
-            title: deck.title,
-            description: deck.description,
-            folder_id: deck.folder_id,
-            folder: folderRelation
-               ? {
-                    title: folderRelation.title,
-                    slug: folderRelation.slug,
-                 }
-               : null,
-         };
-         });
+               return {
+                  id: deck.id,
+                  title: deck.title,
+                  description: deck.description,
+                  folder_id: deck.folder_id,
+                  folder:
+                     folderRelation?.is_available_for_battle === true
+                        ? {
+                             title: folderRelation.title,
+                             slug: folderRelation.slug,
+                          }
+                        : null,
+               };
+            })
+            .filter((deck) => deck.folder !== null);
          setDecks(deckRows);
          setSelectedDeckIds(deckRows[0]?.id ? [deckRows[0].id] : []);
          setOpenFolderSlug((current) => current || deckRows[0]?.folder?.slug || null);
@@ -244,7 +251,12 @@ export default function BattleLobbyPage() {
    return (
       <div className="space-y-8">
          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold">Vocabulary battle</h1>
+            <div className="flex items-center gap-3">
+               <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300">
+                  <PiSwordLight size={28} />
+               </div>
+               <h1 className="text-3xl font-semibold">Vocabulary battle</h1>
+            </div>
             <p className="max-w-2xl text-sm text-slate-400">
                Create a private head-to-head room, combine one or more public
                decks from folders, and choose how many timed questions to play.
@@ -272,7 +284,7 @@ export default function BattleLobbyPage() {
                   </p>
                ) : decks.length === 0 ? (
                   <p className="text-sm text-slate-500">
-                     No folder-based public decks are available yet.
+                     No battle-enabled folder decks are available yet.
                   </p>
                ) : (
                   <>
@@ -416,7 +428,7 @@ export default function BattleLobbyPage() {
                </form>
 
                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
-                  Match rules: {questionCount} questions, 10 seconds each, same
+                  Match rules: {questionCount} questions, {BATTLE_TIME_LIMIT_SECONDS} seconds each, same
                   shared set, higher score wins.
                </div>
             </section>

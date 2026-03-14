@@ -54,7 +54,9 @@ export async function PATCH(
             sort_order: sortOrder,
          })
          .eq("id", folderId)
-         .select("id, slug, title, description, sort_order, created_at")
+         .select(
+            "id, slug, title, description, sort_order, created_at, is_available_for_battle",
+         )
          .single();
 
       if (error || !data) {

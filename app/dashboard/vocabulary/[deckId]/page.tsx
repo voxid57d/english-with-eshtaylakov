@@ -27,12 +27,12 @@ type DeckQueryRow = {
    description: string | null;
    is_public: boolean;
    requires_premium: boolean;
-   folder:
-      | {
-           slug: string;
-           title: string;
-        }[]
-      | null;
+   folder_id: string | null;
+};
+
+type FolderRow = {
+   slug: string;
+   title: string;
 };
 
 type CardRow = {
@@ -110,9 +110,7 @@ export default function DeckPage() {
 
          const { data: deckData, error: deckError } = await supabase
             .from("vocabulary_decks")
-            .select(
-               "id, title, description, is_public, requires_premium, folder:vocabulary_folders(slug, title)"
-            )
+            .select("id, title, description, is_public, requires_premium, folder_id")
             .eq("id", deckId)
             .single();
 
@@ -121,18 +119,33 @@ export default function DeckPage() {
             setDeck(null);
          } else if (deckData) {
             const rawDeck = deckData as DeckQueryRow;
+            let folder: Deck["folder"] = null;
+
+            if (rawDeck.folder_id) {
+               const { data: folderData, error: folderError } = await supabase
+                  .from("vocabulary_folders")
+                  .select("slug, title")
+                  .eq("id", rawDeck.folder_id)
+                  .maybeSingle();
+
+               if (folderError) {
+                  console.error("Error loading folder:", folderError);
+               } else if (folderData) {
+                  const loadedFolder = folderData as FolderRow;
+                  folder = {
+                     slug: loadedFolder.slug,
+                     title: loadedFolder.title,
+                  };
+               }
+            }
+
             const loadedDeck: Deck = {
                id: rawDeck.id,
                title: rawDeck.title,
                description: rawDeck.description,
                is_public: rawDeck.is_public,
                requires_premium: rawDeck.requires_premium,
-               folder: rawDeck.folder?.[0]
-                  ? {
-                       slug: rawDeck.folder[0].slug,
-                       title: rawDeck.folder[0].title,
-                    }
-                  : null,
+               folder,
             };
             setDeck(loadedDeck);
             if (loadedDeck.requires_premium && !premium) {

@@ -12,6 +12,7 @@ type Folder = {
    description: string | null;
    sort_order: number;
    created_at: string;
+   is_available_for_battle: boolean;
 };
 
 type Deck = {
@@ -72,6 +73,8 @@ export default function AdminVocabularyPage() {
    const [folderUpdating, setFolderUpdating] = useState(false);
    const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
    const [selectedFolderId, setSelectedFolderId] = useState("");
+   const [battleFolderIds, setBattleFolderIds] = useState<string[]>([]);
+   const [battleSaving, setBattleSaving] = useState(false);
 
    const [deckTitle, setDeckTitle] = useState("");
    const [deckDescription, setDeckDescription] = useState("");
@@ -129,6 +132,11 @@ export default function AdminVocabularyPage() {
             const nextFolders = (payload.folders || []) as Folder[];
             const nextDecks = (payload.decks || []) as Deck[];
             setFolders(nextFolders);
+            setBattleFolderIds(
+               nextFolders
+                  .filter((folder) => folder.is_available_for_battle)
+                  .map((folder) => folder.id),
+            );
             setDecks(nextDecks);
             const initialDeckId = nextDecks[0]?.id || "";
             setSelectedDeckId((current) => current || initialDeckId);
@@ -257,6 +265,13 @@ export default function AdminVocabularyPage() {
                (a, b) => a.sort_order - b.sort_order
             )
          );
+         setBattleFolderIds((prev) => {
+            const createdFolder = payload.folder as Folder;
+            return createdFolder.is_available_for_battle &&
+               !prev.includes(createdFolder.id)
+               ? [...prev, createdFolder.id]
+               : prev;
+         });
          setFolderTitle("");
          setFolderSlug("");
          setFolderDescription("");
@@ -311,6 +326,13 @@ export default function AdminVocabularyPage() {
                   folder.id === updatedFolder.id ? updatedFolder : folder
                )
                .sort((a, b) => a.sort_order - b.sort_order)
+         );
+         setBattleFolderIds((prev) =>
+            updatedFolder.is_available_for_battle
+               ? prev.includes(updatedFolder.id)
+                  ? prev
+                  : [...prev, updatedFolder.id]
+               : prev.filter((id) => id !== updatedFolder.id)
          );
          setDecks((prev) =>
             prev.map((deck) =>
@@ -406,6 +428,7 @@ export default function AdminVocabularyPage() {
          }
 
          setFolders((prev) => prev.filter((folder) => folder.id !== folderId));
+         setBattleFolderIds((prev) => prev.filter((id) => id !== folderId));
          setDecks((prev) =>
             prev.map((deck) =>
                deck.folder_id === folderId
@@ -476,6 +499,53 @@ export default function AdminVocabularyPage() {
          );
       } finally {
          setDeckUpdating(false);
+      }
+   };
+
+   const toggleBattleFolder = (folderId: string) => {
+      setBattleFolderIds((current) =>
+         current.includes(folderId)
+            ? current.filter((id) => id !== folderId)
+            : [...current, folderId],
+      );
+   };
+
+   const handleSaveBattleFolders = async () => {
+      try {
+         setBattleSaving(true);
+         setError(null);
+         setSuccess(null);
+         const token = await getAccessToken();
+         const response = await fetch("/api/admin/battle/folders", {
+            method: "PATCH",
+            headers: {
+               "Content-Type": "application/json",
+               Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ folderIds: battleFolderIds }),
+         });
+         const payload = await response.json();
+
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to save battle folders.");
+         }
+
+         const nextFolders = (payload.folders || []) as Folder[];
+         setFolders(nextFolders);
+         setBattleFolderIds(
+            nextFolders
+               .filter((folder) => folder.is_available_for_battle)
+               .map((folder) => folder.id),
+         );
+         setSuccess("Battle folders updated.");
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to save battle folders.",
+         );
+      } finally {
+         setBattleSaving(false);
       }
    };
 
@@ -716,6 +786,54 @@ export default function AdminVocabularyPage() {
                <div className="space-y-6">
                   <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6">
                      <div className="mb-4 space-y-1">
+                        <h2 className="text-xl font-semibold">Battle settings</h2>
+                        <p className="text-sm text-slate-400">
+                           Choose which folders should appear in vocabulary battle.
+                        </p>
+                     </div>
+
+                     {folders.length === 0 ? (
+                        <p className="text-sm text-slate-500">
+                           Create at least one folder first.
+                        </p>
+                     ) : (
+                        <div className="space-y-4">
+                           <div className="grid gap-2">
+                              {folders.map((folder) => (
+                                 <label
+                                    key={folder.id}
+                                    className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3">
+                                    <input
+                                       type="checkbox"
+                                       checked={battleFolderIds.includes(folder.id)}
+                                       onChange={() => toggleBattleFolder(folder.id)}
+                                       className="mt-1"
+                                    />
+                                    <span className="min-w-0">
+                                       <span className="block text-sm font-medium text-slate-100">
+                                          {folder.title}
+                                       </span>
+                                       <span className="block text-xs text-slate-500">
+                                          {folder.slug}
+                                       </span>
+                                    </span>
+                                 </label>
+                              ))}
+                           </div>
+
+                           <button
+                              type="button"
+                              onClick={handleSaveBattleFolders}
+                              disabled={battleSaving}
+                              className="cursor-pointer rounded-full border border-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+                              {battleSaving ? "Saving..." : "Save battle folders"}
+                           </button>
+                        </div>
+                     )}
+                  </section>
+
+                  <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6">
+                     <div className="mb-4 space-y-1">
                         <h2 className="text-xl font-semibold">Create folder</h2>
                         <p className="text-sm text-slate-400">
                            Folders are used only for student-facing public deck
@@ -798,6 +916,10 @@ export default function AdminVocabularyPage() {
                                        <p className="mt-1 text-xs text-slate-500">
                                           Slug: {folder.slug} | Sort:{" "}
                                           {folder.sort_order}
+                                       </p>
+                                       <p className="mt-1 text-xs text-slate-500">
+                                          Battle:{" "}
+                                          {folder.is_available_for_battle ? "Enabled" : "Hidden"}
                                        </p>
                                        {folder.description && (
                                           <p className="mt-2 text-sm text-slate-400">
