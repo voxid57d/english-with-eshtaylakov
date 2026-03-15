@@ -492,14 +492,11 @@ export default function BattleLobbyPage() {
                      {showHistory ? "Hide history" : "Show history"}
                   </button>
                </div>
-               <p className="text-sm text-slate-400">
-                  Open this section only when you want to load your latest battle rooms.
-               </p>
             </div>
 
             {!showHistory ? (
                <p className="text-sm text-slate-500">
-                  Battle history is hidden until you open it.
+                  Battle history
                </p>
             ) : loadingHistory ? (
                <p className="text-sm text-slate-500">Loading battle history...</p>

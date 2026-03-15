@@ -89,9 +89,7 @@ export default function LeaderboardPage() {
                   <PiTrophyLight className="text-amber-300" />
                   <span>Leaderboard</span>
                </h1>
-               <p className="text-sm text-slate-400">
-                  Current daily streak ranking by username.
-               </p>
+               <p className="text-sm text-slate-400">TOP 15 Users</p>
             </div>
          </header>
 
@@ -170,14 +168,10 @@ export default function LeaderboardPage() {
                               )}
                            </div>
                            {isCurrentUser && (
-                              <p className="text-xs text-emerald-300">
-                                 You
-                              </p>
+                              <p className="text-xs text-emerald-300">You</p>
                            )}
                            {!entry.isActive && (
-                              <p className="text-xs text-slate-500">
-                                 Inactive
-                              </p>
+                              <p className="text-xs text-slate-500">Inactive</p>
                            )}
                         </div>
 
