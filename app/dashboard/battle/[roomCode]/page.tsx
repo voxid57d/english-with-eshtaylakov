@@ -434,9 +434,9 @@ export default function BattleRoomPage() {
    const winner = snapshot.players.find(
       (player) => player.userId === snapshot.winnerUserId,
    );
-   const bothPlayersJoined = snapshot.players.length === 2;
+   const hasMinimumPlayers = snapshot.players.length >= 2;
    const everyoneReady =
-      bothPlayersJoined && snapshot.players.every((player) => player.isReady);
+      hasMinimumPlayers && snapshot.players.every((player) => player.isReady);
 
    return (
       <div className="space-y-6">
@@ -474,7 +474,7 @@ export default function BattleRoomPage() {
                   </p>
                </div>
                <p className="max-w-md text-sm text-slate-300">
-                  Share this code with your student. Both of you will use the
+                  Share this code with your students. Everyone in the room will use the
                   same {snapshot.questionCount} questions.
                </p>
             </div>
@@ -495,11 +495,11 @@ export default function BattleRoomPage() {
                            Ready room
                         </p>
                         <h2 className="text-2xl font-semibold text-slate-50">
-                           Downloaded and waiting for both players
+                           Downloaded and waiting for players
                         </h2>
                         <p className="text-sm text-slate-400">
-                           Questions are prepared. Once both players press
-                           ready, the shared countdown starts.
+                           Questions are prepared. Once at least two players have
+                           joined and everyone presses ready, the shared countdown starts.
                         </p>
                      </div>
 
@@ -518,14 +518,14 @@ export default function BattleRoomPage() {
                               </p>
                            </div>
                         ))}
-                        {!bothPlayersJoined && (
+                        {!hasMinimumPlayers && (
                            <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-950/30 p-5 text-sm text-slate-500">
-                              Waiting for the second player to join.
+                              Waiting for more players to join. At least 2 are needed to start.
                            </div>
                         )}
                      </div>
 
-                     {bothPlayersJoined && !snapshot.viewerReady && (
+                     {hasMinimumPlayers && !snapshot.viewerReady && (
                         <button
                            type="button"
                            onClick={handleReady}
@@ -537,7 +537,7 @@ export default function BattleRoomPage() {
 
                      {snapshot.viewerReady && !everyoneReady && (
                         <p className="text-sm text-slate-300">
-                           You are ready. Waiting for the other player.
+                           You are ready. Waiting for the remaining players.
                         </p>
                      )}
                   </div>
@@ -552,7 +552,7 @@ export default function BattleRoomPage() {
                         {Math.ceil(countdownMs / 1000)}
                      </p>
                      <p className="mx-auto max-w-lg text-sm text-slate-300">
-                        Both players are ready. The battle opens when the
+                        Everyone is ready. The battle opens when the
                         countdown reaches zero.
                      </p>
                   </div>
@@ -614,7 +614,7 @@ export default function BattleRoomPage() {
                               Your battle is complete.
                            </p>
                            <p className="mt-2 text-sm text-slate-300">
-                              Waiting for the other player to finish so we can
+                              Waiting for the remaining players to finish so we can
                               compare the final scores.
                            </p>
                         </div>

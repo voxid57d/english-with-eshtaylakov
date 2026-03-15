@@ -29,8 +29,8 @@ export async function POST(req: Request) {
             ? 401
             : message === "Room not found."
               ? 404
-              : message === "This room already has two players." ||
-                  message === "This battle has already finished."
+              : message === "This battle has already finished." ||
+                  message === "This battle has already started."
                 ? 409
                 : 400;
       return NextResponse.json({ error: message }, { status });

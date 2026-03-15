@@ -261,7 +261,7 @@ export default function BattleLobbyPage() {
                <h1 className="text-3xl font-semibold">Vocabulary battle</h1>
             </div>
             <p className="max-w-2xl text-sm text-slate-400">
-               Create a private head-to-head room, combine one or more public
+               Create a private multiplayer room, combine one or more public
                decks from folders, and choose how many timed questions to play.
             </p>
          </div>
@@ -277,7 +277,7 @@ export default function BattleLobbyPage() {
                <div className="space-y-1">
                   <h2 className="text-xl font-semibold">Create a room</h2>
                   <p className="text-sm text-slate-400">
-                     The room starts automatically when the second player joins.
+                     The room starts once at least 2 players have joined and everyone is ready.
                   </p>
                </div>
 
@@ -411,7 +411,7 @@ export default function BattleLobbyPage() {
                <div className="space-y-1">
                   <h2 className="text-xl font-semibold">Join by code</h2>
                   <p className="text-sm text-slate-400">
-                     Ask your opponent for the six-character room code.
+                     Ask the host for the six-character room code.
                   </p>
                </div>
 

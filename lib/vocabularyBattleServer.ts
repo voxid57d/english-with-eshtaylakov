@@ -543,7 +543,7 @@ export async function markPlayerReady(roomCode: string, userId: string) {
 
    const players = await getRoomPlayers(room.id);
    const everyoneReady =
-      players.length === 2 && players.every((player) => player.is_ready === true);
+      players.length >= 2 && players.every((player) => player.is_ready === true);
 
    if (
       everyoneReady &&
@@ -584,8 +584,8 @@ export async function joinBattleRoom(
       return room.code;
    }
 
-   if (players.length >= 2) {
-      throw new Error("This room already has two players.");
+   if (room.status !== "waiting") {
+      throw new Error("This battle has already started.");
    }
 
    const { error: joinError } = await supabaseAdmin
@@ -601,16 +601,6 @@ export async function joinBattleRoom(
 
    if (joinError) {
       throw new Error("Failed to join the room.");
-   }
-
-   const refreshedPlayers = await getRoomPlayers(room.id);
-   if (refreshedPlayers.length > 2) {
-      await supabaseAdmin
-         .from("vocab_battle_players")
-         .delete()
-         .eq("room_id", room.id)
-         .eq("user_id", userId);
-      throw new Error("This room already has two players.");
    }
 
    return room.code;
@@ -714,7 +704,7 @@ export async function submitBattleResults(
 
    const refreshedPlayers = await getRoomPlayers(room.id);
    const everyoneSubmitted =
-      refreshedPlayers.length === 2 &&
+      refreshedPlayers.length >= 2 &&
       refreshedPlayers.every((entry) => Boolean(entry.submitted_at));
 
    if (everyoneSubmitted) {
