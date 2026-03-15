@@ -40,6 +40,11 @@ type DeckFolderRelation =
    | null
    | undefined;
 
+const NATURAL_SORT = new Intl.Collator(undefined, {
+   numeric: true,
+   sensitivity: "base",
+});
+
 export default function BattleLobbyPage() {
    const router = useRouter();
    const [decks, setDecks] = useState<PublicDeck[]>([]);
@@ -53,6 +58,9 @@ export default function BattleLobbyPage() {
    const [createLoading, setCreateLoading] = useState(false);
    const [joinLoading, setJoinLoading] = useState(false);
    const [history, setHistory] = useState<BattleHistoryEntry[]>([]);
+   const [showHistory, setShowHistory] = useState(false);
+   const [loadingHistory, setLoadingHistory] = useState(false);
+   const [historyLoaded, setHistoryLoaded] = useState(false);
    const [error, setError] = useState<string | null>(null);
 
    useEffect(() => {
@@ -65,23 +73,14 @@ export default function BattleLobbyPage() {
             return;
          }
 
-         const token = await getSupabaseAccessToken();
-         const [decksResult, historyResult] = await Promise.all([
-            supabase
-               .from("vocabulary_decks")
-               .select(
-                  "id, title, description, folder_id, folder:vocabulary_folders(title, slug, is_available_for_battle)",
-               )
-               .eq("is_public", true)
-               .not("folder_id", "is", null)
-               .order("title", { ascending: true }),
-            fetch("/api/vocabulary-battle/history", {
-               headers: {
-                  Authorization: `Bearer ${token}`,
-               },
-               cache: "no-store",
-            }),
-         ]);
+         const decksResult = await supabase
+            .from("vocabulary_decks")
+            .select(
+               "id, title, description, folder_id, folder:vocabulary_folders(title, slug, is_available_for_battle)",
+            )
+            .eq("is_public", true)
+            .not("folder_id", "is", null)
+            .order("title", { ascending: true });
 
          if (cancelled) return;
 
@@ -89,13 +88,6 @@ export default function BattleLobbyPage() {
             setError("Failed to load public decks.");
             setLoadingDecks(false);
             return;
-         }
-
-         const historyPayload = await historyResult.json();
-         if (!historyResult.ok) {
-            setError(historyPayload.error || "Failed to load battle history.");
-         } else {
-            setHistory((historyPayload.entries || []) as BattleHistoryEntry[]);
          }
 
          const deckRows = ((decksResult.data || []) as (PublicDeck & {
@@ -134,6 +126,48 @@ export default function BattleLobbyPage() {
       };
    }, [router]);
 
+   const loadHistory = async () => {
+      if (loadingHistory || historyLoaded) return;
+
+      try {
+         setLoadingHistory(true);
+         setError(null);
+
+         const token = await getSupabaseAccessToken();
+         const response = await fetch("/api/vocabulary-battle/history", {
+            headers: {
+               Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+         });
+
+         const payload = await response.json();
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to load battle history.");
+         }
+
+         setHistory((payload.entries || []) as BattleHistoryEntry[]);
+         setHistoryLoaded(true);
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to load battle history.",
+         );
+      } finally {
+         setLoadingHistory(false);
+      }
+   };
+
+   const handleToggleHistory = () => {
+      const nextShowHistory = !showHistory;
+      setShowHistory(nextShowHistory);
+
+      if (nextShowHistory && !historyLoaded) {
+         void loadHistory();
+      }
+   };
+
    const deckGroups = useMemo(() => {
       const groups = new Map<
          string,
@@ -156,10 +190,12 @@ export default function BattleLobbyPage() {
       });
 
       return Array.from(groups.values())
-         .sort((a, b) => a.title.localeCompare(b.title))
+         .sort((a, b) => NATURAL_SORT.compare(a.title, b.title))
          .map((group) => ({
             ...group,
-            decks: [...group.decks].sort((a, b) => a.title.localeCompare(b.title)),
+            decks: [...group.decks].sort((a, b) =>
+               NATURAL_SORT.compare(a.title, b.title),
+            ),
          }));
    }, [decks]);
 
@@ -447,13 +483,27 @@ export default function BattleLobbyPage() {
 
          <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 space-y-5">
             <div className="space-y-1">
-               <h2 className="text-xl font-semibold">Recent battles</h2>
+               <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-xl font-semibold">Recent battles</h2>
+                  <button
+                     type="button"
+                     onClick={handleToggleHistory}
+                     className="cursor-pointer rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-800">
+                     {showHistory ? "Hide history" : "Show history"}
+                  </button>
+               </div>
                <p className="text-sm text-slate-400">
-                  Your latest rooms, including unfinished matches and final results.
+                  Open this section only when you want to load your latest battle rooms.
                </p>
             </div>
 
-            {history.length === 0 ? (
+            {!showHistory ? (
+               <p className="text-sm text-slate-500">
+                  Battle history is hidden until you open it.
+               </p>
+            ) : loadingHistory ? (
+               <p className="text-sm text-slate-500">Loading battle history...</p>
+            ) : history.length === 0 ? (
                <p className="text-sm text-slate-500">
                   No battle history yet. Create a room to play your first match.
                </p>
