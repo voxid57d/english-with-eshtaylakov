@@ -16,6 +16,7 @@ type LocalBattleState = {
    questionStartedAt: number;
    answers: BattleSubmissionAnswer[];
    submitted: boolean;
+   pendingSubmission: boolean;
 };
 
 function createInitialLocalState(startKey: string): LocalBattleState {
@@ -25,6 +26,7 @@ function createInitialLocalState(startKey: string): LocalBattleState {
       questionStartedAt: Date.now(),
       answers: [],
       submitted: false,
+      pendingSubmission: false,
    };
 }
 
@@ -34,6 +36,21 @@ function getBattleStorageKey(roomCode: string, startKey: string) {
 
 function formatSeconds(ms: number) {
    return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function getSubmitErrorMessage(error: unknown) {
+   const message =
+      error instanceof Error ? error.message : "Failed to submit battle.";
+
+   if (
+      message === "Load failed" ||
+      message === "Failed to fetch" ||
+      message === "NetworkError when attempting to fetch resource."
+   ) {
+      return "Your connection dropped before the answers were saved. Keep this page open and retry submission.";
+   }
+
+   return message;
 }
 
 export default function BattleRoomPage() {
@@ -158,7 +175,27 @@ export default function BattleRoomPage() {
                   parsed.currentIndex >= 0 &&
                   parsed.currentIndex <= snapshot.questionBank.length
                ) {
-                  return parsed;
+                  const normalizedAnswers = Array.isArray(parsed.answers)
+                     ? parsed.answers
+                     : [];
+                  const reachedEnd =
+                     parsed.currentIndex >= snapshot.questionBank.length;
+
+                  return {
+                     startKey,
+                     currentIndex: parsed.currentIndex,
+                     questionStartedAt:
+                        typeof parsed.questionStartedAt === "number"
+                           ? parsed.questionStartedAt
+                           : Date.now(),
+                     answers: normalizedAnswers,
+                     // Recover older saved attempts that were marked submitted
+                     // before the server actually confirmed the save.
+                     submitted: parsed.submitted === true && !reachedEnd,
+                     pendingSubmission:
+                        parsed.pendingSubmission === true ||
+                        (parsed.submitted === true && reachedEnd),
+                  };
                }
             }
          } catch {
@@ -229,16 +266,27 @@ export default function BattleRoomPage() {
             }
 
             setSnapshot(payload);
-            setLocalBattle((current) =>
-               current ? { ...current, submitted: true } : current,
-            );
+            setLocalBattle((current) => {
+               if (!current) return current;
+
+               return {
+                  ...current,
+                  submitted: true,
+                  pendingSubmission: false,
+               };
+            });
             setError(null);
          } catch (requestError) {
-            setError(
-               requestError instanceof Error
-                  ? requestError.message
-                  : "Failed to submit battle.",
+            setLocalBattle((current) =>
+               current
+                  ? {
+                       ...current,
+                       pendingSubmission: true,
+                       submitted: false,
+                    }
+                  : current,
             );
+            setError(getSubmitErrorMessage(requestError));
          } finally {
             setSubmitLoading(false);
          }
@@ -261,12 +309,12 @@ export default function BattleRoomPage() {
             ];
 
             if (current.currentIndex + 1 >= snapshot.questionBank.length) {
-               void submitBattle(nextAnswers);
                return {
                   ...current,
                   answers: nextAnswers,
                   currentIndex: current.currentIndex + 1,
-                  submitted: true,
+                  submitted: false,
+                  pendingSubmission: true,
                };
             }
 
@@ -278,8 +326,21 @@ export default function BattleRoomPage() {
             };
          });
       },
-      [snapshot, submitBattle],
+      [snapshot],
    );
+
+   useEffect(() => {
+      if (
+         !snapshot ||
+         snapshot.viewerSubmitted ||
+         !localBattle?.pendingSubmission ||
+         submitLoading
+      ) {
+         return;
+      }
+
+      void submitBattle(localBattle.answers);
+   }, [localBattle, snapshot, submitBattle, submitLoading]);
 
    const activeQuestion = useMemo(() => {
       if (!snapshot || !localBattle) return null;
@@ -303,7 +364,7 @@ export default function BattleRoomPage() {
          snapshot.viewerSubmitted ||
          snapshot.status !== "active" ||
          !localBattle ||
-         localBattle.submitted ||
+         localBattle.pendingSubmission ||
          localBattle.currentIndex >= snapshot.questionBank.length ||
          !activeQuestion
       ) {
@@ -403,6 +464,14 @@ export default function BattleRoomPage() {
          snapshot.timeLimitSeconds * 1000,
       );
       advanceBattle(selectedOptionIndex, responseMs);
+   };
+
+   const handleRetrySubmission = () => {
+      if (!localBattle?.pendingSubmission || submitLoading) {
+         return;
+      }
+
+      void submitBattle(localBattle.answers);
    };
 
    if (loading) {
@@ -604,19 +673,36 @@ export default function BattleRoomPage() {
                   )}
 
                {snapshot.status === "active" &&
-                  (snapshot.viewerSubmitted || submitLoading) && (
+                  (snapshot.viewerSubmitted ||
+                     submitLoading ||
+                     localBattle?.pendingSubmission) && (
                      <div className="space-y-5">
                         <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6">
                            <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
-                              Results sent
+                              {snapshot.viewerSubmitted
+                                 ? "Results sent"
+                                 : submitLoading
+                                   ? "Submitting answers"
+                                   : "Submission pending"}
                            </p>
                            <p className="mt-3 text-2xl font-semibold text-slate-50">
-                              Your battle is complete.
+                              {snapshot.viewerSubmitted
+                                 ? "Your battle is complete."
+                                 : "Your answers are ready to send."}
                            </p>
                            <p className="mt-2 text-sm text-slate-300">
-                              Waiting for the remaining players to finish so we can
-                              compare the final scores.
+                              {snapshot.viewerSubmitted
+                                 ? "Waiting for the remaining players to finish so we can compare the final scores."
+                                 : "We will keep trying until the server confirms your submission."}
                            </p>
+                           {!snapshot.viewerSubmitted && !submitLoading && (
+                              <button
+                                 type="button"
+                                 onClick={handleRetrySubmission}
+                                 className="mt-4 cursor-pointer rounded-full border border-emerald-400/40 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/10">
+                                 Retry submission
+                              </button>
+                           )}
                         </div>
                      </div>
                   )}

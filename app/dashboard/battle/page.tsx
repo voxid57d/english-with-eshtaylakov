@@ -311,6 +311,43 @@ export default function BattleLobbyPage() {
          <div className="grid gap-6 lg:grid-cols-2">
             <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
                <div className="space-y-1">
+                  <h2 className="text-xl font-semibold">Join by code</h2>
+                  <p className="text-sm text-slate-400">
+                     Ask the host for the six-character room code.
+                  </p>
+               </div>
+
+               <form onSubmit={handleJoin} className="space-y-4">
+                  <label className="block space-y-2">
+                     <span className="text-sm text-slate-300">Room code</span>
+                     <input
+                        type="text"
+                        value={roomCode}
+                        onChange={(event) =>
+                           setRoomCode(normalizeRoomCode(event.target.value))
+                        }
+                        maxLength={6}
+                        placeholder="AB12CD"
+                        className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm uppercase tracking-[0.3em] outline-none focus:border-emerald-500"
+                     />
+                  </label>
+
+                  <button
+                     type="submit"
+                     disabled={roomCode.length !== 6 || joinLoading}
+                     className="cursor-pointer rounded-full border border-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+                     {joinLoading ? "Joining..." : "Join battle"}
+                  </button>
+               </form>
+
+               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
+                  Match rules: {questionCount} questions, {BATTLE_TIME_LIMIT_SECONDS} seconds each, same
+                  shared set, higher score wins.
+               </div>
+            </section>
+
+            <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
+               <div className="space-y-1">
                   <h2 className="text-xl font-semibold">Create a room</h2>
                   <p className="text-sm text-slate-400">
                      The room starts once at least 2 players have joined and everyone is ready.
@@ -441,43 +478,6 @@ export default function BattleLobbyPage() {
                      </button>
                   </>
                )}
-            </section>
-
-            <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
-               <div className="space-y-1">
-                  <h2 className="text-xl font-semibold">Join by code</h2>
-                  <p className="text-sm text-slate-400">
-                     Ask the host for the six-character room code.
-                  </p>
-               </div>
-
-               <form onSubmit={handleJoin} className="space-y-4">
-                  <label className="block space-y-2">
-                     <span className="text-sm text-slate-300">Room code</span>
-                     <input
-                        type="text"
-                        value={roomCode}
-                        onChange={(event) =>
-                           setRoomCode(normalizeRoomCode(event.target.value))
-                        }
-                        maxLength={6}
-                        placeholder="AB12CD"
-                        className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm uppercase tracking-[0.3em] outline-none focus:border-emerald-500"
-                     />
-                  </label>
-
-                  <button
-                     type="submit"
-                     disabled={roomCode.length !== 6 || joinLoading}
-                     className="cursor-pointer rounded-full border border-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60">
-                     {joinLoading ? "Joining..." : "Join battle"}
-                  </button>
-               </form>
-
-               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
-                  Match rules: {questionCount} questions, {BATTLE_TIME_LIMIT_SECONDS} seconds each, same
-                  shared set, higher score wins.
-               </div>
             </section>
          </div>
 
