@@ -54,6 +54,11 @@ type PlayerRow = {
    submitted_at: string | null;
 };
 
+type ProfilePremiumRow = {
+   id: string;
+   is_premium: boolean | null;
+};
+
 type QuestionRow = {
    room_id?: string;
    question_index: number;
@@ -316,6 +321,30 @@ async function getRoomPlayers(roomId: string) {
    return (data || []) as PlayerRow[];
 }
 
+async function getPremiumMap(userIds: string[]) {
+   const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
+
+   if (uniqueUserIds.length === 0) {
+      return new Map<string, boolean>();
+   }
+
+   const { data, error } = await supabaseAdmin
+      .from("profiles")
+      .select("id, is_premium")
+      .in("id", uniqueUserIds);
+
+   if (error) {
+      throw new Error("Failed to load player premium status.");
+   }
+
+   return new Map(
+      ((data || []) as ProfilePremiumRow[]).map((profile) => [
+         profile.id,
+         profile.is_premium === true,
+      ]),
+   );
+}
+
 async function getRoomQuestions(roomId: string) {
    const { data, error } = await supabaseAdmin
       .from("vocab_battle_questions")
@@ -488,6 +517,7 @@ export async function buildBattleRoomSnapshot(
       getRoomPlayers(room.id),
       getRoomQuestions(room.id),
    ]);
+   const premiumMap = await getPremiumMap(players.map((player) => player.user_id));
 
    const viewer = players.find((player) => player.user_id === viewerUserId);
    const completedQuestions =
@@ -513,6 +543,7 @@ export async function buildBattleRoomSnapshot(
       players: players.map((player) => ({
          userId: player.user_id,
          username: player.username?.trim() || "Player",
+         isPremium: premiumMap.get(player.user_id) === true,
          score: player.score ?? 0,
          joinedAt: player.joined_at,
          totalResponseMs: player.total_response_ms ?? 0,
@@ -773,6 +804,9 @@ export async function getBattleHistoryForUser(userId: string) {
    const deckMap = new Map(
       (decksResult.data || []).map((deck) => [deck.id as string, deck.title as string]),
    );
+   const premiumMap = await getPremiumMap(
+      ((allPlayersResult.data || []) as PlayerRow[]).map((player) => player.user_id),
+   );
    const playersByRoom = new Map<string, PlayerRow[]>();
 
    ((allPlayersResult.data || []) as PlayerRow[]).forEach((player) => {
@@ -796,6 +830,7 @@ export async function getBattleHistoryForUser(userId: string) {
          players: (playersByRoom.get(room.id) || []).map((player) => ({
             userId: player.user_id,
             username: player.username?.trim() || "Player",
+            isPremium: premiumMap.get(player.user_id) === true,
             score: player.score ?? 0,
             joinedAt: player.joined_at,
             totalResponseMs: player.total_response_ms ?? 0,

@@ -18,6 +18,7 @@ export type BattleQuestionPayload = {
 export type BattlePlayerSnapshot = {
    userId: string;
    username: string;
+   isPremium: boolean;
    score: number;
    joinedAt: string;
    totalResponseMs: number;

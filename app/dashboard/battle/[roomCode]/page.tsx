@@ -38,6 +38,10 @@ function formatSeconds(ms: number) {
    return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function getPremiumNameClass(isPremium: boolean) {
+   return isPremium ? "text-amber-100" : "text-slate-100";
+}
+
 function getSubmitErrorMessage(error: unknown) {
    const message =
       error instanceof Error ? error.message : "Failed to submit battle.";
@@ -474,6 +478,25 @@ export default function BattleRoomPage() {
       void submitBattle(localBattle.answers);
    };
 
+   const showActiveQuestionOverlay =
+      snapshot?.status === "active" &&
+      countdownMs <= 0 &&
+      !snapshot.viewerSubmitted &&
+      Boolean(activeQuestion);
+
+   useEffect(() => {
+      if (!showActiveQuestionOverlay) {
+         return;
+      }
+
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      return () => {
+         document.body.style.overflow = previousOverflow;
+      };
+   }, [showActiveQuestionOverlay]);
+
    if (loading) {
       return (
          <div className="text-sm text-slate-400">Loading battle room...</div>
@@ -509,6 +532,74 @@ export default function BattleRoomPage() {
 
    return (
       <div className="space-y-6">
+         {showActiveQuestionOverlay && (
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/96 backdrop-blur-sm">
+               <div className="flex min-h-full items-start justify-center p-4 sm:p-6 lg:p-8">
+                  <div className="w-full max-w-5xl rounded-[2rem] border border-emerald-500/25 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.16),_rgba(2,6,23,0.98)_42%)] shadow-[0_30px_100px_rgba(2,6,23,0.65)]">
+                     <div className="border-b border-slate-800/80 px-5 py-4 sm:px-8 sm:py-6">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                           <div>
+                              <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
+                                 Vocabulary battle
+                              </p>
+                              <p className="mt-2 text-sm text-slate-300">
+                                 Question {(localBattle?.currentIndex ?? 0) + 1} of{" "}
+                                 {snapshot.questionCount}
+                              </p>
+                           </div>
+                           <div className="rounded-full border border-amber-500/35 bg-amber-500/10 px-5 py-3 text-right">
+                              <p className="text-[11px] uppercase tracking-[0.28em] text-amber-200">
+                                 Time left
+                              </p>
+                              <p className="mt-1 text-2xl font-semibold text-amber-100 sm:text-3xl">
+                                 {Math.ceil(localTimeRemaining / 1000)}s
+                              </p>
+                           </div>
+                        </div>
+
+                        <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-800">
+                           <div
+                              className="h-full rounded-full bg-emerald-500 transition-[width] duration-200"
+                              style={{ width: `${completionPercent}%` }}
+                           />
+                        </div>
+                     </div>
+
+                     <div className="space-y-8 px-5 py-6 sm:px-8 sm:py-8">
+                        <div className="space-y-3">
+                           <p className="text-xs uppercase tracking-[0.3em] text-sky-200/80">
+                              Translate this word
+                           </p>
+                           <div className="rounded-[2rem] border border-sky-400/25 bg-sky-400/10 px-6 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:px-8 sm:py-10">
+                              <p className="text-center text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">
+                                 {activeQuestion?.prompt}
+                              </p>
+                           </div>
+                        </div>
+
+                        <div className="space-y-4">
+                           <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                              Choose the correct meaning
+                           </p>
+                           <div className="grid gap-3 sm:gap-4">
+                              {activeQuestion?.options.map((option, index) => (
+                                 <button
+                                    key={`${activeQuestion.questionIndex}-${index}`}
+                                    type="button"
+                                    onClick={() => handleSelectAnswer(index)}
+                                    disabled={submitLoading}
+                                    className="cursor-pointer rounded-[1.75rem] border border-slate-700 bg-slate-900/85 px-5 py-5 text-left text-base text-slate-100 shadow-[0_10px_30px_rgba(2,6,23,0.22)] transition hover:border-emerald-500/60 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60 sm:px-6 sm:py-6 sm:text-lg">
+                                    {option}
+                                 </button>
+                              ))}
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         )}
+
          <div className="rounded-[2rem] border border-slate-800 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_rgba(2,6,23,0.92)_45%)] p-6 sm:p-8">
             <div className="flex flex-wrap items-start justify-between gap-4">
                <div className="space-y-2">
@@ -577,9 +668,19 @@ export default function BattleRoomPage() {
                            <div
                               key={player.userId}
                               className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-                              <p className="text-lg font-semibold text-slate-50">
-                                 {player.username}
-                              </p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                 <p
+                                    className={`text-lg font-semibold ${getPremiumNameClass(
+                                       player.isPremium,
+                                    )}`}>
+                                    {player.username}
+                                 </p>
+                                 {player.isPremium && (
+                                    <span className="rounded-full border border-amber-400/25 bg-amber-400/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-100/80">
+                                       Premium
+                                    </span>
+                                 )}
+                              </div>
                               <p className="mt-2 text-sm text-slate-400">
                                  {player.isReady
                                     ? "Ready to start"
@@ -718,6 +819,11 @@ export default function BattleRoomPage() {
                               ? `${winner.username} wins`
                               : "The battle ended in a tie"}
                         </p>
+                        {winner?.isPremium && (
+                           <p className="mt-2 text-sm text-amber-100/80">
+                              Premium player
+                           </p>
+                        )}
                         <p className="mt-2 text-sm text-slate-300">
                            You scored {viewer?.score ?? 0} out of{" "}
                            {snapshot.questionCount}.
@@ -807,9 +913,19 @@ export default function BattleRoomPage() {
                                  <p className="text-sm text-slate-500">
                                     #{index + 1}
                                  </p>
-                                 <p className="text-base font-semibold text-slate-100">
-                                    {player.username}
-                                 </p>
+                                 <div className="mt-1 flex flex-wrap items-center gap-2">
+                                    <p
+                                       className={`text-base font-semibold ${getPremiumNameClass(
+                                          player.isPremium,
+                                       )}`}>
+                                       {player.username}
+                                    </p>
+                                    {player.isPremium && (
+                                       <span className="rounded-full border border-amber-400/25 bg-amber-400/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-100/80">
+                                          Premium
+                                       </span>
+                                    )}
+                                 </div>
                               </div>
                               <div className="text-right text-xs text-slate-400">
                                  {player.submittedAt
