@@ -1,17 +1,34 @@
-// app/dashboard/page.tsx
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PiFireLight } from "react-icons/pi";
 import { supabase } from "@/lib/supabaseClient";
 
-// ---- Types ----
 type Quote = {
    text: string;
    author: string;
 };
 
-// ---- Quotes list (hardcoded) ----
+type DashboardStats = {
+   streak: number;
+   curiosityPoints: number;
+   isActive: boolean;
+};
+
+type LeaderboardPreviewEntry = {
+   userId: string;
+   username: string;
+   isPremium: boolean;
+   rawStreak: number;
+   curiosityPoints: number;
+   isActive: boolean;
+};
+
+const STREAK_CURIOSITY_POINTS_PER_DAY = 50;
+
 const QUOTES: Quote[] = [
    {
       text: "The limits of my language mean the limits of my world.",
@@ -30,7 +47,7 @@ const QUOTES: Quote[] = [
       author: "Unknown",
    },
    {
-      text: "The more you read, the more things you will know. The more you learn, the more places you’ll go.",
+      text: "The more you read, the more things you will know. The more you learn, the more places you'll go.",
       author: "Dr. Seuss",
    },
    {
@@ -38,7 +55,7 @@ const QUOTES: Quote[] = [
       author: "Vincent Van Gogh",
    },
    {
-      text: "Success in IELTS is not about talent; it’s about consistent practice.",
+      text: "Success in IELTS is not about talent; it's about consistent practice.",
       author: "Unknown",
    },
    {
@@ -54,7 +71,7 @@ const QUOTES: Quote[] = [
       author: "Unknown",
    },
    {
-      text: "Mistakes are proof that you’re trying.",
+      text: "Mistakes are proof that you're trying.",
       author: "Unknown",
    },
    {
@@ -75,81 +92,80 @@ const QUOTES: Quote[] = [
    },
 ];
 
-// ---- Helper: get quote of the day ----
 function getQuoteOfToday(): Quote {
    const today = new Date();
-
-   // "2025-12-02"
    const dateString = today.toISOString().slice(0, 10);
 
-   // simple hash from the date string
    let hash = 0;
-   for (let i = 0; i < dateString.length; i++) {
+   for (let i = 0; i < dateString.length; i += 1) {
       hash = (hash * 31 + dateString.charCodeAt(i)) >>> 0;
    }
 
-   const index = hash % QUOTES.length;
-   return QUOTES[index];
+   return QUOTES[hash % QUOTES.length];
 }
 
-// ---- Helper: update & get streak from Supabase ----
-async function updateAndGetStreak(userId: string): Promise<number> {
-   // Today string in "YYYY-MM-DD"
+function getDisplayCuriosityPoints(entry: {
+   curiosityPoints: number;
+   rawStreak: number;
+   isActive: boolean;
+}) {
+   return (
+      entry.curiosityPoints +
+      (entry.isActive ? entry.rawStreak * STREAK_CURIOSITY_POINTS_PER_DAY : 0)
+   );
+}
+
+async function updateAndGetStats(userId: string): Promise<DashboardStats> {
    const today = new Date();
    const todayStr = today.toISOString().slice(0, 10);
 
-   // Yesterday string (for checking streak continuation)
    const yesterday = new Date();
    yesterday.setDate(today.getDate() - 1);
    const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
-   // 1) Try to fetch existing stats row
    const { data, error } = await supabase
       .from("user_stats")
-      .select("streak, last_active_date")
+      .select("streak, last_active_date, curiosity_points")
       .eq("user_id", userId)
       .maybeSingle();
 
    if (error) {
       console.error("Error fetching user_stats:", error);
-      // Fallback: treat as no row yet
    }
 
-   // 2) If no row yet — create it with streak = 1
    if (!data) {
       const { error: insertError } = await supabase.from("user_stats").insert({
          user_id: userId,
          streak: 1,
          last_active_date: todayStr,
+         curiosity_points: 0,
       });
 
       if (insertError) {
          console.error("Error inserting user_stats:", insertError);
       }
 
-      return 1;
+      return {
+         streak: 1,
+         curiosityPoints: 0,
+         isActive: true,
+      };
    }
 
-   // We have a row
-   const currentStreak = data.streak;
-   const lastActive = data.last_active_date as string; // e.g. "2025-12-01"
+   const currentStreak = data.streak ?? 0;
+   const curiosityPoints = data.curiosity_points ?? 0;
+   const lastActive = data.last_active_date as string | null;
 
-   // 3) If already active today → streak stays the same
    if (lastActive === todayStr) {
-      return currentStreak;
+      return {
+         streak: currentStreak,
+         curiosityPoints,
+         isActive: true,
+      };
    }
 
-   let newStreak: number;
+   const newStreak = lastActive === yesterdayStr ? currentStreak + 1 : 1;
 
-   // 4) If last activity was yesterday → continue streak +1
-   if (lastActive === yesterdayStr) {
-      newStreak = currentStreak + 1;
-   } else {
-      // 5) If gap > 1 day → reset streak to 1
-      newStreak = 1;
-   }
-
-   // 6) Save updated streak to DB
    const { error: updateError } = await supabase
       .from("user_stats")
       .update({
@@ -162,14 +178,22 @@ async function updateAndGetStreak(userId: string): Promise<number> {
       console.error("Error updating user_stats:", updateError);
    }
 
-   return newStreak;
+   return {
+      streak: newStreak,
+      curiosityPoints,
+      isActive: true,
+   };
 }
 
-// ---- Dashboard component ----
 export default function DashboardPage() {
    const router = useRouter();
    const [streak, setStreak] = useState<number | null>(null);
-   const [loadingStreak, setLoadingStreak] = useState(true);
+   const [curiosityPoints, setCuriosityPoints] = useState<number | null>(null);
+   const [displayCuriosityPoints, setDisplayCuriosityPoints] = useState<number | null>(null);
+   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+   const [loadingStats, setLoadingStats] = useState(true);
+   const [topEntries, setTopEntries] = useState<LeaderboardPreviewEntry[]>([]);
+   const [loadingTopEntries, setLoadingTopEntries] = useState(false);
 
    const quote = getQuoteOfToday();
 
@@ -177,7 +201,6 @@ export default function DashboardPage() {
       let cancelled = false;
 
       async function load() {
-         // 1) Auth check
          const { data, error } = await supabase.auth.getUser();
          if (error) {
             console.error("Error getting user:", error);
@@ -192,17 +215,18 @@ export default function DashboardPage() {
          }
 
          const userId = user.id;
+         if (!cancelled) {
+            setCurrentUserId(userId);
+         }
 
-         // 2) Username gate (fast)
          const { data: profile, error: profileError } = await supabase
             .from("profiles")
             .select("username")
             .eq("id", userId)
-            .single(); // now safe because profiles row always exists
+            .single();
 
          if (profileError) {
             console.error("Error loading profile:", profileError);
-            // Safe fallback: let them continue or force username. I recommend forcing:
             router.replace("/username");
             return;
          }
@@ -212,36 +236,135 @@ export default function DashboardPage() {
             return;
          }
 
-         // 3) Streak update runs AFTER gate, can be slower without blocking page
-         const currentStreak = await updateAndGetStreak(userId);
+         const stats = await updateAndGetStats(userId);
          if (!cancelled) {
-            setStreak(currentStreak);
-            setLoadingStreak(false);
+            setStreak(stats.streak);
+            setCuriosityPoints(stats.curiosityPoints);
+            setDisplayCuriosityPoints(
+               stats.curiosityPoints +
+                  (stats.isActive
+                     ? stats.streak * STREAK_CURIOSITY_POINTS_PER_DAY
+                     : 0),
+            );
+            setLoadingStats(false);
          }
       }
 
-      load();
+      void load();
 
       return () => {
          cancelled = true;
       };
    }, [router]);
 
+   useEffect(() => {
+      if (!currentUserId) {
+         return;
+      }
+
+      let cancelled = false;
+      let timeoutId: number | null = null;
+      let idleId: number | null = null;
+
+      const loadLeaderboardPreview = async () => {
+         try {
+            if (!cancelled) {
+               setLoadingTopEntries(true);
+            }
+
+            const response = await fetch("/api/leaderboard", {
+               cache: "no-store",
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+               throw new Error(payload?.error || "Failed to load leaderboard.");
+            }
+
+            const previewEntries = ((payload?.entries || []) as LeaderboardPreviewEntry[])
+               .sort((a, b) => {
+                  const curiosityDiff =
+                     getDisplayCuriosityPoints(b) - getDisplayCuriosityPoints(a);
+                  if (curiosityDiff !== 0) {
+                     return curiosityDiff;
+                  }
+
+                  if (a.isActive !== b.isActive) {
+                     return a.isActive ? -1 : 1;
+                  }
+
+                  if (b.rawStreak !== a.rawStreak) {
+                     return b.rawStreak - a.rawStreak;
+                  }
+
+                  return a.username.localeCompare(b.username);
+               })
+               .slice(0, 5);
+
+            if (!cancelled) {
+               setTopEntries(previewEntries);
+            }
+         } catch (error) {
+            console.error("Error loading dashboard leaderboard preview:", error);
+         } finally {
+            if (!cancelled) {
+               setLoadingTopEntries(false);
+            }
+         }
+      };
+
+      // Defer this fetch so the dashboard content renders before leaderboard preview work begins.
+      if ("requestIdleCallback" in window) {
+         idleId = window.requestIdleCallback(() => {
+            void loadLeaderboardPreview();
+         });
+      } else {
+         timeoutId = window.setTimeout(() => {
+            void loadLeaderboardPreview();
+         }, 250);
+      }
+
+      return () => {
+         cancelled = true;
+         if (timeoutId !== null) {
+            window.clearTimeout(timeoutId);
+         }
+         if (idleId !== null && "cancelIdleCallback" in window) {
+            window.cancelIdleCallback(idleId);
+         }
+      };
+   }, [currentUserId]);
+
    return (
       <div className="space-y-6">
-         {/* Streak card */}
          <div className="rounded-xl border border-slate-800 p-4">
             <p className="text-sm text-slate-400">Current streak</p>
 
-            {loadingStreak ? (
+            {loadingStats ? (
                <p className="mt-2 text-lg text-slate-500">
-                  Checking your streak…
+                  Checking your streak...
                </p>
             ) : (
                <>
-                  <p className="mt-2 text-2xl font-semibold">
-                     🔥 {streak}-day streak
-                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-4">
+                     <p className="flex items-center gap-2 text-2xl font-semibold">
+                        <PiFireLight className="text-amber-300" />
+                        <span>{streak}-day streak</span>
+                     </p>
+                     <div className="flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5">
+                        <Image
+                           src="/cp-icon.svg"
+                           alt=""
+                           aria-hidden="true"
+                           width={18}
+                           height={18}
+                           className="h-[18px] w-[18px] shrink-0"
+                        />
+                        <span className="text-sm font-semibold text-amber-100">
+                           {displayCuriosityPoints ?? curiosityPoints ?? 0} Curiosity
+                        </span>
+                     </div>
+                  </div>
                   <p className="mt-1 text-sm text-slate-500">
                      Keep it going! Do at least one activity today.
                   </p>
@@ -249,11 +372,99 @@ export default function DashboardPage() {
             )}
          </div>
 
-         {/* Quote card */}
          <div className="rounded-xl border border-slate-800 p-4">
             <p className="text-sm text-slate-400">Quote of the day</p>
             <p className="mt-2 text-lg">"{quote.text}"</p>
-            <p className="mt-1 text-sm text-slate-500">— {quote.author}</p>
+            <p className="mt-1 text-sm text-slate-500">- {quote.author}</p>
+         </div>
+
+         <div className="rounded-xl border border-slate-800 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+               <div>
+                  <p className="text-sm text-slate-400">Leaderboard preview</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                     Top 5 users by Curiosity
+                  </p>
+               </div>
+               <Link
+                  href="/dashboard/leaderboard"
+                  className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-800"
+               >
+                  Open leaderboard
+               </Link>
+            </div>
+
+            {loadingTopEntries ? (
+               <div className="mt-4 space-y-3">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                     <div
+                        key={index}
+                        className="h-14 animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60"
+                     />
+                  ))}
+               </div>
+            ) : topEntries.length > 0 ? (
+               <div className="mt-4 space-y-3">
+                  {topEntries.map((entry, index) => {
+                     const isCurrentUser = entry.userId === currentUserId;
+
+                     return (
+                        <div
+                           key={entry.userId}
+                           className={[
+                              "flex items-center justify-between gap-3 rounded-2xl border px-4 py-3",
+                              isCurrentUser
+                                 ? "border-emerald-500/35 bg-emerald-500/10"
+                                 : entry.isPremium
+                                   ? "border-amber-400/25 bg-[linear-gradient(90deg,rgba(251,191,36,0.16),rgba(245,158,11,0.06),rgba(15,23,42,0.02))]"
+                                   : "border-slate-800 bg-slate-900/50",
+                           ].join(" ")}
+                        >
+                           <div className="min-w-0">
+                              <div className="flex items-center gap-3">
+                                 <span className="text-sm font-semibold text-slate-400">
+                                    #{index + 1}
+                                 </span>
+                                 <p
+                                    className={[
+                                       "truncate font-medium",
+                                       entry.isPremium
+                                          ? "text-amber-100"
+                                          : "text-slate-100",
+                                    ].join(" ")}
+                                 >
+                                    {entry.username}
+                                 </p>
+                              </div>
+                              {isCurrentUser && (
+                                 <p className="mt-1 text-xs text-emerald-300">
+                                    You
+                                 </p>
+                              )}
+                           </div>
+
+                           <div className="flex items-center gap-2 text-slate-100">
+                              <Image
+                                 src="/cp-icon.svg"
+                                 alt=""
+                                 aria-hidden="true"
+                                 width={16}
+                                 height={16}
+                                 className="h-4 w-4 shrink-0"
+                              />
+                              <span className="font-semibold">
+                                 {getDisplayCuriosityPoints(entry)}
+                              </span>
+                           </div>
+                        </div>
+                     );
+                  })}
+               </div>
+            ) : (
+               <p className="mt-4 text-sm text-slate-500">
+                  Leaderboard preview will appear here once users start earning Curiosity.
+               </p>
+            )}
          </div>
       </div>
    );
