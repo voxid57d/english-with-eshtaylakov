@@ -264,7 +264,6 @@ export default function DashboardPage() {
 
       let cancelled = false;
       let timeoutId: number | null = null;
-      let idleId: number | null = null;
 
       const loadLeaderboardPreview = async () => {
          try {
@@ -314,23 +313,14 @@ export default function DashboardPage() {
       };
 
       // Defer this fetch so the dashboard content renders before leaderboard preview work begins.
-      if ("requestIdleCallback" in window) {
-         idleId = window.requestIdleCallback(() => {
-            void loadLeaderboardPreview();
-         });
-      } else {
-         timeoutId = window.setTimeout(() => {
-            void loadLeaderboardPreview();
-         }, 250);
-      }
+      timeoutId = window.setTimeout(() => {
+         void loadLeaderboardPreview();
+      }, 250);
 
       return () => {
          cancelled = true;
          if (timeoutId !== null) {
             window.clearTimeout(timeoutId);
-         }
-         if (idleId !== null && "cancelIdleCallback" in window) {
-            window.cancelIdleCallback(idleId);
          }
       };
    }, [currentUserId]);
