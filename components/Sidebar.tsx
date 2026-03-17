@@ -22,6 +22,11 @@ const links = [
       icon: PiBookOpenTextLight,
    },
    {
+      href: "/dashboard/battle",
+      label: "Battle",
+      icon: PiSwordLight,
+   },
+   {
       href: "/dashboard/reading",
       label: "Reading",
       icon: PiReadCvLogoLight,
@@ -33,18 +38,13 @@ const links = [
    },
    {
       href: "/dashboard/mock",
-      label: "Mock tests",
+      label: "IELTS Mock",
       icon: PiExamLight,
    },
    {
       href: "/dashboard/leaderboard",
       label: "Leaderboard",
       icon: PiTrophyLight,
-   },
-   {
-      href: "/dashboard/battle",
-      label: "Battle",
-      icon: PiSwordLight,
    },
    {
       href: "/premium",
@@ -60,11 +60,7 @@ type SidebarProps = {
    isPremium: boolean;
 };
 
-function Sidebar({
-   isOpenOnMobile,
-   closeMobile,
-   isPremium,
-}: SidebarProps) {
+function Sidebar({ isOpenOnMobile, closeMobile, isPremium }: SidebarProps) {
    const pathname = usePathname();
    const [collapsed, setCollapsed] = useState(false);
 
@@ -74,64 +70,64 @@ function Sidebar({
          {links
             .filter((link) => !(isPremium && link.accent === "premium"))
             .map((link) => {
-            const isActive = pathname.startsWith(link.href);
-            const Icon = link.icon;
+               const isActive = pathname.startsWith(link.href);
+               const Icon = link.icon;
 
-            return (
-               <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={closeMobile}
-                  title={collapsed ? link.label : undefined}
-                  className={[
-                     "group relative flex items-center w-full",
-                     collapsed ? "justify-center" : "gap-3",
-                     "px-3 py-3 rounded-xl text-base font-medium",
-                     "transition-all duration-200 ease-out",
-                     isActive && link.accent === "premium"
-                        ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-900/30"
-                        : isActive
-                          ? "bg-emerald-600/90 text-white shadow-md shadow-emerald-900/40"
-                          : link.accent === "premium"
-                            ? "bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 hover:text-white hover:shadow-md hover:shadow-amber-900/20"
-                        : "bg-slate-900/60 text-slate-300 hover:bg-slate-800 hover:text-white hover:shadow-md hover:shadow-slate-900/40",
-                     "hover:-translate-y-[1px]",
-                  ].join(" ")}>
-                  <Icon
-                     size={22}
-                     className={`transition-colors duration-200 ${
+               return (
+                  <Link
+                     key={link.href}
+                     href={link.href}
+                     onClick={closeMobile}
+                     title={collapsed ? link.label : undefined}
+                     className={[
+                        "group relative flex items-center w-full",
+                        collapsed ? "justify-center" : "gap-3",
+                        "px-3 py-3 rounded-xl text-base font-medium",
+                        "transition-all duration-200 ease-out",
                         isActive && link.accent === "premium"
-                           ? "text-slate-950"
+                           ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-900/30"
                            : isActive
-                           ? "text-white"
-                           : link.accent === "premium"
-                             ? "text-amber-300 group-hover:text-white"
-                           : "text-slate-400 group-hover:text-white"
-                     }`}
-                  />
+                             ? "bg-emerald-600/90 text-white shadow-md shadow-emerald-900/40"
+                             : link.accent === "premium"
+                               ? "bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 hover:text-white hover:shadow-md hover:shadow-amber-900/20"
+                               : "bg-slate-900/60 text-slate-300 hover:bg-slate-800 hover:text-white hover:shadow-md hover:shadow-slate-900/40",
+                        "hover:-translate-y-[1px]",
+                     ].join(" ")}>
+                     <Icon
+                        size={22}
+                        className={`transition-colors duration-200 ${
+                           isActive && link.accent === "premium"
+                              ? "text-slate-950"
+                              : isActive
+                                ? "text-white"
+                                : link.accent === "premium"
+                                  ? "text-amber-300 group-hover:text-white"
+                                  : "text-slate-400 group-hover:text-white"
+                        }`}
+                     />
 
-                  <span
-                     className={`flex-1 whitespace-nowrap transition-all duration-150 ${
-                        collapsed
-                           ? "opacity-0 w-0 overflow-hidden"
-                           : "opacity-100 ml-2"
-                     }`}>
-                     {link.label}
-                  </span>
-
-                  {!collapsed && (
                      <span
-                        className={[
-                           "text-xs opacity-0 translate-x-[-4px]",
-                           "group-hover:opacity-100 group-hover:translate-x-0",
-                           "transition-all duration-200 text-slate-300",
-                        ].join(" ")}>
-                        →
+                        className={`flex-1 whitespace-nowrap transition-all duration-150 ${
+                           collapsed
+                              ? "opacity-0 w-0 overflow-hidden"
+                              : "opacity-100 ml-2"
+                        }`}>
+                        {link.label}
                      </span>
-                  )}
-               </Link>
-            );
-         })}
+
+                     {!collapsed && (
+                        <span
+                           className={[
+                              "text-xs opacity-0 translate-x-[-4px]",
+                              "group-hover:opacity-100 group-hover:translate-x-0",
+                              "transition-all duration-200 text-slate-300",
+                           ].join(" ")}>
+                           →
+                        </span>
+                     )}
+                  </Link>
+               );
+            })}
 
          {isPremium && (
             <div
@@ -147,7 +143,7 @@ function Sidebar({
                   className={`whitespace-nowrap text-sm font-medium text-emerald-200 transition-all duration-150 ${
                      collapsed ? "w-0 overflow-hidden opacity-0" : "opacity-100"
                   }`}>
-                  You are premium user
+                  You are a premium user
                </span>
             </div>
          )}
