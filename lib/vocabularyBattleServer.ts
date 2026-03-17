@@ -84,6 +84,7 @@ type FolderBattleAccessRow = {
 const WAITING_ROOM_TTL_HOURS = 6;
 const FINISHED_ROOM_TTL_HOURS = 24;
 const ACTIVE_ROOM_TTL_HOURS = 2;
+const CURIOSITY_POINT_REWARDS = [10, 5] as const;
 const ROOM_SELECT_BASE =
    "id, code, deck_id, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at";
 const ROOM_SELECT_WITH_MULTI =
@@ -422,6 +423,78 @@ function sortPlayersForWinner(players: PlayerRow[]) {
    });
 }
 
+async function awardCuriosityPoints(players: PlayerRow[]) {
+   const rewardedPlayers = players
+      .slice(0, CURIOSITY_POINT_REWARDS.length)
+      .map((player, index) => ({
+         userId: player.user_id,
+         reward: CURIOSITY_POINT_REWARDS[index],
+      }));
+
+   if (rewardedPlayers.length === 0) {
+      return;
+   }
+
+   const userIds = rewardedPlayers.map((player) => player.userId);
+   const { data: existingStats, error: statsError } = await supabaseAdmin
+      .from("user_stats")
+      .select("user_id, curiosity_points")
+      .in("user_id", userIds);
+
+   if (statsError) {
+      console.error("Curiosity points stats lookup failed:", statsError);
+      throw new Error("Failed to award curiosity points.");
+   }
+
+   const currentPointsByUser = new Map(
+      (existingStats || []).map((row) => [
+         row.user_id as string,
+         Number(row.curiosity_points || 0),
+      ]),
+   );
+
+   for (const player of rewardedPlayers) {
+      const nextPoints =
+         (currentPointsByUser.get(player.userId) || 0) + player.reward;
+
+      if (currentPointsByUser.has(player.userId)) {
+         const { error: updateError } = await supabaseAdmin
+            .from("user_stats")
+            .update({
+               curiosity_points: nextPoints,
+            })
+            .eq("user_id", player.userId);
+
+         if (updateError) {
+            console.error("Curiosity points update failed:", updateError, {
+               userId: player.userId,
+               nextPoints,
+            });
+            throw new Error("Failed to award curiosity points.");
+         }
+
+         continue;
+      }
+
+      const { error: insertError } = await supabaseAdmin
+         .from("user_stats")
+         .insert({
+            user_id: player.userId,
+            streak: 0,
+            last_active_date: null,
+            curiosity_points: nextPoints,
+         });
+
+      if (insertError) {
+         console.error("Curiosity points insert failed:", insertError, {
+            userId: player.userId,
+            nextPoints,
+         });
+         throw new Error("Failed to award curiosity points.");
+      }
+   }
+}
+
 async function finalizeRoom(roomId: string) {
    const players = await getRoomPlayers(roomId);
    const ranked = sortPlayersForWinner(players);
@@ -433,14 +506,24 @@ async function finalizeRoom(roomId: string) {
 
    const winnerUserId = top && !isTie ? top.user_id : null;
 
-   await supabaseAdmin
+   if (!isTie) {
+      await awardCuriosityPoints(ranked);
+   }
+
+   const { error: finalizeError } = await supabaseAdmin
       .from("vocab_battle_rooms")
       .update({
          status: "finished",
          winner_user_id: winnerUserId,
          finished_at: new Date().toISOString(),
       })
-      .eq("id", roomId);
+      .eq("id", roomId)
+      .eq("status", "active");
+
+   if (finalizeError) {
+      console.error("Battle room finalize failed:", finalizeError, { roomId });
+      throw new Error("Failed to finalize battle room.");
+   }
 }
 
 async function deleteRoom(roomId: string) {

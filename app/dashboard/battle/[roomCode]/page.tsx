@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -40,6 +41,12 @@ function formatSeconds(ms: number) {
 
 function getPremiumNameClass(isPremium: boolean) {
    return isPremium ? "text-amber-100" : "text-slate-100";
+}
+
+function getCuriosityPointReward(index: number) {
+   if (index === 0) return 10;
+   if (index === 1) return 5;
+   return 0;
 }
 
 function getSubmitErrorMessage(error: unknown) {
@@ -529,6 +536,15 @@ export default function BattleRoomPage() {
    const hasMinimumPlayers = snapshot.players.length >= 2;
    const everyoneReady =
       hasMinimumPlayers && snapshot.players.every((player) => player.isReady);
+   const awardedPlayers =
+      snapshot.status === "finished" && winner
+         ? sortedPlayers
+              .map((player, index) => ({
+                 ...player,
+                 curiosityPointReward: getCuriosityPointReward(index),
+              }))
+              .filter((player) => player.curiosityPointReward > 0)
+         : [];
 
    return (
       <div className="space-y-6">
@@ -834,6 +850,50 @@ export default function BattleRoomPage() {
                         </p>
                      </div>
 
+                     <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
+                        <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
+                           Curiosity Points
+                        </p>
+                        {awardedPlayers.length > 0 ? (
+                           <div className="mt-4 space-y-3">
+                              {awardedPlayers.map((player, index) => (
+                                 <div
+                                    key={player.userId}
+                                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3">
+                                    <div className="min-w-0">
+                                       <p className="text-sm text-slate-500">
+                                          {index === 0 ? "1st place" : "2nd place"}
+                                       </p>
+                                       <p
+                                          className={`truncate text-base font-semibold ${getPremiumNameClass(
+                                             player.isPremium,
+                                          )}`}>
+                                          {player.username}
+                                       </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-emerald-200">
+                                       <Image
+                                          src="/cp-icon.svg"
+                                          alt=""
+                                          aria-hidden="true"
+                                          width={18}
+                                          height={18}
+                                          className="h-[18px] w-[18px] shrink-0"
+                                       />
+                                       <span className="text-sm font-semibold">
+                                          +{player.curiosityPointReward} CP
+                                       </span>
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        ) : (
+                           <p className="mt-3 text-sm text-slate-300">
+                              This battle ended in a tie, so no Curiosity Points were awarded.
+                           </p>
+                        )}
+                     </div>
+
                      <div className="space-y-4">
                         <h3 className="text-lg font-semibold text-slate-50">
                            Match review
@@ -937,9 +997,26 @@ export default function BattleRoomPage() {
                            </div>
 
                            {snapshot.status === "finished" && (
-                              <div className="mt-3 text-sm text-slate-300">
-                                 {player.score} correct -{" "}
-                                 {formatSeconds(player.totalResponseMs)}
+                              <div className="mt-3 space-y-2">
+                                 <div className="text-sm text-slate-300">
+                                    {player.score} correct -{" "}
+                                    {formatSeconds(player.totalResponseMs)}
+                                 </div>
+                                 {winner && getCuriosityPointReward(index) > 0 && (
+                                    <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-200">
+                                       <Image
+                                          src="/cp-icon.svg"
+                                          alt=""
+                                          aria-hidden="true"
+                                          width={14}
+                                          height={14}
+                                          className="h-3.5 w-3.5 shrink-0"
+                                       />
+                                       <span>
+                                          +{getCuriosityPointReward(index)} CP
+                                       </span>
+                                    </div>
+                                 )}
                               </div>
                            )}
                         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -44,6 +45,12 @@ const NATURAL_SORT = new Intl.Collator(undefined, {
    numeric: true,
    sensitivity: "base",
 });
+
+function getCuriosityPointReward(index: number) {
+   if (index === 0) return 10;
+   if (index === 1) return 5;
+   return 0;
+}
 
 export default function BattleLobbyPage() {
    const router = useRouter();
@@ -507,9 +514,25 @@ export default function BattleLobbyPage() {
             ) : (
                <div className="grid gap-3">
                   {history.map((entry) => {
-                     const winner = entry.players.find(
+                     const sortedPlayers = [...entry.players].sort((a, b) => {
+                        if (b.score !== a.score) return b.score - a.score;
+                        return a.totalResponseMs - b.totalResponseMs;
+                     });
+                     const winner = sortedPlayers.find(
                         (player) => player.userId === entry.winnerUserId,
                      );
+                     const awardedPlayers =
+                        entry.status === "finished" && winner
+                           ? sortedPlayers
+                                .map((player, index) => ({
+                                   ...player,
+                                   curiosityPointReward:
+                                      getCuriosityPointReward(index),
+                                }))
+                                .filter(
+                                   (player) => player.curiosityPointReward > 0,
+                                )
+                           : [];
 
                      return (
                         <div
@@ -547,7 +570,10 @@ export default function BattleLobbyPage() {
                            </div>
 
                            <div className="mt-4 grid gap-2 md:grid-cols-2">
-                              {entry.players.map((player) => (
+                              {sortedPlayers.map((player, index) => {
+                                 const reward = getCuriosityPointReward(index);
+
+                                 return (
                                  <div
                                     key={player.userId}
                                     className="rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-3 text-sm text-slate-300">
@@ -558,9 +584,35 @@ export default function BattleLobbyPage() {
                                     <p className="mt-1 text-xs text-slate-500">
                                        Total time {(player.totalResponseMs / 1000).toFixed(1)}s
                                     </p>
+                                    {entry.status === "finished" && reward > 0 && winner && (
+                                       <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-emerald-200">
+                                          <Image
+                                             src="/cp-icon.svg"
+                                             alt=""
+                                             aria-hidden="true"
+                                             width={14}
+                                             height={14}
+                                             className="h-3.5 w-3.5 shrink-0"
+                                          />
+                                          <span>+{reward} CP</span>
+                                       </div>
+                                    )}
                                  </div>
-                              ))}
+                                 );
+                              })}
                            </div>
+
+                           {entry.status === "finished" && !winner && (
+                              <p className="mt-3 text-xs text-slate-500">
+                                 No Curiosity Points awarded because the match ended in a tie.
+                              </p>
+                           )}
+
+                           {awardedPlayers.length > 0 && (
+                              <p className="mt-3 text-xs text-slate-500">
+                                 Curiosity Points were awarded to the top 2 finishers.
+                              </p>
+                           )}
                         </div>
                      );
                   })}

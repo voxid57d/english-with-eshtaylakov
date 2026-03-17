@@ -5,6 +5,7 @@ type UserStatRow = {
    user_id: string;
    streak: number | null;
    last_active_date: string | null;
+   curiosity_points: number | null;
 };
 
 type ProfileRow = {
@@ -23,80 +24,18 @@ function isStreakActive(lastActiveDate: string | null) {
 }
 
 export async function GET() {
-   const today = new Date().toISOString().slice(0, 10);
-   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-
-   const { data: activeStatsData, error: activeStatsError } = await supabaseAdmin
+   const { data: statsData, error: statsError } = await supabaseAdmin
       .from("user_stats")
-      .select("user_id, streak, last_active_date")
-      .in("last_active_date", [today, yesterday])
-      .gt("streak", 0)
-      .order("streak", { ascending: false })
-      .order("last_active_date", { ascending: false })
-      .limit(15);
+      .select("user_id, streak, last_active_date, curiosity_points");
 
-   if (activeStatsError) {
-      console.error("Leaderboard stats error:", activeStatsError);
+   if (statsError) {
+      console.error("Leaderboard stats error:", statsError);
       return NextResponse.json(
          { error: "Failed to load leaderboard." },
          { status: 500 },
       );
    }
-
-   const activeStats = (activeStatsData || []) as UserStatRow[];
-   const remainingSlots = Math.max(0, 15 - activeStats.length);
-
-   let inactiveStats: UserStatRow[] = [];
-
-   if (remainingSlots > 0) {
-      const { data: inactiveStatsData, error: inactiveStatsError } =
-         await supabaseAdmin
-            .from("user_stats")
-            .select("user_id, streak, last_active_date")
-            .gt("streak", 0)
-            .lt("last_active_date", yesterday)
-            .order("streak", { ascending: false })
-            .order("last_active_date", { ascending: false })
-            .limit(remainingSlots);
-
-      if (inactiveStatsError) {
-         console.error("Leaderboard stats error:", inactiveStatsError);
-         return NextResponse.json(
-            { error: "Failed to load leaderboard." },
-            { status: 500 },
-         );
-      }
-
-      inactiveStats = (inactiveStatsData || []) as UserStatRow[];
-
-      const nullDateSlots = Math.max(0, remainingSlots - inactiveStats.length);
-      if (nullDateSlots > 0) {
-         const { data: nullDateStatsData, error: nullDateStatsError } =
-            await supabaseAdmin
-               .from("user_stats")
-               .select("user_id, streak, last_active_date")
-               .gt("streak", 0)
-               .is("last_active_date", null)
-               .order("streak", { ascending: false })
-               .limit(nullDateSlots);
-
-         if (nullDateStatsError) {
-            console.error("Leaderboard stats error:", nullDateStatsError);
-            return NextResponse.json(
-               { error: "Failed to load leaderboard." },
-               { status: 500 },
-            );
-         }
-
-         inactiveStats = [
-            ...inactiveStats,
-            ...((nullDateStatsData || []) as UserStatRow[]),
-         ];
-      }
-   }
-
-   const statsData = [...activeStats, ...inactiveStats];
-   const userIds = statsData.map((row) => row.user_id);
+   const userIds = ((statsData || []) as UserStatRow[]).map((row) => row.user_id);
 
    if (userIds.length === 0) {
       return NextResponse.json({ entries: [] });
@@ -131,22 +70,15 @@ export async function GET() {
          username: profileMap.get(row.user_id)?.username || "Unknown user",
          isPremium: profileMap.get(row.user_id)?.isPremium === true,
          rawStreak: row.streak ?? 0,
+         curiosityPoints: row.curiosity_points ?? 0,
          lastActiveDate: row.last_active_date,
          isActive: isStreakActive(row.last_active_date),
       }))
-      .filter((entry) => entry.username && entry.rawStreak > 0)
-      .sort((a, b) => {
-         if (a.isActive !== b.isActive) {
-            return a.isActive ? -1 : 1;
-         }
-
-         if (b.rawStreak !== a.rawStreak) {
-            return b.rawStreak - a.rawStreak;
-         }
-
-         return (b.lastActiveDate || "").localeCompare(a.lastActiveDate || "");
-      })
-      .slice(0, 15);
+      .filter(
+         (entry) =>
+            entry.username &&
+            (entry.curiosityPoints > 0 || entry.rawStreak > 0),
+      );
 
    return NextResponse.json({ entries });
 }
