@@ -305,7 +305,8 @@ export default function BattleLobbyPage() {
             </div>
             <p className="max-w-2xl text-sm text-slate-400">
                Create a private multiplayer room, combine one or more public
-               decks from folders, and choose how many timed questions to play.
+               decks from folders, and keep playing multiple rounds in the same
+               room code.
             </p>
          </div>
 
@@ -343,13 +344,13 @@ export default function BattleLobbyPage() {
                      type="submit"
                      disabled={roomCode.length !== 6 || joinLoading}
                      className="cursor-pointer rounded-full border border-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60">
-                     {joinLoading ? "Joining..." : "Join battle"}
+                     {joinLoading ? "Joining..." : "Join room"}
                   </button>
                </form>
 
                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
-                  Match rules: {questionCount} questions, {BATTLE_TIME_LIMIT_SECONDS} seconds each, same
-                  shared set, higher score wins.
+                  Round rules: {questionCount} questions, {BATTLE_TIME_LIMIT_SECONDS} seconds each, same
+                  shared set, higher score wins. Curiosity Points are awarded each round.
                </div>
             </section>
 
@@ -357,7 +358,7 @@ export default function BattleLobbyPage() {
                <div className="space-y-1">
                   <h2 className="text-xl font-semibold">Create a room</h2>
                   <p className="text-sm text-slate-400">
-                     The room starts once at least 2 players have joined and everyone is ready.
+                     The first round is created immediately. After that, the same room can host multiple rounds.
                   </p>
                </div>
 
@@ -471,7 +472,7 @@ export default function BattleLobbyPage() {
 
                      {selectedDecks.length > 0 && (
                         <p className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-400">
-                           Battle will use {questionCount} words from{" "}
+                           The room will use {questionCount} words from{" "}
                            {selectedDecks.map((deck) => deck.title).join(", ")}.
                         </p>
                      )}
@@ -481,7 +482,7 @@ export default function BattleLobbyPage() {
                         onClick={handleCreate}
                         disabled={selectedDeckIds.length === 0 || createLoading}
                         className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
-                        {createLoading ? "Creating room..." : "Create battle room"}
+                        {createLoading ? "Creating room..." : "Create room"}
                      </button>
                   </>
                )}
@@ -491,7 +492,7 @@ export default function BattleLobbyPage() {
          <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 space-y-5">
             <div className="space-y-1">
                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-xl font-semibold">Recent battles</h2>
+                  <h2 className="text-xl font-semibold">Recent rounds</h2>
                   <button
                      type="button"
                      onClick={handleToggleHistory}
@@ -503,13 +504,13 @@ export default function BattleLobbyPage() {
 
             {!showHistory ? (
                <p className="text-sm text-slate-500">
-                  Battle history
+                  Round history
                </p>
             ) : loadingHistory ? (
                <p className="text-sm text-slate-500">Loading battle history...</p>
             ) : history.length === 0 ? (
                <p className="text-sm text-slate-500">
-                  No battle history yet. Create a room to play your first match.
+                  No round history yet. Create a room to play your first match.
                </p>
             ) : (
                <div className="grid gap-3">
@@ -536,7 +537,7 @@ export default function BattleLobbyPage() {
 
                      return (
                         <div
-                           key={entry.roomCode}
+                           key={entry.roundId}
                            className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                            <div className="flex flex-wrap items-start justify-between gap-3">
                               <div className="space-y-1">
@@ -571,7 +572,10 @@ export default function BattleLobbyPage() {
 
                            <div className="mt-4 grid gap-2 md:grid-cols-2">
                               {sortedPlayers.map((player, index) => {
-                                 const reward = getCuriosityPointReward(index);
+                                 const reward =
+                                    entry.rewards.find(
+                                       (value) => value.userId === player.userId,
+                                    )?.curiosityPoints || getCuriosityPointReward(index);
 
                                  return (
                                  <div

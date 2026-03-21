@@ -4,10 +4,12 @@ export const BATTLE_DEFAULT_QUESTION_COUNT = BATTLE_QUESTION_OPTIONS[0];
 export const BATTLE_TIME_LIMIT_SECONDS = 15;
 export const BATTLE_MINIMUM_CARD_COUNT = 10;
 export const BATTLE_READY_COUNTDOWN_SECONDS = 10;
+export const BATTLE_FREE_ROUNDS_PER_ROOM = 5;
 
 export type BattleQuestionCount = (typeof BATTLE_QUESTION_OPTIONS)[number];
 
-export type BattleRoomStatus = "waiting" | "active" | "finished";
+export type BattleRoomStatus = "open" | "expired";
+export type BattleRoundStatus = "waiting" | "active" | "finished";
 
 export type BattleQuestionPayload = {
    questionIndex: number;
@@ -15,7 +17,14 @@ export type BattleQuestionPayload = {
    options: string[];
 };
 
-export type BattlePlayerSnapshot = {
+export type BattleRoomPlayerSnapshot = {
+   userId: string;
+   username: string;
+   isPremium: boolean;
+   joinedAt: string;
+};
+
+export type BattleRoundPlayerSnapshot = {
    userId: string;
    username: string;
    isPremium: boolean;
@@ -25,6 +34,12 @@ export type BattlePlayerSnapshot = {
    isReady: boolean;
    readyAt: string | null;
    submittedAt: string | null;
+};
+
+export type BattleRoundRewardSnapshot = {
+   userId: string;
+   curiosityPoints: number;
+   place: number;
 };
 
 export type BattleQuestionAnswerReview = {
@@ -42,20 +57,10 @@ export type BattleQuestionReview = {
    answers: BattleQuestionAnswerReview[];
 };
 
-export type BattleHistoryEntry = {
-   roomCode: string;
-   deckTitle: string;
-   status: BattleRoomStatus;
-   createdAt: string;
-   finishedAt: string | null;
-   winnerUserId: string | null;
-   questionCount: number;
-   players: BattlePlayerSnapshot[];
-};
-
-export type BattleRoomSnapshot = {
-   roomCode: string;
-   status: BattleRoomStatus;
+export type BattleRoundSnapshot = {
+   roundId: string;
+   roundNumber: number;
+   status: BattleRoundStatus;
    deckId: string;
    deckIds: string[];
    deckTitle: string;
@@ -65,12 +70,49 @@ export type BattleRoomSnapshot = {
    winnerUserId: string | null;
    createdAt: string;
    finishedAt: string | null;
-   viewerUserId: string;
    viewerReady: boolean;
    viewerSubmitted: boolean;
-   players: BattlePlayerSnapshot[];
+   viewerIsParticipant: boolean;
+   players: BattleRoundPlayerSnapshot[];
    questionBank: BattleQuestionPayload[];
    completedQuestions: BattleQuestionReview[];
+   rewards: BattleRoundRewardSnapshot[];
+};
+
+export type BattleHistoryEntry = {
+   roundId: string;
+   roundNumber: number;
+   roomCode: string;
+   deckTitle: string;
+   roomStatus: BattleRoomStatus;
+   status: BattleRoundStatus;
+   createdAt: string;
+   finishedAt: string | null;
+   winnerUserId: string | null;
+   questionCount: number;
+   players: BattleRoundPlayerSnapshot[];
+   rewards: BattleRoundRewardSnapshot[];
+};
+
+export type BattleRoomSnapshot = {
+   roomCode: string;
+   roomStatus: BattleRoomStatus;
+   hostUserId: string;
+   deckId: string;
+   deckIds: string[];
+   deckTitle: string;
+   questionCount: number;
+   timeLimitSeconds: number;
+   createdAt: string;
+   completedRoundCount: number;
+   expiresAt: string | null;
+   expirationReason: string | null;
+   viewerUserId: string;
+   viewerIsHost: boolean;
+   viewerIsRoomMember: boolean;
+   players: BattleRoomPlayerSnapshot[];
+   currentRound: BattleRoundSnapshot | null;
+   recentRounds: BattleHistoryEntry[];
 };
 
 export type BattleSubmissionAnswer = {

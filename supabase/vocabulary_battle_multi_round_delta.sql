@@ -1,20 +1,65 @@
-create extension if not exists pgcrypto;
+drop table if exists public.vocab_battle_answers;
+drop table if exists public.vocab_battle_questions;
+drop table if exists public.vocab_battle_players;
 
-create table if not exists public.vocab_battle_rooms (
-   id uuid primary key default gen_random_uuid(),
-   code text not null unique,
-   host_user_id uuid not null references auth.users(id) on delete cascade,
-   deck_id uuid not null references public.vocabulary_decks(id) on delete cascade,
-   deck_ids uuid[] not null,
-   deck_title text not null,
-   status text not null check (status in ('open', 'expired')),
-   question_count integer not null default 10 check (question_count between 1 and 25),
-   time_limit_seconds integer not null default 15 check (time_limit_seconds between 3 and 60),
-   completed_round_count integer not null default 0 check (completed_round_count >= 0),
-   expires_at timestamptz null,
-   expiration_reason text null,
-   created_at timestamptz not null default timezone('utc', now())
-);
+alter table public.vocab_battle_rooms
+   drop constraint if exists vocab_battle_rooms_status_check;
+
+alter table public.vocab_battle_rooms
+   add column if not exists deck_ids uuid[] null;
+
+alter table public.vocab_battle_rooms
+   add column if not exists deck_title text null;
+
+alter table public.vocab_battle_rooms
+   add column if not exists completed_round_count integer not null default 0;
+
+alter table public.vocab_battle_rooms
+   add column if not exists expires_at timestamptz null;
+
+alter table public.vocab_battle_rooms
+   add column if not exists expiration_reason text null;
+
+update public.vocab_battle_rooms
+set
+   deck_ids = coalesce(deck_ids, array[deck_id]),
+   deck_title = coalesce(
+      deck_title,
+      (
+         select title
+         from public.vocabulary_decks
+         where vocabulary_decks.id = vocab_battle_rooms.deck_id
+      )
+   ),
+   completed_round_count = coalesce(completed_round_count, 0);
+
+alter table public.vocab_battle_rooms
+   alter column deck_ids set not null;
+
+alter table public.vocab_battle_rooms
+   alter column deck_title set not null;
+
+alter table public.vocab_battle_rooms
+   drop column if exists current_question_index;
+
+alter table public.vocab_battle_rooms
+   drop column if exists current_question_started_at;
+
+alter table public.vocab_battle_rooms
+   drop column if exists winner_user_id;
+
+alter table public.vocab_battle_rooms
+   drop column if exists finished_at;
+
+update public.vocab_battle_rooms
+set status = case
+   when status = 'finished' then 'expired'
+   else 'open'
+end;
+
+alter table public.vocab_battle_rooms
+   add constraint vocab_battle_rooms_status_check
+   check (status in ('open', 'expired'));
 
 create table if not exists public.vocab_battle_room_players (
    room_id uuid not null references public.vocab_battle_rooms(id) on delete cascade,
@@ -82,9 +127,6 @@ create unique index if not exists vocab_battle_rounds_single_unfinished_idx
    on public.vocab_battle_rounds (room_id)
    where status in ('waiting', 'active');
 
-create index if not exists vocab_battle_rooms_code_idx
-   on public.vocab_battle_rooms (code);
-
 create index if not exists vocab_battle_room_players_room_idx
    on public.vocab_battle_room_players (room_id);
 
@@ -100,7 +142,6 @@ create index if not exists vocab_battle_round_questions_round_idx
 create index if not exists vocab_battle_round_answers_round_idx
    on public.vocab_battle_round_answers (round_id, question_index);
 
-alter table public.vocab_battle_rooms enable row level security;
 alter table public.vocab_battle_room_players enable row level security;
 alter table public.vocab_battle_rounds enable row level security;
 alter table public.vocab_battle_round_players enable row level security;

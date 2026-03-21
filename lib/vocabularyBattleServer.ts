@@ -1,12 +1,17 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
+   BATTLE_FREE_ROUNDS_PER_ROOM,
    BATTLE_MINIMUM_CARD_COUNT,
    BATTLE_READY_COUNTDOWN_SECONDS,
    BattleHistoryEntry,
    BattleQuestionCount,
    BattleQuestionPayload,
    BattleQuestionReview,
+   BattleRoomPlayerSnapshot,
    BattleRoomSnapshot,
+   BattleRoundPlayerSnapshot,
+   BattleRoundRewardSnapshot,
+   BattleRoundSnapshot,
    BattleSubmissionAnswer,
    createRoomCode,
    normalizeRoomCode,
@@ -30,20 +35,44 @@ type CardRow = {
 type RoomRow = {
    id: string;
    code: string;
+   host_user_id: string;
    deck_id: string;
-   deck_ids?: string[] | null;
-   deck_title?: string | null;
-   status: "waiting" | "active" | "finished";
+   deck_ids: string[] | null;
+   deck_title: string | null;
+   status: "open" | "expired";
    question_count: number;
    time_limit_seconds: number;
-   current_question_started_at: string | null;
+   completed_round_count: number | null;
+   expires_at: string | null;
+   expiration_reason: string | null;
+   created_at: string;
+};
+
+type RoomPlayerRow = {
+   room_id?: string;
+   user_id: string;
+   username: string | null;
+   joined_at: string;
+};
+
+type RoundRow = {
+   id: string;
+   room_id: string;
+   round_number: number;
+   status: "waiting" | "active" | "finished";
+   deck_id: string;
+   deck_ids: string[] | null;
+   deck_title: string | null;
+   question_count: number;
+   time_limit_seconds: number;
+   battle_starts_at: string | null;
    winner_user_id: string | null;
    created_at: string;
    finished_at: string | null;
 };
 
-type PlayerRow = {
-   room_id?: string;
+type RoundPlayerRow = {
+   round_id?: string;
    user_id: string;
    username: string | null;
    score: number | null;
@@ -60,7 +89,7 @@ type ProfilePremiumRow = {
 };
 
 type QuestionRow = {
-   room_id?: string;
+   round_id?: string;
    question_index: number;
    prompt: string;
    options: string[];
@@ -68,7 +97,7 @@ type QuestionRow = {
 };
 
 type AnswerRow = {
-   room_id?: string;
+   round_id?: string;
    question_index: number;
    user_id: string;
    selected_option_index: number | null;
@@ -81,14 +110,16 @@ type FolderBattleAccessRow = {
    is_available_for_battle: boolean | null;
 };
 
-const WAITING_ROOM_TTL_HOURS = 6;
-const FINISHED_ROOM_TTL_HOURS = 24;
-const ACTIVE_ROOM_TTL_HOURS = 2;
+const WAITING_ROUND_TTL_HOURS = 6;
+const ACTIVE_ROUND_TTL_HOURS = 2;
+const EXPIRED_ROOM_TTL_HOURS = 24;
 const CURIOSITY_POINT_REWARDS = [10, 5] as const;
-const ROOM_SELECT_BASE =
-   "id, code, deck_id, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at";
-const ROOM_SELECT_WITH_MULTI =
-   "id, code, deck_id, deck_ids, deck_title, status, question_count, time_limit_seconds, current_question_started_at, winner_user_id, created_at, finished_at";
+const NON_PREMIUM_ROOM_EXPIRATION_REASON =
+   "This room reached 5 rounds. Premium is required for every player to continue. Upgrade to Premium or create a new room.";
+const ROOM_SELECT =
+   "id, code, host_user_id, deck_id, deck_ids, deck_title, status, question_count, time_limit_seconds, completed_round_count, expires_at, expiration_reason, created_at";
+const ROUND_SELECT =
+   "id, room_id, round_number, status, deck_id, deck_ids, deck_title, question_count, time_limit_seconds, battle_starts_at, winner_user_id, created_at, finished_at";
 
 export async function getAuthenticatedUser(req: Request) {
    const authHeader = req.headers.get("authorization");
@@ -137,8 +168,8 @@ export async function createUniqueBattleRoomCode() {
    throw new Error("Failed to generate a unique room code.");
 }
 
-function getRoomDeckIds(room: RoomRow) {
-   return room.deck_ids?.length ? room.deck_ids : [room.deck_id];
+function getDeckIds(deckId: string, deckIds: string[] | null) {
+   return deckIds?.length ? deckIds : [deckId];
 }
 
 function formatBattleDeckTitle(decks: DeckRow[]) {
@@ -151,6 +182,510 @@ function formatBattleDeckTitle(decks: DeckRow[]) {
    }
 
    return `${decks[0].title} + ${decks[1].title} + ${decks.length - 2} more`;
+}
+
+function getCuriosityRewards(
+   players: BattleRoundPlayerSnapshot[],
+   winnerUserId: string | null,
+): BattleRoundRewardSnapshot[] {
+   if (!winnerUserId) {
+      return [];
+   }
+
+   return players
+      .slice(0, CURIOSITY_POINT_REWARDS.length)
+      .map((player, index) => ({
+         userId: player.userId,
+         curiosityPoints: CURIOSITY_POINT_REWARDS[index],
+         place: index + 1,
+      }));
+}
+
+function mapQuestionBank(questions: QuestionRow[]): BattleQuestionPayload[] {
+   return questions.map((question) => ({
+      questionIndex: question.question_index,
+      prompt: question.prompt,
+      options: question.options,
+   }));
+}
+
+function buildQuestionReviews(
+   questions: QuestionRow[],
+   answers: AnswerRow[],
+): BattleQuestionReview[] {
+   const answerMap = new Map<number, AnswerRow[]>();
+
+   answers.forEach((answer) => {
+      const existing = answerMap.get(answer.question_index) || [];
+      existing.push(answer);
+      answerMap.set(answer.question_index, existing);
+   });
+
+   return questions.map((question) => ({
+      questionIndex: question.question_index,
+      prompt: question.prompt,
+      options: question.options,
+      correctOptionIndex: question.correct_option_index,
+      answers: (answerMap.get(question.question_index) || []).map((answer) => ({
+         userId: answer.user_id,
+         selectedOptionIndex: answer.selected_option_index,
+         isCorrect: answer.is_correct,
+         responseMs: answer.response_ms || 0,
+      })),
+   }));
+}
+
+function sortRoundPlayersForWinner(players: RoundPlayerRow[]) {
+   return [...players].sort((a, b) => {
+      const scoreDiff = (b.score || 0) - (a.score || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+
+      const timeDiff = (a.total_response_ms || 0) - (b.total_response_ms || 0);
+      if (timeDiff !== 0) return timeDiff;
+
+      return a.joined_at.localeCompare(b.joined_at);
+   });
+}
+
+function mapRoomPlayerSnapshots(
+   players: RoomPlayerRow[],
+   premiumMap: Map<string, boolean>,
+): BattleRoomPlayerSnapshot[] {
+   return players.map((player) => ({
+      userId: player.user_id,
+      username: player.username?.trim() || "Player",
+      isPremium: premiumMap.get(player.user_id) === true,
+      joinedAt: player.joined_at,
+   }));
+}
+
+function mapRoundPlayerSnapshots(
+   players: RoundPlayerRow[],
+   premiumMap: Map<string, boolean>,
+): BattleRoundPlayerSnapshot[] {
+   return players
+      .map((player) => ({
+         userId: player.user_id,
+         username: player.username?.trim() || "Player",
+         isPremium: premiumMap.get(player.user_id) === true,
+         score: player.score ?? 0,
+         joinedAt: player.joined_at,
+         totalResponseMs: player.total_response_ms ?? 0,
+         isReady: player.is_ready === true,
+         readyAt: player.ready_at,
+         submittedAt: player.submitted_at,
+      }))
+      .sort((a, b) => {
+         if (b.score !== a.score) return b.score - a.score;
+         if (a.totalResponseMs !== b.totalResponseMs) {
+            return a.totalResponseMs - b.totalResponseMs;
+         }
+         return a.joinedAt.localeCompare(b.joinedAt);
+      });
+}
+
+async function getPremiumMap(userIds: string[]) {
+   const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
+
+   if (uniqueUserIds.length === 0) {
+      return new Map<string, boolean>();
+   }
+
+   const { data, error } = await supabaseAdmin
+      .from("profiles")
+      .select("id, is_premium")
+      .in("id", uniqueUserIds);
+
+   if (error) {
+      throw new Error("Failed to load player premium status.");
+   }
+
+   return new Map(
+      ((data || []) as ProfilePremiumRow[]).map((profile) => [
+         profile.id,
+         profile.is_premium === true,
+      ]),
+   );
+}
+
+async function getRoomByCode(roomCode: string) {
+   const normalizedCode = normalizeRoomCode(roomCode);
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_rooms")
+      .select(ROOM_SELECT)
+      .eq("code", normalizedCode)
+      .maybeSingle();
+
+   if (error || !data) {
+      return null;
+   }
+
+   return data as RoomRow;
+}
+
+async function getRoomById(roomId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_rooms")
+      .select(ROOM_SELECT)
+      .eq("id", roomId)
+      .maybeSingle();
+
+   if (error || !data) {
+      return null;
+   }
+
+   return data as RoomRow;
+}
+
+async function getRoomMembers(roomId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_room_players")
+      .select("room_id, user_id, username, joined_at")
+      .eq("room_id", roomId)
+      .order("joined_at", { ascending: true });
+
+   if (error) {
+      throw new Error("Failed to load room players.");
+   }
+
+   return (data || []) as RoomPlayerRow[];
+}
+
+async function getLatestRoundForRoom(roomId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_rounds")
+      .select(ROUND_SELECT)
+      .eq("room_id", roomId)
+      .order("round_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+   if (error || !data) {
+      return null;
+   }
+
+   return data as RoundRow;
+}
+
+async function getUnfinishedRoundForRoom(roomId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_rounds")
+      .select(ROUND_SELECT)
+      .eq("room_id", roomId)
+      .in("status", ["waiting", "active"])
+      .order("round_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+   if (error || !data) {
+      return null;
+   }
+
+   return data as RoundRow;
+}
+
+async function getFinishedRoundsForRoom(roomId: string, limit: number) {
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_rounds")
+      .select(ROUND_SELECT)
+      .eq("room_id", roomId)
+      .eq("status", "finished")
+      .order("round_number", { ascending: false })
+      .limit(limit);
+
+   if (error) {
+      throw new Error("Failed to load room rounds.");
+   }
+
+   return (data || []) as RoundRow[];
+}
+
+async function getRoundById(roundId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_rounds")
+      .select(ROUND_SELECT)
+      .eq("id", roundId)
+      .maybeSingle();
+
+   if (error || !data) {
+      return null;
+   }
+
+   return data as RoundRow;
+}
+
+async function getRoundPlayers(roundId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_round_players")
+      .select(
+         "round_id, user_id, username, score, joined_at, total_response_ms, is_ready, ready_at, submitted_at",
+      )
+      .eq("round_id", roundId)
+      .order("joined_at", { ascending: true });
+
+   if (error) {
+      throw new Error("Failed to load round players.");
+   }
+
+   return (data || []) as RoundPlayerRow[];
+}
+
+async function getRoundQuestions(roundId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_round_questions")
+      .select("round_id, question_index, prompt, options, correct_option_index")
+      .eq("round_id", roundId)
+      .order("question_index", { ascending: true });
+
+   if (error) {
+      throw new Error("Failed to load round questions.");
+   }
+
+   return (data || []) as QuestionRow[];
+}
+
+async function getRoundAnswers(roundId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("vocab_battle_round_answers")
+      .select(
+         "round_id, question_index, user_id, selected_option_index, is_correct, response_ms",
+      )
+      .eq("round_id", roundId)
+      .order("question_index", { ascending: true });
+
+   if (error) {
+      throw new Error("Failed to load round answers.");
+   }
+
+   return (data || []) as AnswerRow[];
+}
+
+async function awardCuriosityPoints(players: RoundPlayerRow[]) {
+   const rewardedPlayers = players
+      .slice(0, CURIOSITY_POINT_REWARDS.length)
+      .map((player, index) => ({
+         userId: player.user_id,
+         reward: CURIOSITY_POINT_REWARDS[index],
+      }));
+
+   if (rewardedPlayers.length === 0) {
+      return;
+   }
+
+   const userIds = rewardedPlayers.map((player) => player.userId);
+   const { data: existingStats, error: statsError } = await supabaseAdmin
+      .from("user_stats")
+      .select("user_id, curiosity_points")
+      .in("user_id", userIds);
+
+   if (statsError) {
+      console.error("Curiosity points stats lookup failed:", statsError);
+      throw new Error("Failed to award curiosity points.");
+   }
+
+   const currentPointsByUser = new Map(
+      (existingStats || []).map((row) => [
+         row.user_id as string,
+         Number(row.curiosity_points || 0),
+      ]),
+   );
+
+   for (const player of rewardedPlayers) {
+      const nextPoints =
+         (currentPointsByUser.get(player.userId) || 0) + player.reward;
+
+      if (currentPointsByUser.has(player.userId)) {
+         const { error: updateError } = await supabaseAdmin
+            .from("user_stats")
+            .update({
+               curiosity_points: nextPoints,
+            })
+            .eq("user_id", player.userId);
+
+         if (updateError) {
+            console.error("Curiosity points update failed:", updateError, {
+               userId: player.userId,
+               nextPoints,
+            });
+            throw new Error("Failed to award curiosity points.");
+         }
+
+         continue;
+      }
+
+      const { error: insertError } = await supabaseAdmin
+         .from("user_stats")
+         .insert({
+            user_id: player.userId,
+            streak: 0,
+            last_active_date: null,
+            curiosity_points: nextPoints,
+         });
+
+      if (insertError) {
+         console.error("Curiosity points insert failed:", insertError, {
+            userId: player.userId,
+            nextPoints,
+         });
+         throw new Error("Failed to award curiosity points.");
+      }
+   }
+}
+
+async function expireRoom(roomId: string, reason: string) {
+   const nowIso = new Date().toISOString();
+   const { error } = await supabaseAdmin
+      .from("vocab_battle_rooms")
+      .update({
+         status: "expired",
+         expires_at: nowIso,
+         expiration_reason: reason,
+      })
+      .eq("id", roomId)
+      .neq("status", "expired");
+
+   if (error) {
+      throw new Error("Failed to expire room.");
+   }
+}
+
+async function enforceRoomExpirationAfterPremiumCheck(roomId: string) {
+   const room = await getRoomById(roomId);
+   if (!room || room.status === "expired") {
+      return room;
+   }
+
+   const completedRoundCount = room.completed_round_count ?? 0;
+   if (completedRoundCount < BATTLE_FREE_ROUNDS_PER_ROOM) {
+      return room;
+   }
+
+   const unfinishedRound = await getUnfinishedRoundForRoom(roomId);
+   if (unfinishedRound) {
+      return room;
+   }
+
+   const members = await getRoomMembers(roomId);
+   const premiumMap = await getPremiumMap(members.map((player) => player.user_id));
+   const hasNonPremiumPlayer = members.some(
+      (player) => premiumMap.get(player.user_id) !== true,
+   );
+
+   if (!hasNonPremiumPlayer) {
+      return room;
+   }
+
+   await expireRoom(roomId, NON_PREMIUM_ROOM_EXPIRATION_REASON);
+   return getRoomById(roomId);
+}
+
+async function finalizeRound(roundId: string) {
+   const round = await getRoundById(roundId);
+   if (!round) {
+      throw new Error("Round not found.");
+   }
+
+   if (round.status === "finished") {
+      return round;
+   }
+
+   const players = await getRoundPlayers(roundId);
+   const ranked = sortRoundPlayersForWinner(players);
+   const top = ranked[0];
+   const isTie =
+      ranked.length > 1 &&
+      (ranked[1].score || 0) === (top?.score || 0) &&
+      (ranked[1].total_response_ms || 0) === (top?.total_response_ms || 0);
+   const winnerUserId = top && !isTie ? top.user_id : null;
+
+   if (!isTie) {
+      await awardCuriosityPoints(ranked);
+   }
+
+   const finishedAt = new Date().toISOString();
+   const { data: finalizedRound, error: finalizeError } = await supabaseAdmin
+      .from("vocab_battle_rounds")
+      .update({
+         status: "finished",
+         winner_user_id: winnerUserId,
+         finished_at: finishedAt,
+      })
+      .eq("id", roundId)
+      .neq("status", "finished")
+      .select("id, room_id")
+      .maybeSingle();
+
+   if (finalizeError) {
+      console.error("Battle round finalize failed:", finalizeError, { roundId });
+      throw new Error("Failed to finalize battle round.");
+   }
+
+   if (finalizedRound?.room_id) {
+      const room = await getRoomById(finalizedRound.room_id as string);
+      if (room) {
+         const { error: roomError } = await supabaseAdmin
+            .from("vocab_battle_rooms")
+            .update({
+               completed_round_count: (room.completed_round_count ?? 0) + 1,
+            })
+            .eq("id", room.id);
+
+         if (roomError) {
+            throw new Error("Failed to update room progress.");
+         }
+      }
+
+      await enforceRoomExpirationAfterPremiumCheck(finalizedRound.room_id as string);
+   }
+
+   return getRoundById(roundId);
+}
+
+async function deleteRoom(roomId: string) {
+   await supabaseAdmin.from("vocab_battle_rooms").delete().eq("id", roomId);
+}
+
+export async function cleanupBattleRooms() {
+   const now = Date.now();
+   const activeCutoff = new Date(
+      now - ACTIVE_ROUND_TTL_HOURS * 60 * 60 * 1000,
+   ).toISOString();
+   const waitingCutoff = new Date(
+      now - WAITING_ROUND_TTL_HOURS * 60 * 60 * 1000,
+   ).toISOString();
+   const expiredCutoff = new Date(
+      now - EXPIRED_ROOM_TTL_HOURS * 60 * 60 * 1000,
+   ).toISOString();
+
+   const { data: staleActiveRounds } = await supabaseAdmin
+      .from("vocab_battle_rounds")
+      .select("id")
+      .eq("status", "active")
+      .lt("battle_starts_at", activeCutoff)
+      .is("finished_at", null);
+
+   for (const round of staleActiveRounds || []) {
+      await finalizeRound(round.id as string);
+   }
+
+   const { data: staleWaitingRounds } = await supabaseAdmin
+      .from("vocab_battle_rounds")
+      .select("id, room_id")
+      .eq("status", "waiting")
+      .lt("created_at", waitingCutoff);
+
+   for (const round of staleWaitingRounds || []) {
+      await expireRoom(
+         round.room_id as string,
+         "This room expired because the next round did not start in time.",
+      );
+   }
+
+   await supabaseAdmin
+      .from("vocab_battle_rooms")
+      .delete()
+      .eq("status", "expired")
+      .lt("expires_at", expiredCutoff);
 }
 
 export async function loadBattleDecks(deckIds: string[]) {
@@ -281,289 +816,239 @@ export async function buildBattleQuestions(
    });
 }
 
-async function getRoomByCode(roomCode: string) {
-   const normalizedCode = normalizeRoomCode(roomCode);
-   const query = supabaseAdmin
-      .from("vocab_battle_rooms")
-      .select(ROOM_SELECT_WITH_MULTI)
-      .eq("code", normalizedCode)
+async function addUserToRoomIfNeeded(roomId: string, userId: string, username: string) {
+   const { data: existingMember } = await supabaseAdmin
+      .from("vocab_battle_room_players")
+      .select("user_id")
+      .eq("room_id", roomId)
+      .eq("user_id", userId)
       .maybeSingle();
 
-   let { data, error } = await query;
-
-   if (error && /deck_ids|deck_title/i.test(error.message)) {
-      ({ data, error } = await supabaseAdmin
-         .from("vocab_battle_rooms")
-         .select(ROOM_SELECT_BASE)
-         .eq("code", normalizedCode)
-         .maybeSingle());
-   }
-
-   if (error || !data) {
-      return null;
-   }
-
-   return data as RoomRow;
-}
-
-async function getRoomPlayers(roomId: string) {
-   const { data, error } = await supabaseAdmin
-      .from("vocab_battle_players")
-      .select(
-         "room_id, user_id, username, score, joined_at, total_response_ms, is_ready, ready_at, submitted_at",
-      )
-      .eq("room_id", roomId)
-      .order("joined_at", { ascending: true });
-
-   if (error) {
-      throw new Error("Failed to load room players.");
-   }
-
-   return (data || []) as PlayerRow[];
-}
-
-async function getPremiumMap(userIds: string[]) {
-   const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
-
-   if (uniqueUserIds.length === 0) {
-      return new Map<string, boolean>();
-   }
-
-   const { data, error } = await supabaseAdmin
-      .from("profiles")
-      .select("id, is_premium")
-      .in("id", uniqueUserIds);
-
-   if (error) {
-      throw new Error("Failed to load player premium status.");
-   }
-
-   return new Map(
-      ((data || []) as ProfilePremiumRow[]).map((profile) => [
-         profile.id,
-         profile.is_premium === true,
-      ]),
-   );
-}
-
-async function getRoomQuestions(roomId: string) {
-   const { data, error } = await supabaseAdmin
-      .from("vocab_battle_questions")
-      .select("question_index, prompt, options, correct_option_index")
-      .eq("room_id", roomId)
-      .order("question_index", { ascending: true });
-
-   if (error) {
-      throw new Error("Failed to load room questions.");
-   }
-
-   return (data || []) as QuestionRow[];
-}
-
-async function getRoomAnswers(roomId: string) {
-   const { data, error } = await supabaseAdmin
-      .from("vocab_battle_answers")
-      .select(
-         "room_id, question_index, user_id, selected_option_index, is_correct, response_ms",
-      )
-      .eq("room_id", roomId)
-      .order("question_index", { ascending: true });
-
-   if (error) {
-      throw new Error("Failed to load room answers.");
-   }
-
-   return (data || []) as AnswerRow[];
-}
-
-function mapQuestionBank(questions: QuestionRow[]): BattleQuestionPayload[] {
-   return questions.map((question) => ({
-      questionIndex: question.question_index,
-      prompt: question.prompt,
-      options: question.options,
-   }));
-}
-
-function buildQuestionReviews(
-   questions: QuestionRow[],
-   answers: AnswerRow[],
-): BattleQuestionReview[] {
-   const answerMap = new Map<number, AnswerRow[]>();
-
-   answers.forEach((answer) => {
-      const existing = answerMap.get(answer.question_index) || [];
-      existing.push(answer);
-      answerMap.set(answer.question_index, existing);
-   });
-
-   return questions.map((question) => ({
-      questionIndex: question.question_index,
-      prompt: question.prompt,
-      options: question.options,
-      correctOptionIndex: question.correct_option_index,
-      answers: (answerMap.get(question.question_index) || []).map((answer) => ({
-         userId: answer.user_id,
-         selectedOptionIndex: answer.selected_option_index,
-         isCorrect: answer.is_correct,
-         responseMs: answer.response_ms || 0,
-      })),
-   }));
-}
-
-function sortPlayersForWinner(players: PlayerRow[]) {
-   return [...players].sort((a, b) => {
-      const scoreDiff = (b.score || 0) - (a.score || 0);
-      if (scoreDiff !== 0) return scoreDiff;
-
-      const timeDiff =
-         (a.total_response_ms || 0) - (b.total_response_ms || 0);
-      if (timeDiff !== 0) return timeDiff;
-
-      return a.joined_at.localeCompare(b.joined_at);
-   });
-}
-
-async function awardCuriosityPoints(players: PlayerRow[]) {
-   const rewardedPlayers = players
-      .slice(0, CURIOSITY_POINT_REWARDS.length)
-      .map((player, index) => ({
-         userId: player.user_id,
-         reward: CURIOSITY_POINT_REWARDS[index],
-      }));
-
-   if (rewardedPlayers.length === 0) {
-      return;
-   }
-
-   const userIds = rewardedPlayers.map((player) => player.userId);
-   const { data: existingStats, error: statsError } = await supabaseAdmin
-      .from("user_stats")
-      .select("user_id, curiosity_points")
-      .in("user_id", userIds);
-
-   if (statsError) {
-      console.error("Curiosity points stats lookup failed:", statsError);
-      throw new Error("Failed to award curiosity points.");
-   }
-
-   const currentPointsByUser = new Map(
-      (existingStats || []).map((row) => [
-         row.user_id as string,
-         Number(row.curiosity_points || 0),
-      ]),
-   );
-
-   for (const player of rewardedPlayers) {
-      const nextPoints =
-         (currentPointsByUser.get(player.userId) || 0) + player.reward;
-
-      if (currentPointsByUser.has(player.userId)) {
-         const { error: updateError } = await supabaseAdmin
-            .from("user_stats")
-            .update({
-               curiosity_points: nextPoints,
-            })
-            .eq("user_id", player.userId);
-
-         if (updateError) {
-            console.error("Curiosity points update failed:", updateError, {
-               userId: player.userId,
-               nextPoints,
-            });
-            throw new Error("Failed to award curiosity points.");
-         }
-
-         continue;
-      }
-
-      const { error: insertError } = await supabaseAdmin
-         .from("user_stats")
+   if (!existingMember) {
+      const { error } = await supabaseAdmin
+         .from("vocab_battle_room_players")
          .insert({
-            user_id: player.userId,
-            streak: 0,
-            last_active_date: null,
-            curiosity_points: nextPoints,
+            room_id: roomId,
+            user_id: userId,
+            username,
          });
 
-      if (insertError) {
-         console.error("Curiosity points insert failed:", insertError, {
-            userId: player.userId,
-            nextPoints,
-         });
-         throw new Error("Failed to award curiosity points.");
+      if (error) {
+         throw new Error("Failed to join the room.");
       }
    }
 }
 
-async function finalizeRoom(roomId: string) {
-   const players = await getRoomPlayers(roomId);
-   const ranked = sortPlayersForWinner(players);
-   const top = ranked[0];
-   const isTie =
-      ranked.length > 1 &&
-      (ranked[1].score || 0) === (top?.score || 0) &&
-      (ranked[1].total_response_ms || 0) === (top?.total_response_ms || 0);
+async function addUserToWaitingRoundIfNeeded(
+   roundId: string,
+   userId: string,
+   username: string,
+) {
+   const { data: existingPlayer } = await supabaseAdmin
+      .from("vocab_battle_round_players")
+      .select("user_id")
+      .eq("round_id", roundId)
+      .eq("user_id", userId)
+      .maybeSingle();
 
-   const winnerUserId = top && !isTie ? top.user_id : null;
+   if (!existingPlayer) {
+      const { error } = await supabaseAdmin
+         .from("vocab_battle_round_players")
+         .insert({
+            round_id: roundId,
+            user_id: userId,
+            username,
+            score: 0,
+            total_response_ms: 0,
+            is_ready: false,
+         });
 
-   if (!isTie) {
-      await awardCuriosityPoints(ranked);
+      if (error) {
+         throw new Error("Failed to join the current round.");
+      }
+   }
+}
+
+async function createRoundForRoom(room: RoomRow, roundNumber: number) {
+   const unfinishedRound = await getUnfinishedRoundForRoom(room.id);
+   if (unfinishedRound) {
+      throw new Error("A round is already in progress for this room.");
    }
 
-   const { error: finalizeError } = await supabaseAdmin
-      .from("vocab_battle_rooms")
-      .update({
-         status: "finished",
-         winner_user_id: winnerUserId,
-         finished_at: new Date().toISOString(),
+   const questions = await buildBattleQuestions(
+      getDeckIds(room.deck_id, room.deck_ids),
+      room.question_count as BattleQuestionCount,
+   );
+
+   const { data: createdRound, error: roundError } = await supabaseAdmin
+      .from("vocab_battle_rounds")
+      .insert({
+         room_id: room.id,
+         round_number: roundNumber,
+         status: "waiting",
+         deck_id: room.deck_id,
+         deck_ids: getDeckIds(room.deck_id, room.deck_ids),
+         deck_title: room.deck_title,
+         question_count: room.question_count,
+         time_limit_seconds: room.time_limit_seconds,
       })
-      .eq("id", roomId)
-      .eq("status", "active");
-
-   if (finalizeError) {
-      console.error("Battle room finalize failed:", finalizeError, { roomId });
-      throw new Error("Failed to finalize battle room.");
-   }
-}
-
-async function deleteRoom(roomId: string) {
-   await supabaseAdmin.from("vocab_battle_rooms").delete().eq("id", roomId);
-}
-
-export async function cleanupBattleRooms() {
-   const now = Date.now();
-   const waitingCutoff = new Date(
-      now - WAITING_ROOM_TTL_HOURS * 60 * 60 * 1000,
-   ).toISOString();
-   const finishedCutoff = new Date(
-      now - FINISHED_ROOM_TTL_HOURS * 60 * 60 * 1000,
-   ).toISOString();
-   const activeCutoff = new Date(
-      now - ACTIVE_ROOM_TTL_HOURS * 60 * 60 * 1000,
-   ).toISOString();
-
-   await supabaseAdmin
-      .from("vocab_battle_rooms")
-      .delete()
-      .eq("status", "waiting")
-      .lt("created_at", waitingCutoff);
-
-   await supabaseAdmin
-      .from("vocab_battle_rooms")
-      .delete()
-      .eq("status", "finished")
-      .lt("finished_at", finishedCutoff);
-
-   const { data: staleActiveRooms } = await supabaseAdmin
-      .from("vocab_battle_rooms")
       .select("id")
-      .eq("status", "active")
-      .lt("current_question_started_at", activeCutoff)
-      .is("finished_at", null);
+      .single();
 
-   for (const room of staleActiveRooms || []) {
-      await finalizeRoom(room.id as string);
+   if (roundError || !createdRound) {
+      throw new Error("Failed to create battle round.");
    }
+
+   const members = await getRoomMembers(room.id);
+   if (members.length === 0) {
+      await supabaseAdmin
+         .from("vocab_battle_rounds")
+         .delete()
+         .eq("id", createdRound.id);
+      throw new Error("A room needs at least one player.");
+   }
+
+   const { error: roundPlayersError } = await supabaseAdmin
+      .from("vocab_battle_round_players")
+      .insert(
+         members.map((player) => ({
+            round_id: createdRound.id,
+            user_id: player.user_id,
+            username: player.username,
+            score: 0,
+            total_response_ms: 0,
+            is_ready: false,
+         })),
+      );
+
+   if (roundPlayersError) {
+      await supabaseAdmin
+         .from("vocab_battle_rounds")
+         .delete()
+         .eq("id", createdRound.id);
+      throw new Error("Failed to add players to the battle round.");
+   }
+
+   const { error: questionError } = await supabaseAdmin
+      .from("vocab_battle_round_questions")
+      .insert(
+         questions.map((question) => ({
+            round_id: createdRound.id,
+            ...question,
+         })),
+      );
+
+   if (questionError) {
+      await supabaseAdmin
+         .from("vocab_battle_rounds")
+         .delete()
+         .eq("id", createdRound.id);
+      throw new Error("Failed to save battle questions.");
+   }
+
+   return createdRound.id as string;
+}
+
+async function buildRoundSnapshot(
+   round: RoundRow,
+   viewerUserId: string,
+): Promise<BattleRoundSnapshot> {
+   const [players, questions, answers] = await Promise.all([
+      getRoundPlayers(round.id),
+      getRoundQuestions(round.id),
+      round.status === "finished" ? getRoundAnswers(round.id) : Promise.resolve([]),
+   ]);
+   const premiumMap = await getPremiumMap(players.map((player) => player.user_id));
+   const viewer = players.find((player) => player.user_id === viewerUserId);
+   const roundPlayers = mapRoundPlayerSnapshots(players, premiumMap);
+   const rewards = getCuriosityRewards(roundPlayers, round.winner_user_id);
+
+   return {
+      roundId: round.id,
+      roundNumber: round.round_number,
+      status: round.status,
+      deckId: round.deck_id,
+      deckIds: getDeckIds(round.deck_id, round.deck_ids),
+      deckTitle: round.deck_title || "Battle deck",
+      questionCount: round.question_count,
+      timeLimitSeconds: round.time_limit_seconds,
+      battleStartsAt: round.battle_starts_at,
+      winnerUserId: round.winner_user_id,
+      createdAt: round.created_at,
+      finishedAt: round.finished_at,
+      viewerReady: viewer?.is_ready === true,
+      viewerSubmitted: Boolean(viewer?.submitted_at),
+      viewerIsParticipant: Boolean(viewer),
+      players: roundPlayers,
+      questionBank: mapQuestionBank(questions),
+      completedQuestions:
+         round.status === "finished" ? buildQuestionReviews(questions, answers) : [],
+      rewards,
+   };
+}
+
+async function mapRoundsToHistoryEntries(
+   roomCode: string,
+   roomStatus: "open" | "expired",
+   rounds: RoundRow[],
+): Promise<BattleHistoryEntry[]> {
+   const roundIds = rounds.map((round) => round.id);
+   if (roundIds.length === 0) {
+      return [];
+   }
+
+   const [roundPlayersResult, premiumMap] = await Promise.all([
+      supabaseAdmin
+         .from("vocab_battle_round_players")
+         .select(
+            "round_id, user_id, username, score, joined_at, total_response_ms, is_ready, ready_at, submitted_at",
+         )
+         .in("round_id", roundIds)
+         .order("joined_at", { ascending: true }),
+      (async () => {
+         const { data } = await supabaseAdmin
+            .from("vocab_battle_round_players")
+            .select("user_id")
+            .in("round_id", roundIds);
+
+         const userIds = (data || []).map((row) => row.user_id as string);
+         return getPremiumMap(userIds);
+      })(),
+   ]);
+
+   if (roundPlayersResult.error) {
+      throw new Error("Failed to load battle history.");
+   }
+
+   const playersByRound = new Map<string, RoundPlayerRow[]>();
+   ((roundPlayersResult.data || []) as RoundPlayerRow[]).forEach((player) => {
+      const roundId = player.round_id as string;
+      const existing = playersByRound.get(roundId) || [];
+      existing.push(player);
+      playersByRound.set(roundId, existing);
+   });
+
+   return rounds.map((round) => {
+      const roundPlayers = mapRoundPlayerSnapshots(
+         playersByRound.get(round.id) || [],
+         premiumMap,
+      );
+
+      return {
+         roundId: round.id,
+         roundNumber: round.round_number,
+         roomCode,
+         deckTitle: round.deck_title || "Battle deck",
+         roomStatus,
+         status: round.status,
+         createdAt: round.created_at,
+         finishedAt: round.finished_at,
+         winnerUserId: round.winner_user_id,
+         questionCount: round.question_count,
+         players: roundPlayers,
+         rewards: getCuriosityRewards(roundPlayers, round.winner_user_id),
+      };
+   });
 }
 
 export async function loadRoomForParticipant(roomCode: string, userId: string) {
@@ -573,7 +1058,7 @@ export async function loadRoomForParticipant(roomCode: string, userId: string) {
    }
 
    const { data } = await supabaseAdmin
-      .from("vocab_battle_players")
+      .from("vocab_battle_room_players")
       .select("user_id")
       .eq("room_id", room.id)
       .eq("user_id", userId)
@@ -591,88 +1076,112 @@ export async function buildBattleRoomSnapshot(
    viewerUserId: string,
 ): Promise<BattleRoomSnapshot | null> {
    await cleanupBattleRooms();
-   const room = await getRoomByCode(roomCode);
+   let room = await getRoomByCode(roomCode);
    if (!room) {
       return null;
    }
 
-   const [players, questions] = await Promise.all([
-      getRoomPlayers(room.id),
-      getRoomQuestions(room.id),
-   ]);
-   const premiumMap = await getPremiumMap(players.map((player) => player.user_id));
+   room = (await enforceRoomExpirationAfterPremiumCheck(room.id)) || room;
 
-   const viewer = players.find((player) => player.user_id === viewerUserId);
-   const completedQuestions =
-      room.status === "finished"
-         ? buildQuestionReviews(questions, await getRoomAnswers(room.id))
-         : [];
+   const [members, latestRound, recentFinishedRounds] = await Promise.all([
+      getRoomMembers(room.id),
+      getLatestRoundForRoom(room.id),
+      getFinishedRoundsForRoom(room.id, 5),
+   ]);
+   const premiumMap = await getPremiumMap(members.map((player) => player.user_id));
+   const memberSnapshots = mapRoomPlayerSnapshots(members, premiumMap);
+   const viewerIsRoomMember = members.some((player) => player.user_id === viewerUserId);
+   const currentRound = latestRound
+      ? await buildRoundSnapshot(latestRound, viewerUserId)
+      : null;
+   const recentRounds = await mapRoundsToHistoryEntries(
+      room.code,
+      room.status,
+      recentFinishedRounds,
+   );
 
    return {
       roomCode: room.code,
-      status: room.status,
+      roomStatus: room.status,
+      hostUserId: room.host_user_id,
       deckId: room.deck_id,
-      deckIds: getRoomDeckIds(room),
+      deckIds: getDeckIds(room.deck_id, room.deck_ids),
       deckTitle: room.deck_title || "Battle deck",
       questionCount: room.question_count,
       timeLimitSeconds: room.time_limit_seconds,
-      battleStartsAt: room.current_question_started_at,
-      winnerUserId: room.winner_user_id,
       createdAt: room.created_at,
-      finishedAt: room.finished_at,
+      completedRoundCount: room.completed_round_count ?? 0,
+      expiresAt: room.expires_at,
+      expirationReason: room.expiration_reason,
       viewerUserId,
-      viewerReady: viewer?.is_ready === true,
-      viewerSubmitted: Boolean(viewer?.submitted_at),
-      players: players.map((player) => ({
-         userId: player.user_id,
-         username: player.username?.trim() || "Player",
-         isPremium: premiumMap.get(player.user_id) === true,
-         score: player.score ?? 0,
-         joinedAt: player.joined_at,
-         totalResponseMs: player.total_response_ms ?? 0,
-         isReady: player.is_ready === true,
-         readyAt: player.ready_at,
-         submittedAt: player.submitted_at,
-      })),
-      questionBank: mapQuestionBank(questions),
-      completedQuestions,
+      viewerIsHost: room.host_user_id === viewerUserId,
+      viewerIsRoomMember,
+      players: memberSnapshots,
+      currentRound,
+      recentRounds,
    };
 }
 
-export async function markPlayerReady(roomCode: string, userId: string) {
+export async function markPlayerReady(
+   roomCode: string,
+   userId: string,
+   username?: string,
+) {
    const room = await loadRoomForParticipant(roomCode, userId);
 
-   if (room.status === "finished") {
-      throw new Error("This battle has already finished.");
+   if (room.status === "expired") {
+      throw new Error(
+         room.expiration_reason || "This room has expired. Create a new room to continue.",
+      );
    }
 
-   await supabaseAdmin
-      .from("vocab_battle_players")
+   const currentRound = await getLatestRoundForRoom(room.id);
+   if (!currentRound) {
+      throw new Error("There is no round in this room.");
+   }
+
+   if (currentRound.status !== "waiting") {
+      throw new Error("This round has already started.");
+   }
+
+   await addUserToWaitingRoundIfNeeded(
+      currentRound.id,
+      userId,
+      username || "Player",
+   );
+
+   const { error } = await supabaseAdmin
+      .from("vocab_battle_round_players")
       .update({
          is_ready: true,
          ready_at: new Date().toISOString(),
       })
-      .eq("room_id", room.id)
+      .eq("round_id", currentRound.id)
       .eq("user_id", userId);
 
-   const players = await getRoomPlayers(room.id);
+   if (error) {
+      throw new Error("Failed to update ready state.");
+   }
+
+   const players = await getRoundPlayers(currentRound.id);
    const everyoneReady =
       players.length >= 2 && players.every((player) => player.is_ready === true);
 
-   if (
-      everyoneReady &&
-      !room.current_question_started_at &&
-      room.status === "waiting"
-   ) {
-      await supabaseAdmin
-         .from("vocab_battle_rooms")
+   if (everyoneReady && !currentRound.battle_starts_at) {
+      const { error: roundError } = await supabaseAdmin
+         .from("vocab_battle_rounds")
          .update({
             status: "active",
-            current_question_started_at: new Date(
+            battle_starts_at: new Date(
                Date.now() + BATTLE_READY_COUNTDOWN_SECONDS * 1000,
             ).toISOString(),
          })
-         .eq("id", room.id);
+         .eq("id", currentRound.id)
+         .eq("status", "waiting");
+
+      if (roundError) {
+         throw new Error("Failed to start the round.");
+      }
    }
 }
 
@@ -683,38 +1192,29 @@ export async function joinBattleRoom(
 ) {
    await cleanupBattleRooms();
 
-   const room = await getRoomByCode(roomCode);
+   let room = await getRoomByCode(roomCode);
    if (!room) {
       throw new Error("Room not found.");
    }
 
-   if (room.status === "finished") {
-      throw new Error("This battle has already finished.");
+   if (room.status === "expired") {
+      throw new Error(
+         room.expiration_reason || "This room has expired. Create a new room to continue.",
+      );
    }
 
-   const players = await getRoomPlayers(room.id);
-   const participantIds = new Set(players.map((player) => player.user_id));
-   if (participantIds.has(userId)) {
-      return room.code;
+   await addUserToRoomIfNeeded(room.id, userId, username);
+   room = (await enforceRoomExpirationAfterPremiumCheck(room.id)) || room;
+
+   if (room.status === "expired") {
+      throw new Error(
+         room.expiration_reason || "This room has expired. Create a new room to continue.",
+      );
    }
 
-   if (room.status !== "waiting") {
-      throw new Error("This battle has already started.");
-   }
-
-   const { error: joinError } = await supabaseAdmin
-      .from("vocab_battle_players")
-      .insert({
-         room_id: room.id,
-         user_id: userId,
-         username,
-         score: 0,
-         total_response_ms: 0,
-         is_ready: false,
-      });
-
-   if (joinError) {
-      throw new Error("Failed to join the room.");
+   const currentRound = await getLatestRoundForRoom(room.id);
+   if (currentRound?.status === "waiting") {
+      await addUserToWaitingRoundIfNeeded(currentRound.id, userId, username);
    }
 
    return room.code;
@@ -729,30 +1229,40 @@ export async function submitBattleResults(
    },
 ) {
    const room = await loadRoomForParticipant(roomCode, userId);
-   if (room.status === "finished") {
-      return room;
+   const currentRound = await getLatestRoundForRoom(room.id);
+
+   if (!currentRound) {
+      throw new Error("There is no round in this room.");
    }
 
-   const players = await getRoomPlayers(room.id);
+   if (currentRound.status === "finished") {
+      return currentRound;
+   }
+
+   if (currentRound.status !== "active") {
+      throw new Error("The round has not started yet.");
+   }
+
+   const players = await getRoundPlayers(currentRound.id);
    const player = players.find((entry) => entry.user_id === userId);
 
    if (!player) {
-      throw new Error("You are not a participant in this room.");
+      throw new Error("You are waiting for the next round.");
    }
 
    if (player.submitted_at) {
-      return room;
+      return currentRound;
    }
 
-   const battleStartsAt = room.current_question_started_at
-      ? new Date(room.current_question_started_at).getTime()
+   const battleStartsAt = currentRound.battle_starts_at
+      ? new Date(currentRound.battle_starts_at).getTime()
       : 0;
 
    if (!battleStartsAt || battleStartsAt > Date.now()) {
-      throw new Error("The battle has not started yet.");
+      throw new Error("The round has not started yet.");
    }
 
-   const questions = await getRoomQuestions(room.id);
+   const questions = await getRoundQuestions(currentRound.id);
    const answerMap = new Map<number, BattleSubmissionAnswer>();
 
    submission.answers.forEach((answer) => {
@@ -771,13 +1281,19 @@ export async function submitBattleResults(
             ? (clientAnswer.selectedOptionIndex as number)
             : null;
       const responseMs = Math.min(
-         Math.max(Math.round(clientAnswer?.responseMs || room.time_limit_seconds * 1000), 0),
-         room.time_limit_seconds * 1000,
+         Math.max(
+            Math.round(
+               clientAnswer?.responseMs ||
+                  currentRound.time_limit_seconds * 1000,
+            ),
+            0,
+         ),
+         currentRound.time_limit_seconds * 1000,
       );
       const isCorrect = selectedOptionIndex === question.correct_option_index;
 
       return {
-         room_id: room.id,
+         round_id: currentRound.id,
          question_index: question.question_index,
          user_id: userId,
          selected_option_index: selectedOptionIndex,
@@ -789,13 +1305,13 @@ export async function submitBattleResults(
    const score = normalizedAnswers.filter((answer) => answer.is_correct).length;
    const totalResponseMs = Math.min(
       Math.max(Math.round(submission.totalResponseMs || 0), 0),
-      room.question_count * room.time_limit_seconds * 1000,
+      currentRound.question_count * currentRound.time_limit_seconds * 1000,
    );
 
    const { error: answersError } = await supabaseAdmin
-      .from("vocab_battle_answers")
+      .from("vocab_battle_round_answers")
       .upsert(normalizedAnswers, {
-         onConflict: "room_id,question_index,user_id",
+         onConflict: "round_id,question_index,user_id",
       });
 
    if (answersError) {
@@ -803,38 +1319,38 @@ export async function submitBattleResults(
    }
 
    const { error: playerError } = await supabaseAdmin
-      .from("vocab_battle_players")
+      .from("vocab_battle_round_players")
       .update({
          score,
          total_response_ms: totalResponseMs,
          submitted_at: new Date().toISOString(),
       })
-      .eq("room_id", room.id)
+      .eq("round_id", currentRound.id)
       .eq("user_id", userId);
 
    if (playerError) {
       throw new Error("Failed to save battle result.");
    }
 
-   const refreshedPlayers = await getRoomPlayers(room.id);
+   const refreshedPlayers = await getRoundPlayers(currentRound.id);
    const everyoneSubmitted =
       refreshedPlayers.length >= 2 &&
       refreshedPlayers.every((entry) => Boolean(entry.submitted_at));
 
    if (everyoneSubmitted) {
-      await finalizeRoom(room.id);
+      await finalizeRound(currentRound.id);
    }
 
-   return room;
+   return currentRound;
 }
 
 export async function getBattleHistoryForUser(userId: string) {
    await cleanupBattleRooms();
 
    const { data: playerRows, error: playerError } = await supabaseAdmin
-      .from("vocab_battle_players")
+      .from("vocab_battle_round_players")
       .select(
-         "room_id, user_id, username, score, joined_at, total_response_ms, is_ready, ready_at, submitted_at",
+         "round_id, user_id, username, score, joined_at, total_response_ms, is_ready, ready_at, submitted_at",
       )
       .eq("user_id", userId)
       .order("joined_at", { ascending: false })
@@ -844,84 +1360,84 @@ export async function getBattleHistoryForUser(userId: string) {
       throw new Error("Failed to load battle history.");
    }
 
-   const roomIds = Array.from(
-      new Set((playerRows || []).map((row) => row.room_id as string)),
+   const roundIds = Array.from(
+      new Set((playerRows || []).map((row) => row.round_id as string)),
    );
 
-   if (roomIds.length === 0) {
+   if (roundIds.length === 0) {
       return [] as BattleHistoryEntry[];
    }
 
-   const [initialRoomsResult, decksResult, allPlayersResult] = await Promise.all([
+   const [roundsResult, allPlayersResult] = await Promise.all([
       supabaseAdmin
-         .from("vocab_battle_rooms")
-         .select(ROOM_SELECT_WITH_MULTI)
-         .in("id", roomIds),
-      supabaseAdmin.from("vocabulary_decks").select("id, title"),
+         .from("vocab_battle_rounds")
+         .select(ROUND_SELECT)
+         .in("id", roundIds),
       supabaseAdmin
-         .from("vocab_battle_players")
+         .from("vocab_battle_round_players")
          .select(
-            "room_id, user_id, username, score, joined_at, total_response_ms, is_ready, ready_at, submitted_at",
+            "round_id, user_id, username, score, joined_at, total_response_ms, is_ready, ready_at, submitted_at",
          )
-         .in("room_id", roomIds)
+         .in("round_id", roundIds)
          .order("joined_at", { ascending: true }),
    ]);
 
-   let roomsError = initialRoomsResult.error;
-   let roomRows = (initialRoomsResult.data || []) as RoomRow[];
-
-   if (roomsError && /deck_ids|deck_title/i.test(roomsError.message)) {
-      const fallbackRoomsResult = await supabaseAdmin
-         .from("vocab_battle_rooms")
-         .select(ROOM_SELECT_BASE)
-         .in("id", roomIds);
-
-      roomsError = fallbackRoomsResult.error;
-      roomRows = (fallbackRoomsResult.data || []) as RoomRow[];
-   }
-
-   if (roomsError || decksResult.error || allPlayersResult.error) {
+   if (roundsResult.error || allPlayersResult.error) {
       throw new Error("Failed to load battle history.");
    }
 
-   const deckMap = new Map(
-      (decksResult.data || []).map((deck) => [deck.id as string, deck.title as string]),
+   const rounds = (roundsResult.data || []) as RoundRow[];
+   const roomIds = Array.from(new Set(rounds.map((round) => round.room_id)));
+   const roomsResult = await supabaseAdmin
+      .from("vocab_battle_rooms")
+      .select(ROOM_SELECT)
+      .in("id", roomIds);
+
+   if (roomsResult.error) {
+      throw new Error("Failed to load battle history.");
+   }
+
+   const roomsById = new Map(
+      ((roomsResult.data || []) as RoomRow[]).map((room) => [room.id, room]),
    );
    const premiumMap = await getPremiumMap(
-      ((allPlayersResult.data || []) as PlayerRow[]).map((player) => player.user_id),
+      ((allPlayersResult.data || []) as RoundPlayerRow[]).map(
+         (player) => player.user_id,
+      ),
    );
-   const playersByRoom = new Map<string, PlayerRow[]>();
+   const playersByRound = new Map<string, RoundPlayerRow[]>();
 
-   ((allPlayersResult.data || []) as PlayerRow[]).forEach((player) => {
-      const roomId = player.room_id as string;
-      const existing = playersByRoom.get(roomId) || [];
+   ((allPlayersResult.data || []) as RoundPlayerRow[]).forEach((player) => {
+      const roundId = player.round_id as string;
+      const existing = playersByRound.get(roundId) || [];
       existing.push(player);
-      playersByRoom.set(roomId, existing);
+      playersByRound.set(roundId, existing);
    });
 
-   return roomRows
+   return rounds
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .map((room) => ({
-         roomCode: room.code,
-         deckTitle:
-            room.deck_title || deckMap.get(room.deck_id) || "Unknown deck",
-         status: room.status,
-         createdAt: room.created_at,
-         finishedAt: room.finished_at,
-         winnerUserId: room.winner_user_id,
-         questionCount: room.question_count,
-         players: (playersByRoom.get(room.id) || []).map((player) => ({
-            userId: player.user_id,
-            username: player.username?.trim() || "Player",
-            isPremium: premiumMap.get(player.user_id) === true,
-            score: player.score ?? 0,
-            joinedAt: player.joined_at,
-            totalResponseMs: player.total_response_ms ?? 0,
-            isReady: player.is_ready === true,
-            readyAt: player.ready_at,
-            submittedAt: player.submitted_at,
-         })),
-      }));
+      .map((round) => {
+         const room = roomsById.get(round.room_id);
+         const players = mapRoundPlayerSnapshots(
+            playersByRound.get(round.id) || [],
+            premiumMap,
+         );
+
+         return {
+            roundId: round.id,
+            roundNumber: round.round_number,
+            roomCode: room?.code || "------",
+            deckTitle: round.deck_title || room?.deck_title || "Battle deck",
+            roomStatus: room?.status || "expired",
+            status: round.status,
+            createdAt: round.created_at,
+            finishedAt: round.finished_at,
+            winnerUserId: round.winner_user_id,
+            questionCount: round.question_count,
+            players,
+            rewards: getCuriosityRewards(players, round.winner_user_id),
+         };
+      });
 }
 
 export async function createBattleRoom(
@@ -934,10 +1450,6 @@ export async function createBattleRoom(
    await cleanupBattleRooms();
 
    const decks = await loadBattleDecks(deckIds);
-   const questions = await buildBattleQuestions(
-      decks.map((deck) => deck.id),
-      questionCount,
-   );
    const roomCode = await createUniqueBattleRoomCode();
    const deckTitle = formatBattleDeckTitle(decks);
 
@@ -945,73 +1457,69 @@ export async function createBattleRoom(
       .from("vocab_battle_rooms")
       .insert({
          code: roomCode,
+         host_user_id: userId,
          deck_id: decks[0].id,
          deck_ids: decks.map((deck) => deck.id),
          deck_title: deckTitle,
-         host_user_id: userId,
-         status: "waiting",
-         question_count: questions.length,
+         status: "open",
+         question_count: questionCount,
          time_limit_seconds: timeLimitSeconds,
-         current_question_index: 0,
+         completed_round_count: 0,
       })
-      .select("id, code")
+      .select(ROOM_SELECT)
       .single();
 
-   let createdRoom = room;
-   let createdRoomError = roomError;
-
-   if (createdRoomError && /deck_ids|deck_title/i.test(createdRoomError.message)) {
-      const fallbackInsert = await supabaseAdmin
-         .from("vocab_battle_rooms")
-         .insert({
-            code: roomCode,
-            deck_id: decks[0].id,
-            host_user_id: userId,
-            status: "waiting",
-            question_count: questions.length,
-            time_limit_seconds: timeLimitSeconds,
-            current_question_index: 0,
-         })
-         .select("id, code")
-         .single();
-
-      createdRoom = fallbackInsert.data;
-      createdRoomError = fallbackInsert.error;
-   }
-
-   if (createdRoomError || !createdRoom) {
+   if (roomError || !room) {
       throw new Error("Failed to create room.");
    }
 
-   const { error: playerError } = await supabaseAdmin
-      .from("vocab_battle_players")
+   const { error: memberError } = await supabaseAdmin
+      .from("vocab_battle_room_players")
       .insert({
-         room_id: createdRoom.id,
+         room_id: room.id,
          user_id: userId,
          username,
-         score: 0,
-         total_response_ms: 0,
-         is_ready: false,
       });
 
-   if (playerError) {
-      await deleteRoom(createdRoom.id);
+   if (memberError) {
+      await deleteRoom(room.id);
       throw new Error("Failed to add the host to the room.");
    }
 
-   const questionRows = questions.map((question) => ({
-      room_id: createdRoom.id,
-      ...question,
-   }));
-
-   const { error: questionError } = await supabaseAdmin
-      .from("vocab_battle_questions")
-      .insert(questionRows);
-
-   if (questionError) {
-      await deleteRoom(createdRoom.id);
-      throw new Error("Failed to save battle questions.");
+   try {
+      await createRoundForRoom(room as RoomRow, 1);
+   } catch (error) {
+      await deleteRoom(room.id);
+      throw error;
    }
 
-   return { roomCode: createdRoom.code, deckTitle };
+   return { roomCode: room.code, deckTitle };
+}
+
+export async function createNextBattleRound(roomCode: string, userId: string) {
+   const room = await loadRoomForParticipant(roomCode, userId);
+
+   if (room.host_user_id !== userId) {
+      throw new Error("Only the room host can start the next round.");
+   }
+
+   const refreshedRoom =
+      (await enforceRoomExpirationAfterPremiumCheck(room.id)) || room;
+
+   if (refreshedRoom.status === "expired") {
+      throw new Error(
+         refreshedRoom.expiration_reason ||
+            "This room has expired. Create a new room to continue.",
+      );
+   }
+
+   const currentRound = await getLatestRoundForRoom(room.id);
+   if (currentRound && currentRound.status !== "finished") {
+      throw new Error("Finish the current round before starting a new one.");
+   }
+
+   await createRoundForRoom(
+      refreshedRoom,
+      (refreshedRoom.completed_round_count ?? 0) + 1,
+   );
 }

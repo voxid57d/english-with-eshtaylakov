@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import {
    buildBattleRoomSnapshot,
+   createNextBattleRound,
    getAuthenticatedUser,
-   markPlayerReady,
 } from "@/lib/vocabularyBattleServer";
 
 export async function POST(req: Request) {
    try {
-      const { userId, username } = await getAuthenticatedUser(req);
+      const { userId } = await getAuthenticatedUser(req);
       const body = await req.json();
       const roomCode =
          typeof body?.roomCode === "string" ? body.roomCode.trim() : "";
@@ -19,14 +19,20 @@ export async function POST(req: Request) {
          );
       }
 
-      await markPlayerReady(roomCode, userId, username);
+      await createNextBattleRound(roomCode, userId);
       const snapshot = await buildBattleRoomSnapshot(roomCode, userId);
-
       return NextResponse.json(snapshot);
    } catch (error) {
       const message =
-         error instanceof Error ? error.message : "Failed to update ready state.";
-      const status = message === "Unauthorized." ? 401 : 400;
+         error instanceof Error ? error.message : "Failed to start next round.";
+      const status =
+         message === "Unauthorized."
+            ? 401
+            : message === "Room not found."
+              ? 404
+              : message.includes("expired")
+                ? 409
+                : 400;
       return NextResponse.json({ error: message }, { status });
    }
 }
