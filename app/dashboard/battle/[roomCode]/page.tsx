@@ -280,17 +280,8 @@ export default function BattleRoomPage() {
          return;
       }
 
-      setSelectedDeckIds((current) => {
-         if (
-            current.length === snapshot.deckIds.length &&
-            current.every((deckId, index) => deckId === snapshot.deckIds[index])
-         ) {
-            return current;
-         }
-
-         return snapshot.deckIds;
-      });
-   }, [snapshot?.deckIds]);
+      setSelectedDeckIds(snapshot.deckIds);
+   }, [currentRound?.roundId, snapshot?.deckIds]);
 
    useEffect(() => {
       if (
