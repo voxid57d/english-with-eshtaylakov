@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { PiCaretDownBold } from "react-icons/pi";
 import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import type {
@@ -11,6 +12,36 @@ import type {
    BattleRoomSnapshot,
    BattleSubmissionAnswer,
 } from "@/lib/vocabularyBattle";
+
+type PublicDeck = {
+   id: string;
+   title: string;
+   description: string | null;
+   folder_id: string | null;
+   folder: {
+      title: string;
+      slug: string;
+   } | null;
+};
+
+type DeckFolderRelation =
+   | {
+        title: string;
+        slug: string;
+        is_available_for_battle?: boolean;
+     }
+   | {
+        title: string;
+        slug: string;
+        is_available_for_battle?: boolean;
+     }[]
+   | null
+   | undefined;
+
+const NATURAL_SORT = new Intl.Collator(undefined, {
+   numeric: true,
+   sensitivity: "base",
+});
 
 type LocalBattleState = {
    roundId: string;
@@ -98,6 +129,10 @@ export default function BattleRoomPage() {
    const [nextRoundLoading, setNextRoundLoading] = useState(false);
    const [now, setNow] = useState(0);
    const [localBattle, setLocalBattle] = useState<LocalBattleState | null>(null);
+   const [availableDecks, setAvailableDecks] = useState<PublicDeck[]>([]);
+   const [loadingDecks, setLoadingDecks] = useState(true);
+   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
+   const [openFolderSlug, setOpenFolderSlug] = useState<string | null>(null);
    const questionTimerRef = useRef<number | null>(null);
 
    const currentRound = snapshot?.currentRound ?? null;
@@ -106,6 +141,61 @@ export default function BattleRoomPage() {
       setNow(Date.now());
       const intervalId = window.setInterval(() => setNow(Date.now()), 250);
       return () => window.clearInterval(intervalId);
+   }, []);
+
+   useEffect(() => {
+      let cancelled = false;
+
+      const loadDecks = async () => {
+         const decksResult = await supabase
+            .from("vocabulary_decks")
+            .select(
+               "id, title, description, folder_id, folder:vocabulary_folders(title, slug, is_available_for_battle)",
+            )
+            .eq("is_public", true)
+            .not("folder_id", "is", null)
+            .order("title", { ascending: true });
+
+         if (cancelled) return;
+
+         if (decksResult.error) {
+            setLoadingDecks(false);
+            return;
+         }
+
+         const deckRows = ((decksResult.data || []) as (PublicDeck & {
+            folder?: DeckFolderRelation;
+         })[])
+            .map((deck) => {
+               const folderRelation = Array.isArray(deck.folder)
+                  ? deck.folder[0]
+                  : deck.folder;
+
+               return {
+                  id: deck.id,
+                  title: deck.title,
+                  description: deck.description,
+                  folder_id: deck.folder_id,
+                  folder:
+                     folderRelation?.is_available_for_battle === true
+                        ? {
+                             title: folderRelation.title,
+                             slug: folderRelation.slug,
+                          }
+                        : null,
+               };
+            })
+            .filter((deck) => deck.folder !== null);
+
+         setAvailableDecks(deckRows);
+         setLoadingDecks(false);
+      };
+
+      void loadDecks();
+
+      return () => {
+         cancelled = true;
+      };
    }, []);
 
    const loadSnapshot = useCallback(async () => {
@@ -184,6 +274,23 @@ export default function BattleRoomPage() {
          window.clearInterval(intervalId);
       };
    }, [loadSnapshot, shouldPoll]);
+
+   useEffect(() => {
+      if (!snapshot?.deckIds?.length) {
+         return;
+      }
+
+      setSelectedDeckIds((current) => {
+         if (
+            current.length === snapshot.deckIds.length &&
+            current.every((deckId, index) => deckId === snapshot.deckIds[index])
+         ) {
+            return current;
+         }
+
+         return snapshot.deckIds;
+      });
+   }, [snapshot?.deckIds]);
 
    useEffect(() => {
       if (
@@ -452,10 +559,60 @@ export default function BattleRoomPage() {
       );
    }, [currentRound, localBattle]);
 
+   const deckGroups = useMemo(() => {
+      const groups = new Map<
+         string,
+         { slug: string; title: string; decks: PublicDeck[] }
+      >();
+
+      availableDecks.forEach((deck) => {
+         if (!deck.folder) return;
+         const existing = groups.get(deck.folder.slug);
+         if (existing) {
+            existing.decks.push(deck);
+            return;
+         }
+
+         groups.set(deck.folder.slug, {
+            slug: deck.folder.slug,
+            title: deck.folder.title,
+            decks: [deck],
+         });
+      });
+
+      return Array.from(groups.values())
+         .sort((a, b) => NATURAL_SORT.compare(a.title, b.title))
+         .map((group) => ({
+            ...group,
+            decks: [...group.decks].sort((a, b) =>
+               NATURAL_SORT.compare(a.title, b.title),
+            ),
+         }));
+   }, [availableDecks]);
+
+   const selectedDecks = useMemo(
+      () => availableDecks.filter((deck) => selectedDeckIds.includes(deck.id)),
+      [availableDecks, selectedDeckIds],
+   );
+
    const handleCopy = async () => {
       await navigator.clipboard.writeText(snapshot?.roomCode || roomCode);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
+   };
+
+    const toggleDeck = (deckId: string) => {
+      setSelectedDeckIds((current) =>
+         current.includes(deckId)
+            ? current.filter((id) => id !== deckId)
+            : [...current, deckId],
+      );
+   };
+
+   const toggleFolder = (folderSlug: string) => {
+      setOpenFolderSlug((current) =>
+         current === folderSlug ? null : folderSlug,
+      );
    };
 
    const handleReady = async () => {
@@ -521,7 +678,10 @@ export default function BattleRoomPage() {
                "Content-Type": "application/json",
                Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ roomCode: snapshot.roomCode }),
+            body: JSON.stringify({
+               roomCode: snapshot.roomCode,
+               deckIds: selectedDeckIds,
+            }),
          });
 
          const payload = await response.json();
@@ -597,10 +757,6 @@ export default function BattleRoomPage() {
    const winner = currentRound?.players.find(
       (player) => player.userId === currentRound.winnerUserId,
    );
-   const canStartNextRound =
-      snapshot.viewerIsHost &&
-      snapshot.roomStatus === "open" &&
-      currentRound?.status === "finished";
 
    return (
       <div className="space-y-6">
@@ -929,14 +1085,96 @@ export default function BattleRoomPage() {
                         )}
                      </div>
 
-                     {canStartNextRound && (
-                        <button
-                           type="button"
-                           onClick={handleStartNextRound}
-                           disabled={nextRoundLoading}
-                           className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
-                           {nextRoundLoading ? "Creating next round..." : "Start next round"}
-                        </button>
+                     {snapshot.viewerIsHost && snapshot.roomStatus === "open" && (
+                        <div className="space-y-4 rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6">
+                           <div>
+                              <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
+                                 Next round setup
+                              </p>
+                              <p className="mt-2 text-sm text-slate-300">
+                                 Choose which decks to use before starting the next round.
+                              </p>
+                           </div>
+
+                           {loadingDecks ? (
+                              <p className="text-sm text-slate-500">Loading available decks...</p>
+                           ) : (
+                              <div className="space-y-3">
+                                 {deckGroups.map((group) => (
+                                    <div
+                                       key={group.slug}
+                                       className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                                       <button
+                                          type="button"
+                                          onClick={() => toggleFolder(group.slug)}
+                                          className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-slate-900/70">
+                                          <span className="flex items-center gap-3">
+                                             <span
+                                                className={`text-slate-400 transition-transform ${
+                                                   openFolderSlug === group.slug ? "rotate-180" : ""
+                                                }`}>
+                                                <PiCaretDownBold size={14} />
+                                             </span>
+                                             <span className="text-sm font-semibold text-slate-100">
+                                                {group.title}
+                                             </span>
+                                          </span>
+                                          <span className="text-xs text-slate-400">
+                                             {group.decks.length} deck{group.decks.length === 1 ? "" : "s"}
+                                          </span>
+                                       </button>
+
+                                       {openFolderSlug === group.slug && (
+                                          <div className="mt-3 grid gap-2">
+                                             {group.decks.map((deck) => {
+                                                const checked = selectedDeckIds.includes(deck.id);
+
+                                                return (
+                                                   <label
+                                                      key={deck.id}
+                                                      className={`flex cursor-pointer gap-3 rounded-2xl border px-4 py-3 transition ${
+                                                         checked
+                                                            ? "border-emerald-500/50 bg-emerald-500/10"
+                                                            : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
+                                                      }`}>
+                                                      <input
+                                                         type="checkbox"
+                                                         checked={checked}
+                                                         onChange={() => toggleDeck(deck.id)}
+                                                         className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-950 text-emerald-500"
+                                                      />
+                                                      <span className="min-w-0">
+                                                         <span className="block text-sm font-medium text-slate-100">
+                                                            {deck.title}
+                                                         </span>
+                                                         <span className="block text-xs text-slate-400">
+                                                            {deck.description || "No description provided."}
+                                                         </span>
+                                                      </span>
+                                                   </label>
+                                                );
+                                             })}
+                                          </div>
+                                       )}
+                                    </div>
+                                 ))}
+                              </div>
+                           )}
+
+                           {selectedDecks.length > 0 && (
+                              <p className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-400">
+                                 Next round will use {selectedDecks.map((deck) => deck.title).join(", ")}.
+                              </p>
+                           )}
+
+                           <button
+                              type="button"
+                              onClick={handleStartNextRound}
+                              disabled={nextRoundLoading || selectedDeckIds.length === 0}
+                              className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
+                              {nextRoundLoading ? "Creating next round..." : "Start next round"}
+                           </button>
+                        </div>
                      )}
 
                      {!snapshot.viewerIsHost && snapshot.roomStatus === "open" && (

@@ -870,13 +870,29 @@ async function addUserToWaitingRoundIfNeeded(
 }
 
 async function createRoundForRoom(room: RoomRow, roundNumber: number) {
+   return createRoundForRoomWithDecks(
+      room,
+      roundNumber,
+      getDeckIds(room.deck_id, room.deck_ids),
+      room.deck_title || "Battle deck",
+      room.deck_id,
+   );
+}
+
+async function createRoundForRoomWithDecks(
+   room: RoomRow,
+   roundNumber: number,
+   deckIds: string[],
+   deckTitle: string,
+   primaryDeckId: string,
+) {
    const unfinishedRound = await getUnfinishedRoundForRoom(room.id);
    if (unfinishedRound) {
       throw new Error("A round is already in progress for this room.");
    }
 
    const questions = await buildBattleQuestions(
-      getDeckIds(room.deck_id, room.deck_ids),
+      deckIds,
       room.question_count as BattleQuestionCount,
    );
 
@@ -886,9 +902,9 @@ async function createRoundForRoom(room: RoomRow, roundNumber: number) {
          room_id: room.id,
          round_number: roundNumber,
          status: "waiting",
-         deck_id: room.deck_id,
-         deck_ids: getDeckIds(room.deck_id, room.deck_ids),
-         deck_title: room.deck_title,
+         deck_id: primaryDeckId,
+         deck_ids: deckIds,
+         deck_title: deckTitle,
          question_count: room.question_count,
          time_limit_seconds: room.time_limit_seconds,
       })
@@ -1496,7 +1512,11 @@ export async function createBattleRoom(
    return { roomCode: room.code, deckTitle };
 }
 
-export async function createNextBattleRound(roomCode: string, userId: string) {
+export async function createNextBattleRound(
+   roomCode: string,
+   userId: string,
+   requestedDeckIds?: string[],
+) {
    const room = await loadRoomForParticipant(roomCode, userId);
 
    if (room.host_user_id !== userId) {
@@ -1516,6 +1536,39 @@ export async function createNextBattleRound(roomCode: string, userId: string) {
    const currentRound = await getLatestRoundForRoom(room.id);
    if (currentRound && currentRound.status !== "finished") {
       throw new Error("Finish the current round before starting a new one.");
+   }
+
+   if (requestedDeckIds?.length) {
+      const decks = await loadBattleDecks(requestedDeckIds);
+      const nextDeckIds = decks.map((deck) => deck.id);
+      const nextDeckTitle = formatBattleDeckTitle(decks);
+
+      const { error: roomUpdateError } = await supabaseAdmin
+         .from("vocab_battle_rooms")
+         .update({
+            deck_id: decks[0].id,
+            deck_ids: nextDeckIds,
+            deck_title: nextDeckTitle,
+         })
+         .eq("id", refreshedRoom.id);
+
+      if (roomUpdateError) {
+         throw new Error("Failed to update room deck selection.");
+      }
+
+      const updatedRoom = await getRoomById(refreshedRoom.id);
+      if (!updatedRoom) {
+         throw new Error("Room not found.");
+      }
+
+      await createRoundForRoomWithDecks(
+         updatedRoom,
+         (updatedRoom.completed_round_count ?? 0) + 1,
+         nextDeckIds,
+         nextDeckTitle,
+         decks[0].id,
+      );
+      return;
    }
 
    await createRoundForRoom(

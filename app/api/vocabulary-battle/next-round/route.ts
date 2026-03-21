@@ -11,6 +11,12 @@ export async function POST(req: Request) {
       const body = await req.json();
       const roomCode =
          typeof body?.roomCode === "string" ? body.roomCode.trim() : "";
+      const deckIds = Array.isArray(body?.deckIds)
+         ? body.deckIds
+              .filter((value: unknown): value is string => typeof value === "string")
+              .map((value: string) => value.trim())
+              .filter(Boolean)
+         : undefined;
 
       if (!roomCode) {
          return NextResponse.json(
@@ -19,7 +25,7 @@ export async function POST(req: Request) {
          );
       }
 
-      await createNextBattleRound(roomCode, userId);
+      await createNextBattleRound(roomCode, userId, deckIds);
       const snapshot = await buildBattleRoomSnapshot(roomCode, userId);
       return NextResponse.json(snapshot);
    } catch (error) {
