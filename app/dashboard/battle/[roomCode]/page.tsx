@@ -281,7 +281,7 @@ export default function BattleRoomPage() {
       }
 
       setSelectedDeckIds(snapshot.deckIds);
-   }, [currentRound?.roundId, snapshot?.deckIds]);
+   }, [currentRound?.roundId]);
 
    useEffect(() => {
       if (
