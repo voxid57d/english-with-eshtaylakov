@@ -91,6 +91,34 @@ function getSubmitErrorMessage(error: unknown) {
 }
 
 function RoundHistoryCard({ entry }: { entry: BattleHistoryEntry }) {
+   const placements = entry.rewards
+      .map((reward) => {
+         const player = entry.players.find(
+            (roundPlayer) => roundPlayer.userId === reward.userId,
+         );
+
+         if (!player) {
+            return null;
+         }
+
+         return {
+            place: reward.place,
+            username: player.username,
+            curiosityPoints: reward.curiosityPoints,
+            isPremium: player.isPremium,
+         };
+      })
+      .filter(
+         (
+            placement,
+         ): placement is {
+            place: number;
+            username: string;
+            curiosityPoints: number;
+            isPremium: boolean;
+         } => placement !== null,
+      );
+
    return (
       <div className="rounded-3xl border border-slate-800 bg-slate-950/60 p-4">
          <div className="flex items-start justify-between gap-3">
@@ -111,6 +139,43 @@ function RoundHistoryCard({ entry }: { entry: BattleHistoryEntry }) {
                   : "In progress"}
             </p>
          </div>
+
+         {placements.length > 0 ? (
+            <div className="mt-4 space-y-2">
+               {placements.map((placement) => (
+                  <div
+                     key={`${entry.roundId}-${placement.place}`}
+                     className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-3 py-2">
+                     <div className="min-w-0">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                           {placement.place === 1 ? "1st place" : "2nd place"}
+                        </p>
+                        <p
+                           className={`truncate text-sm font-semibold ${getPremiumNameClass(
+                              placement.isPremium,
+                           )}`}>
+                           {placement.username}
+                        </p>
+                     </div>
+                     <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-200">
+                        <Image
+                           src="/cp-icon.svg"
+                           alt=""
+                           aria-hidden="true"
+                           width={16}
+                           height={16}
+                           className="h-4 w-4 shrink-0"
+                        />
+                        <span>+{placement.curiosityPoints}</span>
+                     </div>
+                  </div>
+               ))}
+            </div>
+         ) : entry.status === "finished" ? (
+            <p className="mt-4 text-xs text-slate-500">
+               No winners recorded for this round.
+            </p>
+         ) : null}
       </div>
    );
 }
@@ -768,10 +833,7 @@ export default function BattleRoomPage() {
                               </p>
                            </div>
                            <div className="rounded-full border border-amber-500/35 bg-amber-500/10 px-5 py-3 text-right">
-                              <p className="text-[11px] uppercase tracking-[0.28em] text-amber-200">
-                                 Time left
-                              </p>
-                              <p className="mt-1 text-2xl font-semibold text-amber-100 sm:text-3xl">
+                              <p className="text-2xl font-semibold text-amber-100 sm:text-3xl">
                                  {Math.ceil(localTimeRemaining / 1000)}s
                               </p>
                            </div>
@@ -787,9 +849,6 @@ export default function BattleRoomPage() {
 
                      <div className="space-y-8 px-5 py-6 sm:px-8 sm:py-8">
                         <div className="space-y-3">
-                           <p className="text-xs uppercase tracking-[0.3em] text-sky-200/80">
-                              Translate this word
-                           </p>
                            <div className="rounded-[2rem] border border-sky-400/25 bg-sky-400/10 px-6 py-8 sm:px-8 sm:py-10">
                               <p className="text-center text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">
                                  {activeQuestion?.prompt}
