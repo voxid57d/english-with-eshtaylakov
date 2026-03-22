@@ -2,6 +2,15 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Flashcard from "./Flashcard";
+import { SRSState } from "../../app/hooks/useSRS";
+
+type PracticeViewProps = {
+   state: SRSState;
+   onFlip: () => void;
+   onAnswer: (known: boolean) => void;
+   onToggleGrindMode: (enabled: boolean) => void;
+   setSwipe: (direction: "left" | "right" | null) => void;
+};
 
 function HealthBar({ value, max }: { value: number; max: number }) {
    return (
@@ -24,16 +33,9 @@ export default function PracticeView({
    onAnswer,
    onToggleGrindMode,
    setSwipe,
-}: any) {
-   const {
-      currentCard,
-      practiceQueue,
-      cooldownList,
-      showBack,
-      swipeDirection,
-      isPracticing,
-      grindMode,
-   } = state;
+}: PracticeViewProps) {
+   const { currentCard, showBack, swipeDirection, isPracticing, grindMode } =
+      state;
    const [isAudioOn, setIsAudioOn] = useState(false);
 
    const speak = useCallback((text: string) => {
@@ -49,7 +51,7 @@ export default function PracticeView({
       if (isAudioOn && currentCard && !showBack) {
          speak(currentCard.front);
       }
-   }, [currentCard?.id, isAudioOn, showBack, speak]);
+   }, [currentCard, isAudioOn, showBack, speak]);
 
    // Trigger logic for keyboard and drag
    const triggerAnswer = useCallback(
@@ -59,7 +61,7 @@ export default function PracticeView({
          // Delay allows the exit animation to play before logic swaps the card
          setTimeout(() => {
             onAnswer(known);
-         }, 200);
+         }, 220);
       },
       [isPracticing, currentCard, swipeDirection, onAnswer, setSwipe]
    );
@@ -108,26 +110,26 @@ export default function PracticeView({
                   onAnswer={triggerAnswer}
                   swipeDirection={swipeDirection}
                   isAudioOn={isAudioOn}
-                  onToggleAudio={() => setIsAudioOn(!isAudioOn)}
+                  onToggleAudio={() => setIsAudioOn((value) => !value)}
                   speak={speak}
                />
                <div className="pt-4 border-t border-slate-800/40">
                   <HealthBar value={currentCard.health} max={4} />
                   <div className="flex gap-4 mt-6">
                      <button
+                        onClick={() => triggerAnswer(false)}
+                        className="flex-1 cursor-pointer py-3 rounded-full border border-red-500/30 text-red-400 hover:bg-red-500/5 transition">
+                        No
+                     </button>
+                     <button
                         onClick={onFlip}
-                        className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 rounded-full text-sm font-medium transition">
+                        className="flex-1 cursor-pointer py-3 bg-slate-800 hover:bg-slate-700 rounded-full text-sm font-medium transition">
                         {showBack ? "Word" : "Meaning"}
                      </button>
                      <button
-                        onClick={() => triggerAnswer(false)}
-                        className="flex-1 py-3 rounded-full border border-red-500/30 text-red-400 hover:bg-red-500/5 transition">
-                        Don't know
-                     </button>
-                     <button
                         onClick={() => triggerAnswer(true)}
-                        className="flex-1 py-3 rounded-full bg-emerald-500 text-slate-950 font-bold transition">
-                        I know it
+                        className="flex-1 cursor-pointer py-3 rounded-full border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/5 transition font-bold">
+                        Yes
                      </button>
                   </div>
                </div>
