@@ -17,7 +17,6 @@ type PublicDeck = {
    id: string;
    title: string;
    description: string | null;
-   created_at: string;
    requires_premium: boolean;
 };
 
@@ -67,7 +66,7 @@ export default function VocabularyFolderPage() {
 
          const { data: decksData, error: decksError } = await supabase
             .from("vocabulary_decks")
-            .select("id, title, description, created_at, requires_premium")
+            .select("id, title, description, requires_premium")
             .eq("is_public", true)
             .eq("folder_id", folderData.id)
             .order("created_at", { ascending: false });
@@ -109,7 +108,7 @@ export default function VocabularyFolderPage() {
          <Link
             href="/dashboard/vocabulary"
             className="inline-flex items-center text-sm text-slate-400 transition hover:text-slate-200">
-            ← Back to vocabulary
+            &larr; Back to vocabulary
          </Link>
 
          <header className="space-y-2">
@@ -150,11 +149,8 @@ export default function VocabularyFolderPage() {
                            </p>
                         )}
 
-                        <div className="mt-3 flex items-center justify-between text-xs text-slate-500 transition group-hover:text-slate-300">
+                        <div className="mt-3 text-xs text-slate-500 transition group-hover:text-slate-300">
                            <span>Public deck</span>
-                           <span>
-                              {new Date(deck.created_at).toLocaleDateString()}
-                           </span>
                         </div>
                      </div>
                   );

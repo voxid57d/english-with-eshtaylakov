@@ -5,14 +5,22 @@ import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { getPremiumStatus } from "@/lib/premium";
 import { useRouter } from "next/navigation";
+import {
+   HiOutlineBookOpen,
+   HiOutlineGlobeAlt,
+   HiOutlineSparkles,
+   HiOutlineSquares2X2,
+} from "react-icons/hi2";
 import { PiBookOpenTextLight } from "react-icons/pi";
+import type { IconType } from "react-icons";
+
+type FolderTheme = "ocean" | "emerald" | "sunset" | "violet";
 
 type Deck = {
    id: string;
    title: string;
    description: string | null;
    is_public: boolean;
-   created_at: string;
    requires_premium: boolean;
 };
 
@@ -21,7 +29,36 @@ type Folder = {
    slug: string;
    title: string;
    description: string | null;
-   created_at: string;
+   folder_theme: FolderTheme;
+};
+
+type FolderThemeConfig = {
+   icon: IconType;
+   accent: string;
+   glow: string;
+};
+
+const FOLDER_THEME_MAP: Record<FolderTheme, FolderThemeConfig> = {
+   ocean: {
+      icon: HiOutlineGlobeAlt,
+      accent: "from-cyan-400/30 via-sky-500/18 to-slate-950/10",
+      glow: "bg-cyan-400/20",
+   },
+   emerald: {
+      icon: HiOutlineBookOpen,
+      accent: "from-emerald-400/30 via-lime-500/18 to-slate-950/10",
+      glow: "bg-emerald-400/20",
+   },
+   sunset: {
+      icon: HiOutlineSparkles,
+      accent: "from-amber-400/30 via-orange-500/18 to-slate-950/10",
+      glow: "bg-orange-400/20",
+   },
+   violet: {
+      icon: HiOutlineSquares2X2,
+      accent: "from-violet-400/30 via-fuchsia-500/18 to-slate-950/10",
+      glow: "bg-violet-400/20",
+   },
 };
 
 export default function VocabularyPage() {
@@ -61,22 +98,18 @@ export default function VocabularyPage() {
          ] = await Promise.all([
             supabase
                .from("vocabulary_decks")
-               .select(
-                  "id, title, description, is_public, created_at, requires_premium"
-               )
+               .select("id, title, description, is_public, requires_premium")
                .eq("is_public", false)
                .order("created_at", { ascending: false }),
             supabase
                .from("vocabulary_decks")
-               .select(
-                  "id, title, description, is_public, created_at, requires_premium"
-               )
+               .select("id, title, description, is_public, requires_premium")
                .eq("is_public", true)
                .is("folder_id", null)
                .order("created_at", { ascending: false }),
             supabase
                .from("vocabulary_folders")
-               .select("id, slug, title, description, created_at")
+               .select("id, slug, title, description, folder_theme")
                .order("sort_order", { ascending: true })
                .order("created_at", { ascending: false }),
             supabase
@@ -133,7 +166,7 @@ export default function VocabularyPage() {
       setSaving(true);
       setError(null);
 
-      const { data, error } = await supabase
+      const { data, error: createError } = await supabase
          .from("vocabulary_decks")
          .insert({
             title: newTitle.trim(),
@@ -141,13 +174,11 @@ export default function VocabularyPage() {
             is_public: false,
             requires_premium: false,
          })
-         .select(
-            "id, title, description, is_public, created_at, requires_premium"
-         )
+         .select("id, title, description, is_public, requires_premium")
          .single();
 
-      if (error) {
-         console.error(error);
+      if (createError) {
+         console.error(createError);
          setError("Failed to create deck.");
       } else if (data) {
          setUserDecks((prev) => [data as Deck, ...prev]);
@@ -178,13 +209,13 @@ export default function VocabularyPage() {
       setDeletingId(id);
       setError(null);
 
-      const { error } = await supabase
+      const { error: deleteError } = await supabase
          .from("vocabulary_decks")
          .delete()
          .eq("id", id);
 
-      if (error) {
-         console.error(error);
+      if (deleteError) {
+         console.error(deleteError);
          setError("Failed to delete deck.");
       } else {
          setUserDecks((prev) => prev.filter((deck) => deck.id !== id));
@@ -205,7 +236,7 @@ export default function VocabularyPage() {
                   <button
                      onClick={(e) => handleDeleteDeck(e, deck.id, deck.is_public)}
                      disabled={deletingId === deck.id}
-                     className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                     className="cursor-pointer text-xs text-slate-500 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50">
                      {deletingId === deck.id ? "Deleting..." : "Delete"}
                   </button>
                )}
@@ -217,18 +248,13 @@ export default function VocabularyPage() {
                </p>
             )}
 
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-500 transition group-hover:text-slate-300">
-               <span className="flex items-center gap-2 transition group-hover:text-slate-200">
-                  {deck.is_public ? "Public deck" : "Your deck"}
-                  {deck.requires_premium && (
-                     <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 text-amber-300 transition group-hover:bg-amber-500/30 group-hover:text-amber-200">
-                        Premium
-                     </span>
-                  )}
-               </span>
-               <span className="transition group-hover:text-slate-200">
-                  {new Date(deck.created_at).toLocaleDateString()}
-               </span>
+            <div className="mt-3 flex items-center gap-2 text-xs text-slate-500 transition group-hover:text-slate-300">
+               <span>{deck.is_public ? "Public deck" : "Your deck"}</span>
+               {deck.requires_premium && (
+                  <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 text-amber-300 transition group-hover:bg-amber-500/30 group-hover:text-amber-200">
+                     Premium
+                  </span>
+               )}
             </div>
          </div>
       );
@@ -270,10 +296,6 @@ export default function VocabularyPage() {
                   <PiBookOpenTextLight className="text-emerald-400" />
                   <span>Vocabulary</span>
                </h1>
-
-               <p className="text-sm text-slate-400">
-                  Browse public folders or open one of your own decks.
-               </p>
             </div>
 
             <button
@@ -351,38 +373,56 @@ export default function VocabularyPage() {
                   <h2 className="text-lg font-semibold text-slate-100">
                      Public folders
                   </h2>
-                  <p className="text-sm text-slate-400">
-                     Start with a topic, then choose a public deck inside it.
-                  </p>
                </div>
 
-               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {publicFolders.map((folder) => (
-                     <Link
-                        key={folder.id}
-                        href={`/dashboard/vocabulary/folders/${folder.slug}`}
-                        className="group block rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition hover:border-emerald-500/60">
-                        <div className="flex items-start justify-between gap-2">
-                           <h3 className="text-lg font-semibold">{folder.title}</h3>
-                           <span className="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-slate-400">
-                              {folderDeckCounts[folder.id] || 0} decks
-                           </span>
-                        </div>
+               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {publicFolders.map((folder) => {
+                     const visual =
+                        FOLDER_THEME_MAP[folder.folder_theme] || FOLDER_THEME_MAP.ocean;
+                     const Icon = visual.icon;
+                     const deckCount = folderDeckCounts[folder.id] || 0;
 
-                        {folder.description && (
-                           <p className="mt-1 line-clamp-2 text-sm text-slate-400">
-                              {folder.description}
-                           </p>
-                        )}
+                     return (
+                        <Link
+                           key={folder.id}
+                           href={`/dashboard/vocabulary/folders/${folder.slug}`}
+                           className="group relative block overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/80 p-6 transition hover:-translate-y-1 hover:border-emerald-500/60">
+                           <div
+                              className={`absolute inset-0 bg-gradient-to-br ${visual.accent}`}
+                           />
+                           <div className="absolute -right-6 top-6 h-24 w-24 rounded-full blur-3xl transition group-hover:scale-125">
+                              <div className={`h-full w-full rounded-full ${visual.glow}`} />
+                           </div>
 
-                        <div className="mt-3 flex items-center justify-between text-xs text-slate-500 transition group-hover:text-slate-300">
-                           <span>Public folder</span>
-                           <span>
-                              {new Date(folder.created_at).toLocaleDateString()}
-                           </span>
-                        </div>
-                     </Link>
-                  ))}
+                           <div className="relative flex h-full flex-col">
+                              <div className="flex items-start justify-between gap-4">
+                                 <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl text-slate-100">
+                                    <Icon />
+                                 </span>
+
+                                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+                                    {deckCount} {deckCount === 1 ? "deck" : "decks"}
+                                 </span>
+                              </div>
+
+                              <h3 className="mt-8 text-2xl font-semibold text-slate-50">
+                                 {folder.title}
+                              </h3>
+
+                              <p className="mt-5 min-h-10 text-sm text-slate-300/85">
+                                 {folder.description || "Open this folder to browse its decks."}
+                              </p>
+
+                              <div className="mt-6 flex items-center justify-between text-sm text-slate-300">
+                                 <span>Open folder</span>
+                                 <span className="transition group-hover:translate-x-1">
+                                    &rarr;
+                                 </span>
+                              </div>
+                           </div>
+                        </Link>
+                     );
+                  })}
                </div>
             </section>
          )}

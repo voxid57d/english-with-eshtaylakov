@@ -3,6 +3,9 @@ create table if not exists public.vocabulary_folders (
    slug text not null unique,
    title text not null,
    description text,
+   folder_theme text not null default 'ocean' check (
+      folder_theme in ('ocean', 'emerald', 'sunset', 'violet')
+   ),
    is_available_for_battle boolean not null default true,
    sort_order integer not null default 0,
    created_at timestamptz not null default timezone('utc', now())

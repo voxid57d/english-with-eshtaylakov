@@ -10,10 +10,20 @@ type Folder = {
    slug: string;
    title: string;
    description: string | null;
+   folder_theme: FolderTheme;
    sort_order: number;
    created_at: string;
    is_available_for_battle: boolean;
 };
+
+type FolderTheme = "ocean" | "emerald" | "sunset" | "violet";
+
+const FOLDER_THEME_OPTIONS: { value: FolderTheme; label: string }[] = [
+   { value: "ocean", label: "Ocean" },
+   { value: "emerald", label: "Emerald" },
+   { value: "sunset", label: "Sunset" },
+   { value: "violet", label: "Violet" },
+];
 
 type Deck = {
    id: string;
@@ -80,6 +90,7 @@ export default function AdminVocabularyPage() {
    const [folderTitle, setFolderTitle] = useState("");
    const [folderSlug, setFolderSlug] = useState("");
    const [folderDescription, setFolderDescription] = useState("");
+   const [folderTheme, setFolderTheme] = useState<FolderTheme>("ocean");
    const [folderSortOrder, setFolderSortOrder] = useState("0");
    const [folderSaving, setFolderSaving] = useState(false);
    const [folderUpdating, setFolderUpdating] = useState(false);
@@ -255,6 +266,7 @@ export default function AdminVocabularyPage() {
          setFolderTitle("");
          setFolderSlug("");
          setFolderDescription("");
+         setFolderTheme("ocean");
          setFolderSortOrder("0");
          return;
       }
@@ -262,6 +274,7 @@ export default function AdminVocabularyPage() {
       setFolderTitle(selectedFolder.title);
       setFolderSlug(selectedFolder.slug);
       setFolderDescription(selectedFolder.description || "");
+      setFolderTheme(selectedFolder.folder_theme);
       setFolderSortOrder(String(selectedFolder.sort_order));
    }, [selectedFolder]);
 
@@ -301,6 +314,7 @@ export default function AdminVocabularyPage() {
                title: folderTitle,
                slug: folderSlug,
                description: folderDescription,
+               folderTheme,
                sortOrder: Number(folderSortOrder || 0),
             }),
          });
@@ -325,6 +339,7 @@ export default function AdminVocabularyPage() {
          setFolderTitle("");
          setFolderSlug("");
          setFolderDescription("");
+         setFolderTheme("ocean");
          setFolderSortOrder("0");
          setSuccess("Folder created.");
       } catch (requestError) {
@@ -359,6 +374,7 @@ export default function AdminVocabularyPage() {
                   title: folderTitle,
                   slug: folderSlug,
                   description: folderDescription,
+                  folderTheme,
                   sortOrder: Number(folderSortOrder || 0),
                }),
             }
@@ -973,6 +989,18 @@ export default function AdminVocabularyPage() {
                            rows={3}
                            className="resize-none rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-emerald-500"
                         />
+                        <select
+                           value={folderTheme}
+                           onChange={(event) =>
+                              setFolderTheme(event.target.value as FolderTheme)
+                           }
+                           className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-emerald-500">
+                           {FOLDER_THEME_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                 Theme: {option.label}
+                              </option>
+                           ))}
+                        </select>
                         <input
                            value={folderSortOrder}
                            onChange={(event) => setFolderSortOrder(event.target.value)}
@@ -1000,7 +1028,10 @@ export default function AdminVocabularyPage() {
                            {selectedFolderId && (
                               <button
                                  type="button"
-                                 onClick={() => setSelectedFolderId("")}
+                                 onClick={() => {
+                                    setSelectedFolderId("");
+                                    setFolderTheme("ocean");
+                                 }}
                                  className="cursor-pointer rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-300 transition hover:bg-slate-800">
                                  New folder form
                               </button>
@@ -1019,13 +1050,20 @@ export default function AdminVocabularyPage() {
                                        <p className="font-semibold text-slate-100">
                                           {folder.title}
                                        </p>
-                                       <p className="mt-1 text-xs text-slate-500">
-                                          Slug: {folder.slug} | Sort:{" "}
-                                          {folder.sort_order}
-                                       </p>
-                                       <p className="mt-1 text-xs text-slate-500">
-                                          Battle:{" "}
-                                          {folder.is_available_for_battle ? "Enabled" : "Hidden"}
+                                        <p className="mt-1 text-xs text-slate-500">
+                                           Slug: {folder.slug} | Sort:{" "}
+                                           {folder.sort_order}
+                                        </p>
+                                        <p className="mt-1 text-xs text-slate-500">
+                                           Theme:{" "}
+                                           {FOLDER_THEME_OPTIONS.find(
+                                              (option) =>
+                                                 option.value === folder.folder_theme
+                                           )?.label || folder.folder_theme}
+                                        </p>
+                                        <p className="mt-1 text-xs text-slate-500">
+                                           Battle:{" "}
+                                           {folder.is_available_for_battle ? "Enabled" : "Hidden"}
                                        </p>
                                        {folder.description && (
                                           <p className="mt-2 text-sm text-slate-400">

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/adminAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+const FOLDER_THEMES = ["ocean", "emerald", "sunset", "violet"] as const;
+
 function slugify(value: string) {
    return value
       .trim()
@@ -30,7 +32,7 @@ export async function GET(req: Request) {
          supabaseAdmin
             .from("vocabulary_folders")
             .select(
-               "id, slug, title, description, sort_order, created_at, is_available_for_battle",
+               "id, slug, title, description, folder_theme, sort_order, created_at, is_available_for_battle",
             )
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: false }),
@@ -68,6 +70,13 @@ export async function POST(req: Request) {
          const sortOrder = Number.isFinite(body?.sortOrder)
             ? Number(body.sortOrder)
             : 0;
+         const folderTheme =
+            typeof body?.folderTheme === "string" &&
+            FOLDER_THEMES.includes(
+               body.folderTheme.trim() as (typeof FOLDER_THEMES)[number]
+            )
+               ? body.folderTheme.trim()
+               : "ocean";
          const rawSlug =
             typeof body?.slug === "string" ? body.slug.trim() : title;
          const slug = slugify(rawSlug);
@@ -82,10 +91,11 @@ export async function POST(req: Request) {
                title,
                slug,
                description: description || null,
+               folder_theme: folderTheme,
                sort_order: sortOrder,
             })
             .select(
-               "id, slug, title, description, sort_order, created_at, is_available_for_battle",
+               "id, slug, title, description, folder_theme, sort_order, created_at, is_available_for_battle",
             )
             .single();
 
