@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PiCaretDownBold } from "react-icons/pi";
+import { PiCaretDownBold, PiCrownSimpleFill } from "react-icons/pi";
 import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import type {
@@ -198,6 +198,8 @@ export default function BattleRoomPage() {
    const [loadingDecks, setLoadingDecks] = useState(true);
    const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
    const [openFolderSlug, setOpenFolderSlug] = useState<string | null>(null);
+   const [isRoundReviewOpen, setIsRoundReviewOpen] = useState(false);
+   const [isRoomRulesOpen, setIsRoomRulesOpen] = useState(false);
    const questionTimerRef = useRef<number | null>(null);
 
    const currentRound = snapshot?.currentRound ?? null;
@@ -807,9 +809,6 @@ export default function BattleRoomPage() {
          ? currentRound.players.length >= 2 &&
            currentRound.players.every((player) => player.isReady)
          : false;
-   const viewerRoundPlayer = currentRound?.players.find(
-      (player) => player.userId === snapshot.viewerUserId,
-   );
    const winner = currentRound?.players.find(
       (player) => player.userId === currentRound.winnerUserId,
    );
@@ -906,16 +905,20 @@ export default function BattleRoomPage() {
 
          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_360px]">
             <section className="space-y-6">
-               <div className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
+               <div className="relative overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6">
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_42%),radial-gradient(circle_at_right,_rgba(56,189,248,0.12),_transparent_32%)]" />
+                  <div className="relative flex flex-wrap items-start justify-between gap-4">
                      <div>
                         <Link
                            href="/dashboard/battle"
                            className="text-sm text-slate-400 transition hover:text-slate-200">
                            &larr; Back to battle lobby
                         </Link>
-                        <h1 className="mt-3 text-3xl font-semibold text-slate-50">
-                           Room {snapshot.roomCode}
+                        <p className="mt-4 text-xs uppercase tracking-[0.28em] text-emerald-300/90">
+                           Battle room code
+                        </p>
+                        <h1 className="mt-2 bg-gradient-to-r from-white via-emerald-100 to-cyan-200 bg-clip-text text-3xl font-semibold text-transparent">
+                           {snapshot.roomCode}
                         </h1>
                         <p className="mt-2 max-w-2xl text-sm text-slate-400">
                            {snapshot.deckTitle} • {snapshot.questionCount} questions •{" "}
@@ -1070,65 +1073,103 @@ export default function BattleRoomPage() {
 
                {currentRound?.status === "finished" && (
                   <div className="space-y-6">
-                     <div className="rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-6">
-                        <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
-                           Round {currentRound.roundNumber} finished
-                        </p>
-                        <p className="mt-3 text-3xl font-semibold text-slate-50">
-                           {winner ? `${winner.username} wins` : "This round ended in a tie"}
-                        </p>
-                        {viewerRoundPlayer && (
-                           <>
-                              <p className="mt-2 text-sm text-slate-300">
-                                 You scored {viewerRoundPlayer.score} out of {currentRound.questionCount}.
-                              </p>
-                              <p className="mt-1 text-sm text-slate-300">
-                                 Total answer time {formatSeconds(viewerRoundPlayer.totalResponseMs)}
-                              </p>
-                           </>
-                        )}
-                        {currentRound.rewards.length > 0 ? (
-                           <div className="mt-5 space-y-3">
-                              {currentRound.rewards.map((reward) => {
-                                 const player = currentRound.players.find(
-                                    (entry) => entry.userId === reward.userId,
-                                 );
+                     <div className="relative overflow-hidden rounded-[2rem] border border-emerald-500/30 bg-emerald-500/10 p-6">
+                        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                           <span className="absolute left-[10%] top-5 h-2 w-2 rotate-12 rounded-sm bg-amber-300/70" />
+                           <span className="absolute left-[24%] top-10 h-3 w-1 rounded-full bg-emerald-300/60" />
+                           <span className="absolute right-[14%] top-8 h-2 w-2 -rotate-12 rounded-sm bg-cyan-300/70" />
+                           <span className="absolute right-[28%] top-5 h-1.5 w-1.5 rounded-full bg-fuchsia-300/70" />
+                           <span className="absolute left-[18%] bottom-10 h-1.5 w-4 rotate-[32deg] rounded-full bg-amber-200/55" />
+                           <span className="absolute right-[22%] bottom-12 h-1.5 w-4 -rotate-[28deg] rounded-full bg-emerald-200/55" />
+                           <span className="absolute bottom-4 left-1/2 h-2 w-2 rounded-sm bg-sky-300/55" />
+                        </div>
 
-                                 if (!player) return null;
+                        <div className="relative">
+                           <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
+                              Round {currentRound.roundNumber} finished
+                           </p>
+                           {!winner && (
+                              <p className="mt-3 text-3xl font-semibold text-slate-50">
+                                 This round ended in a tie
+                              </p>
+                           )}
+                        </div>
+                        <div className="mt-5 grid gap-3">
+                           {currentRound.players.map((player, index) => {
+                              const reward = currentRound.rewards.find(
+                                 (entry) => entry.userId === player.userId,
+                              );
+                              const placeLabel = `${index + 1}${
+                                 index === 0
+                                    ? "st"
+                                    : index === 1
+                                      ? "nd"
+                                      : index === 2
+                                        ? "rd"
+                                        : "th"
+                              } place`;
 
-                                 return (
-                                    <div
-                                       key={reward.userId}
-                                       className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3">
+                              return (
+                                 <div
+                                    key={player.userId}
+                                    className={`rounded-2xl border p-4 ${
+                                       player.isPremium
+                                          ? "border-amber-400/30 bg-[linear-gradient(135deg,rgba(245,158,11,0.16),rgba(251,191,36,0.06),rgba(15,23,42,0.84))]"
+                                          : "border-slate-800 bg-slate-900/70"
+                                    }`}>
+                                    <div className="flex items-start justify-between gap-3">
                                        <div className="min-w-0">
-                                          <p className="text-sm text-slate-500">
-                                             {reward.place === 1 ? "1st place" : "2nd place"}
-                                          </p>
-                                          <p
-                                             className={`truncate text-base font-semibold ${getPremiumNameClass(
-                                                player.isPremium,
-                                             )}`}>
-                                             {player.username}
-                                          </p>
+                                          <div className="flex flex-wrap items-center gap-2">
+                                             {index === 0 && winner && (
+                                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-amber-400/35 bg-amber-400/15 text-amber-200 shadow-[0_0_20px_rgba(251,191,36,0.16)]">
+                                                   <PiCrownSimpleFill size={16} />
+                                                </span>
+                                             )}
+                                             <p className="text-sm text-slate-500">
+                                                {placeLabel}
+                                             </p>
+                                          </div>
+                                          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+                                             <p
+                                                className={`truncate text-lg font-semibold ${getPremiumNameClass(
+                                                   player.isPremium,
+                                                )}`}>
+                                                {player.username}
+                                             </p>
+                                             <span className="text-sm font-medium text-emerald-200">
+                                                {player.score} correct answers
+                                             </span>
+                                             <span className="text-sm font-medium text-emerald-200">
+                                                {formatSeconds(player.totalResponseMs)}
+                                             </span>
+                                          </div>
                                        </div>
+
                                        <div className="flex items-center gap-2 text-emerald-200">
-                                          <Image
-                                             src="/cp-icon.svg"
-                                             alt=""
-                                             aria-hidden="true"
-                                             width={18}
-                                             height={18}
-                                             className="h-[18px] w-[18px] shrink-0"
-                                          />
-                                          <span className="text-sm font-semibold">
-                                             +{reward.curiosityPoints} CP
-                                          </span>
+                                          {reward ? (
+                                             <>
+                                                <Image
+                                                   src="/cp-icon.svg"
+                                                   alt=""
+                                                   aria-hidden="true"
+                                                   width={18}
+                                                   height={18}
+                                                   className="h-[18px] w-[18px] shrink-0"
+                                                />
+                                                <span className="text-sm font-semibold">
+                                                   +{reward.curiosityPoints} CP
+                                                </span>
+                                             </>
+                                          ) : (
+                                             <span />
+                                          )}
                                        </div>
                                     </div>
-                                 );
-                              })}
-                           </div>
-                        ) : (
+                                 </div>
+                              );
+                           })}
+                        </div>
+                        {currentRound.rewards.length === 0 && (
                            <p className="mt-4 text-sm text-slate-300">
                               This round ended in a tie, so no Curiosity Points were awarded.
                            </p>
@@ -1233,53 +1274,74 @@ export default function BattleRoomPage() {
                         </p>
                      )}
 
-                     <div className="space-y-4">
-                        <h3 className="text-lg font-semibold text-slate-50">
-                           Round review
-                        </h3>
-                        {currentRound.completedQuestions.map((question) => {
-                           const viewerAnswer = question.answers.find(
-                              (answer) => answer.userId === snapshot.viewerUserId,
-                           );
+                     <div className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900/40">
+                        <button
+                           type="button"
+                           onClick={() => setIsRoundReviewOpen((current) => !current)}
+                           className="flex w-full cursor-pointer items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-slate-900/40">
+                           <div>
+                              <h3 className="text-lg font-semibold text-slate-50">
+                                 Round review
+                              </h3>
+                              <p className="mt-1 text-sm text-slate-400">
+                                 Review each question from the finished round.
+                              </p>
+                           </div>
+                           <span
+                              className={`text-slate-400 transition-transform ${
+                                 isRoundReviewOpen ? "rotate-180" : ""
+                              }`}>
+                              <PiCaretDownBold size={16} />
+                           </span>
+                        </button>
 
-                           return (
-                              <div
-                                 key={question.questionIndex}
-                                 className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 space-y-4">
-                                 <div>
-                                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                                       Question {question.questionIndex + 1}
-                                    </p>
-                                    <p className="mt-2 text-lg font-semibold text-slate-50">
-                                       {question.prompt}
-                                    </p>
-                                 </div>
+                        {isRoundReviewOpen && (
+                           <div className="space-y-4 border-t border-slate-800 px-5 py-5">
+                              {currentRound.completedQuestions.map((question) => {
+                                 const viewerAnswer = question.answers.find(
+                                    (answer) => answer.userId === snapshot.viewerUserId,
+                                 );
 
-                                 <div className="grid gap-2">
-                                    {question.options.map((option, index) => {
-                                       const isCorrect =
-                                          index === question.correctOptionIndex;
-                                       const isViewerChoice =
-                                          viewerAnswer?.selectedOptionIndex === index;
+                                 return (
+                                    <div
+                                       key={question.questionIndex}
+                                       className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 space-y-4">
+                                       <div>
+                                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                                             Question {question.questionIndex + 1}
+                                          </p>
+                                          <p className="mt-2 text-lg font-semibold text-slate-50">
+                                             {question.prompt}
+                                          </p>
+                                       </div>
 
-                                       return (
-                                          <div
-                                             key={`${question.questionIndex}-${index}`}
-                                             className={`rounded-2xl border px-4 py-3 text-sm ${
-                                                isCorrect
-                                                   ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
-                                                   : isViewerChoice
-                                                     ? "border-red-500/40 bg-red-500/10 text-red-100"
-                                                     : "border-slate-800 bg-slate-900/40 text-slate-300"
-                                             }`}>
-                                             {option}
-                                          </div>
-                                       );
-                                    })}
-                                 </div>
-                              </div>
-                           );
-                        })}
+                                       <div className="grid gap-2">
+                                          {question.options.map((option, index) => {
+                                             const isCorrect =
+                                                index === question.correctOptionIndex;
+                                             const isViewerChoice =
+                                                viewerAnswer?.selectedOptionIndex === index;
+
+                                             return (
+                                                <div
+                                                   key={`${question.questionIndex}-${index}`}
+                                                   className={`rounded-2xl border px-4 py-3 text-sm ${
+                                                      isCorrect
+                                                         ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                                                         : isViewerChoice
+                                                           ? "border-red-500/40 bg-red-500/10 text-red-100"
+                                                           : "border-slate-800 bg-slate-900/40 text-slate-300"
+                                                   }`}>
+                                                   {option}
+                                                </div>
+                                             );
+                                          })}
+                                       </div>
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        )}
                      </div>
                   </div>
                )}
@@ -1296,10 +1358,6 @@ export default function BattleRoomPage() {
 
                   <div className="mt-4 space-y-3">
                      {snapshot.players.map((player) => {
-                        const roundPlayer = currentRound?.players.find(
-                           (entry) => entry.userId === player.userId,
-                        );
-
                         return (
                            <div
                               key={player.userId}
@@ -1323,20 +1381,6 @@ export default function BattleRoomPage() {
                                           </span>
                                        )}
                                     </div>
-                                    <p className="mt-1 text-xs text-slate-500">
-                                       Joined {new Date(player.joinedAt).toLocaleString()}
-                                    </p>
-                                 </div>
-                                 <div className="text-right text-xs text-slate-400">
-                                    {roundPlayer
-                                       ? currentRound?.status === "finished"
-                                          ? `${roundPlayer.score} correct`
-                                          : roundPlayer.submittedAt
-                                            ? "Submitted"
-                                            : roundPlayer.isReady
-                                              ? "Ready"
-                                              : "Waiting"
-                                       : "Next round"}
                                  </div>
                               </div>
                            </div>
@@ -1345,19 +1389,38 @@ export default function BattleRoomPage() {
                   </div>
                </div>
 
-               <div className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6 text-sm text-slate-400">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                     Room rules
-                  </p>
-                  <div className="mt-3 space-y-2">
-                     <p>Same room code across multiple rounds</p>
-                     <p>{snapshot.questionCount} questions per round</p>
-                     <p>{snapshot.timeLimitSeconds} seconds per question</p>
-                     <p>Curiosity Points are awarded every round</p>
-                     <p>
-                        After 5 rounds, every player in the room must be Premium to continue
-                     </p>
-                  </div>
+               <div className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900/60 text-sm text-slate-400">
+                  <button
+                     type="button"
+                     onClick={() => setIsRoomRulesOpen((current) => !current)}
+                     className="flex w-full cursor-pointer items-center justify-between gap-3 px-6 py-5 text-left transition hover:bg-slate-900/40">
+                     <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                           Room rules
+                        </p>
+                        <p className="mt-2 text-sm text-slate-400">
+                           Open to see how rounds and access work.
+                        </p>
+                     </div>
+                     <span
+                        className={`text-slate-400 transition-transform ${
+                           isRoomRulesOpen ? "rotate-180" : ""
+                        }`}>
+                        <PiCaretDownBold size={16} />
+                     </span>
+                  </button>
+
+                  {isRoomRulesOpen && (
+                     <div className="space-y-2 border-t border-slate-800 px-6 py-5">
+                        <p>Same room code across multiple rounds</p>
+                        <p>{snapshot.questionCount} questions per round</p>
+                        <p>{snapshot.timeLimitSeconds} seconds per question</p>
+                        <p>Curiosity Points are awarded every round</p>
+                        <p>
+                           After 5 rounds, every player in the room must be Premium to continue
+                        </p>
+                     </div>
+                  )}
                </div>
 
                {snapshot.recentRounds.length > 0 && (
