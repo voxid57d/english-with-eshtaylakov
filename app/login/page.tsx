@@ -209,14 +209,16 @@ export default function Login() {
                )}
 
                {/* SIGNUP LINK */}
-               <p className="text-xs text-center text-slate-400">
-                  Don&apos;t have an account?{" "}
-                  <a
-                     href="/signup"
-                     className="text-emerald-400 hover:underline hover:text-emerald-300">
-                     Sign up
-                  </a>
-               </p>
+               {showOtherLogin && (
+                  <p className="text-xs text-center text-slate-400">
+                     Don&apos;t have an account?{" "}
+                     <a
+                        href="/signup"
+                        className="text-emerald-400 hover:underline hover:text-emerald-300">
+                        Sign up
+                     </a>
+                  </p>
+               )}
 
                <p className="text-xs text-center text-slate-500 mt-2">
                   <a

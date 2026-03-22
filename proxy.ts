@@ -65,7 +65,7 @@ function getSupabaseUserId(req: NextRequest) {
    return null;
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
    if (!isMaintenanceEnabled()) {
       return NextResponse.next();
    }
