@@ -135,13 +135,8 @@ export default function TelegramLoginButton() {
                <div className="max-w-sm space-y-4 rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-2xl">
                   <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-slate-700 border-t-sky-400" />
                   <div className="space-y-2">
-                     <h2 className="text-lg font-semibold text-white">
-                        Confirm the auth in your Telegram app
-                     </h2>
-                     <p className="text-sm leading-relaxed text-slate-300">
-                        Please wait here while we finish signing you in. The
-                        page is temporarily locked to avoid interrupting the
-                        login process.
+                     <p className="text-lg font-semibold leading-relaxed text-white">
+                        Signing you in. Please don&apos;t refresh the page.
                      </p>
                   </div>
                </div>
