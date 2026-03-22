@@ -97,7 +97,7 @@ export default function PracticeView({
                   onChange={(e) => onToggleGrindMode(e.target.checked)}
                   className="rounded border-slate-700 bg-slate-900"
                />
-               <span>Grind mode</span>
+               <span>Infinite mode</span>
             </label>
          </div>
 
@@ -114,7 +114,7 @@ export default function PracticeView({
                   speak={speak}
                />
                <div className="pt-4 border-t border-slate-800/40">
-                  <HealthBar value={currentCard.health} max={4} />
+                  {!grindMode && <HealthBar value={currentCard.health} max={4} />}
                   <div className="flex gap-4 mt-6">
                      <button
                         onClick={() => triggerAnswer(false)}
