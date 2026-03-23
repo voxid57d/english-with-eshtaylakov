@@ -7,6 +7,10 @@ import { useParams, useRouter } from "next/navigation";
 import { PiCaretDownBold, PiCrownSimpleFill } from "react-icons/pi";
 import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
+import {
+   FOLDER_THEME_MAP,
+   type FolderTheme,
+} from "@/lib/vocabularyFolderThemes";
 import type {
    BattleHistoryEntry,
    BattleRoomSnapshot,
@@ -21,6 +25,7 @@ type PublicDeck = {
    folder: {
       title: string;
       slug: string;
+      folder_theme: FolderTheme;
    } | null;
 };
 
@@ -28,13 +33,15 @@ type DeckFolderRelation =
    | {
         title: string;
         slug: string;
+        folder_theme: FolderTheme;
         is_available_for_battle?: boolean;
-     }
+      }
    | {
         title: string;
         slug: string;
+        folder_theme: FolderTheme;
         is_available_for_battle?: boolean;
-     }[]
+      }[]
    | null
    | undefined;
 
@@ -217,7 +224,7 @@ export default function BattleRoomPage() {
          const decksResult = await supabase
             .from("vocabulary_decks")
             .select(
-               "id, title, description, folder_id, folder:vocabulary_folders(title, slug, is_available_for_battle)",
+               "id, title, description, folder_id, folder:vocabulary_folders(title, slug, folder_theme, is_available_for_battle)",
             )
             .eq("is_public", true)
             .not("folder_id", "is", null)
@@ -248,8 +255,9 @@ export default function BattleRoomPage() {
                         ? {
                              title: folderRelation.title,
                              slug: folderRelation.slug,
-                          }
-                        : null,
+                             folder_theme: folderRelation.folder_theme,
+                           }
+                         : null,
                };
             })
             .filter((deck) => deck.folder !== null);
@@ -620,8 +628,13 @@ export default function BattleRoomPage() {
    const deckGroups = useMemo(() => {
       const groups = new Map<
          string,
-         { slug: string; title: string; decks: PublicDeck[] }
-      >();
+         {
+            slug: string;
+            title: string;
+            folder_theme: FolderTheme;
+            decks: PublicDeck[];
+         }
+       >();
 
       availableDecks.forEach((deck) => {
          if (!deck.folder) return;
@@ -634,6 +647,7 @@ export default function BattleRoomPage() {
          groups.set(deck.folder.slug, {
             slug: deck.folder.slug,
             title: deck.folder.title,
+            folder_theme: deck.folder.folder_theme,
             decks: [deck],
          });
       });
@@ -1192,31 +1206,63 @@ export default function BattleRoomPage() {
                            ) : (
                               <div className="space-y-3">
                                  {deckGroups.map((group) => (
-                                    <div
-                                       key={group.slug}
-                                       className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                                       <button
-                                          type="button"
-                                          onClick={() => toggleFolder(group.slug)}
-                                          className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-slate-900/70">
-                                          <span className="flex items-center gap-3">
-                                             <span
-                                                className={`text-slate-400 transition-transform ${
-                                                   openFolderSlug === group.slug ? "rotate-180" : ""
-                                                }`}>
-                                                <PiCaretDownBold size={14} />
-                                             </span>
-                                             <span className="text-sm font-semibold text-slate-100">
-                                                {group.title}
-                                             </span>
-                                          </span>
-                                          <span className="text-xs text-slate-400">
-                                             {group.decks.length} deck{group.decks.length === 1 ? "" : "s"}
-                                          </span>
-                                       </button>
+                                     <div
+                                        key={group.slug}
+                                        className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                                        <div
+                                           className={`absolute inset-0 bg-gradient-to-br ${
+                                              (
+                                                 FOLDER_THEME_MAP[group.folder_theme] ||
+                                                 FOLDER_THEME_MAP.ocean
+                                              ).accent
+                                           }`}
+                                        />
+                                        <div className="absolute -right-6 top-4 h-20 w-20 rounded-full blur-3xl">
+                                           <div
+                                              className={`h-full w-full rounded-full ${
+                                                 (
+                                                    FOLDER_THEME_MAP[group.folder_theme] ||
+                                                    FOLDER_THEME_MAP.ocean
+                                                 ).glow
+                                              }`}
+                                           />
+                                        </div>
+                                        <button
+                                           type="button"
+                                           onClick={() => toggleFolder(group.slug)}
+                                           className="relative flex w-full items-center justify-between gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-slate-900/50">
+                                           <span className="flex min-w-0 items-center gap-3">
+                                              <span
+                                                 className={`text-slate-400 transition-transform ${
+                                                    openFolderSlug === group.slug ? "rotate-180" : ""
+                                                 }`}>
+                                                 <PiCaretDownBold size={14} />
+                                              </span>
+                                              <span className="inline-flex h-10 w-24 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-3">
+                                                 <Image
+                                                    src={
+                                                       (
+                                                          FOLDER_THEME_MAP[group.folder_theme] ||
+                                                          FOLDER_THEME_MAP.ocean
+                                                       ).logoSrc
+                                                    }
+                                                    alt={`${group.title} logo`}
+                                                    width={160}
+                                                    height={64}
+                                                    className="h-6 w-full object-contain"
+                                                 />
+                                              </span>
+                                              <span className="truncate text-sm font-semibold text-slate-100">
+                                                 {group.title}
+                                              </span>
+                                           </span>
+                                           <span className="relative text-xs text-slate-300">
+                                              {group.decks.length} deck{group.decks.length === 1 ? "" : "s"}
+                                           </span>
+                                        </button>
 
-                                       {openFolderSlug === group.slug && (
-                                          <div className="mt-3 grid gap-2">
+                                        {openFolderSlug === group.slug && (
+                                           <div className="relative mt-3 grid gap-2">
                                              {group.decks.map((deck) => {
                                                 const checked = selectedDeckIds.includes(deck.id);
 
