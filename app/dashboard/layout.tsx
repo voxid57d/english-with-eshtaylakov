@@ -9,6 +9,7 @@ import Navbar from "@/components/Navbar";
 import Sidebar from "@/components/Sidebar";
 import { getPremiumStatus } from "@/lib/premium";
 import { supabase } from "@/lib/supabaseClient";
+import { syncDailyStreak } from "@/lib/userStats";
 
 type DashboardViewer = {
    user: User;
@@ -77,6 +78,10 @@ export default function DashboardLayout({
             username: profileResult.data?.username ?? null,
          });
          setIsLoadingUser(false);
+
+         void syncDailyStreak(authUser.id).catch((error) => {
+            console.error("Background streak sync failed:", error);
+         });
       }
 
       checkUser();

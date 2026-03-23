@@ -6,16 +6,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PiFireLight } from "react-icons/pi";
 import { supabase } from "@/lib/supabaseClient";
+import { syncDailyStreak } from "@/lib/userStats";
 
 type Quote = {
    text: string;
    author: string;
-};
-
-type DashboardStats = {
-   streak: number;
-   curiosityPoints: number;
-   isActive: boolean;
 };
 
 type LeaderboardPreviewEntry = {
@@ -115,76 +110,6 @@ function getDisplayCuriosityPoints(entry: {
    );
 }
 
-async function updateAndGetStats(userId: string): Promise<DashboardStats> {
-   const today = new Date();
-   const todayStr = today.toISOString().slice(0, 10);
-
-   const yesterday = new Date();
-   yesterday.setDate(today.getDate() - 1);
-   const yesterdayStr = yesterday.toISOString().slice(0, 10);
-
-   const { data, error } = await supabase
-      .from("user_stats")
-      .select("streak, last_active_date, curiosity_points")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-   if (error) {
-      console.error("Error fetching user_stats:", error);
-   }
-
-   if (!data) {
-      const { error: insertError } = await supabase.from("user_stats").insert({
-         user_id: userId,
-         streak: 1,
-         last_active_date: todayStr,
-         curiosity_points: 0,
-      });
-
-      if (insertError) {
-         console.error("Error inserting user_stats:", insertError);
-      }
-
-      return {
-         streak: 1,
-         curiosityPoints: 0,
-         isActive: true,
-      };
-   }
-
-   const currentStreak = data.streak ?? 0;
-   const curiosityPoints = data.curiosity_points ?? 0;
-   const lastActive = data.last_active_date as string | null;
-
-   if (lastActive === todayStr) {
-      return {
-         streak: currentStreak,
-         curiosityPoints,
-         isActive: true,
-      };
-   }
-
-   const newStreak = lastActive === yesterdayStr ? currentStreak + 1 : 1;
-
-   const { error: updateError } = await supabase
-      .from("user_stats")
-      .update({
-         streak: newStreak,
-         last_active_date: todayStr,
-      })
-      .eq("user_id", userId);
-
-   if (updateError) {
-      console.error("Error updating user_stats:", updateError);
-   }
-
-   return {
-      streak: newStreak,
-      curiosityPoints,
-      isActive: true,
-   };
-}
-
 export default function DashboardPage() {
    const router = useRouter();
    const [streak, setStreak] = useState<number | null>(null);
@@ -219,6 +144,19 @@ export default function DashboardPage() {
             setCurrentUserId(userId);
          }
 
+         const stats = await syncDailyStreak(userId);
+         if (!cancelled) {
+            setStreak(stats.streak);
+            setCuriosityPoints(stats.curiosityPoints);
+            setDisplayCuriosityPoints(
+               stats.curiosityPoints +
+                  (stats.isActive
+                     ? stats.streak * STREAK_CURIOSITY_POINTS_PER_DAY
+                     : 0),
+            );
+            setLoadingStats(false);
+         }
+
          const { data: profile, error: profileError } = await supabase
             .from("profiles")
             .select("username")
@@ -234,19 +172,6 @@ export default function DashboardPage() {
          if (!profile.username) {
             router.replace("/username");
             return;
-         }
-
-         const stats = await updateAndGetStats(userId);
-         if (!cancelled) {
-            setStreak(stats.streak);
-            setCuriosityPoints(stats.curiosityPoints);
-            setDisplayCuriosityPoints(
-               stats.curiosityPoints +
-                  (stats.isActive
-                     ? stats.streak * STREAK_CURIOSITY_POINTS_PER_DAY
-                     : 0),
-            );
-            setLoadingStats(false);
          }
       }
 
@@ -364,7 +289,9 @@ export default function DashboardPage() {
 
          <div className="rounded-xl border border-slate-800 p-4">
             <p className="text-sm text-slate-400">Quote of the day</p>
-            <p className="mt-2 text-lg">"{quote.text}"</p>
+            <p className="mt-2 text-lg">
+               &quot;{quote.text}&quot;
+            </p>
             <p className="mt-1 text-sm text-slate-500">- {quote.author}</p>
          </div>
 

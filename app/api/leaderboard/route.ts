@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getUzbekistanRecentDateStrings } from "@/lib/streakDate";
 
 type UserStatRow = {
    user_id: string;
@@ -17,8 +18,7 @@ type ProfileRow = {
 function isStreakActive(lastActiveDate: string | null) {
    if (!lastActiveDate) return false;
 
-   const today = new Date().toISOString().slice(0, 10);
-   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+   const { today, yesterday } = getUzbekistanRecentDateStrings();
 
    return lastActiveDate === today || lastActiveDate === yesterday;
 }
