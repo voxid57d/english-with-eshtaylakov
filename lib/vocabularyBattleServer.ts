@@ -1319,9 +1319,9 @@ export async function submitBattleResults(
    });
 
    const score = normalizedAnswers.filter((answer) => answer.is_correct).length;
-   const totalResponseMs = Math.min(
-      Math.max(Math.round(submission.totalResponseMs || 0), 0),
-      currentRound.question_count * currentRound.time_limit_seconds * 1000,
+   const totalResponseMs = normalizedAnswers.reduce(
+      (sum, answer) => sum + answer.response_ms,
+      0,
    );
 
    const { error: answersError } = await supabaseAdmin

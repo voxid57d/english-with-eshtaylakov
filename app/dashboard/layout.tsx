@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 
 import Navbar from "@/components/Navbar";
 import Sidebar from "@/components/Sidebar";
+import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { getPremiumStatus } from "@/lib/premium";
 import { supabase } from "@/lib/supabaseClient";
 import { syncDailyStreak } from "@/lib/userStats";
@@ -39,7 +40,21 @@ export default function DashboardLayout({
       let isActive = true;
 
       async function checkUser() {
-         const { data, error } = await supabase.auth.getUser();
+         let { data, error } = await supabase.auth.getUser();
+
+         if (!data.user) {
+            try {
+               await getSupabaseAccessToken();
+               const retryResult = await supabase.auth.getUser();
+               data = retryResult.data;
+               error = retryResult.error;
+            } catch (refreshError) {
+               error =
+                  refreshError instanceof Error
+                     ? refreshError
+                     : new Error("Failed to refresh your session.");
+            }
+         }
 
          if (error) {
             console.error("Error getting user:", error);

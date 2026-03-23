@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PiCaretDownBold, PiCrownSimpleFill } from "react-icons/pi";
-import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
+import { supabase } from "@/lib/supabaseClient";
 import {
    FOLDER_THEME_MAP,
    type FolderTheme,
@@ -82,6 +82,18 @@ function getPremiumNameClass(isPremium: boolean) {
    return isPremium ? "text-amber-100" : "text-slate-100";
 }
 
+function getPlayerCardClass(isViewer: boolean, isPremium: boolean) {
+   if (isViewer) {
+      return "border-emerald-500/40 bg-emerald-500/10";
+   }
+
+   if (isPremium) {
+      return "border-slate-700/90 bg-[linear-gradient(135deg,rgba(120,113,108,0.18),rgba(30,41,59,0.92))]";
+   }
+
+   return "border-slate-800 bg-slate-950/70";
+}
+
 function getSubmitErrorMessage(error: unknown) {
    const message =
       error instanceof Error ? error.message : "Failed to submit battle.";
@@ -95,6 +107,14 @@ function getSubmitErrorMessage(error: unknown) {
    }
 
    return message;
+}
+
+function isSessionExpiredMessage(message: string) {
+   return (
+      message === "You must sign in again." ||
+      message === "Failed to read your session." ||
+      message === "Unauthorized."
+   );
 }
 
 function RoundHistoryCard({ entry }: { entry: BattleHistoryEntry }) {
@@ -208,6 +228,7 @@ export default function BattleRoomPage() {
    const [isRoundReviewOpen, setIsRoundReviewOpen] = useState(false);
    const [isRoomRulesOpen, setIsRoomRulesOpen] = useState(false);
    const questionTimerRef = useRef<number | null>(null);
+   const syncedDeckSourceRef = useRef<string | null>(null);
 
    const currentRound = snapshot?.currentRound ?? null;
 
@@ -274,12 +295,6 @@ export default function BattleRoomPage() {
    }, []);
 
    const loadSnapshot = useCallback(async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-         router.replace("/login");
-         return;
-      }
-
       const token = await getSupabaseAccessToken();
       const response = await fetch(
          `/api/vocabulary-battle/rooms/${encodeURIComponent(roomCode)}`,
@@ -293,13 +308,17 @@ export default function BattleRoomPage() {
 
       const payload = await response.json();
       if (!response.ok) {
-         throw new Error(payload.error || "Failed to load battle room.");
+         const requestError = new Error(
+            payload.error || "Failed to load battle room.",
+         ) as Error & { status?: number };
+         requestError.status = response.status;
+         throw requestError;
       }
 
       setSnapshot(payload);
       setError(null);
       setLoading(false);
-   }, [roomCode, router]);
+   }, [roomCode]);
 
    const shouldPoll = useMemo(() => {
       if (!snapshot) return true;
@@ -321,12 +340,24 @@ export default function BattleRoomPage() {
          try {
             await loadSnapshot();
          } catch (requestError) {
+            const message =
+               requestError instanceof Error
+                  ? requestError.message
+                  : "Failed to load battle room.";
+            const status =
+               requestError instanceof Error &&
+               "status" in requestError &&
+               typeof requestError.status === "number"
+                  ? requestError.status
+                  : null;
+
+            if (isSessionExpiredMessage(message) || status === 401) {
+               router.replace("/login");
+               return;
+            }
+
             if (!cancelled) {
-               setError(
-                  requestError instanceof Error
-                     ? requestError.message
-                     : "Failed to load battle room.",
-               );
+               setError(message);
                setLoading(false);
             }
          }
@@ -348,15 +379,21 @@ export default function BattleRoomPage() {
          cancelled = true;
          window.clearInterval(intervalId);
       };
-   }, [loadSnapshot, shouldPoll]);
+   }, [loadSnapshot, router, shouldPoll]);
 
    useEffect(() => {
       if (!snapshot?.deckIds?.length) {
          return;
       }
 
+      const deckSourceKey = currentRound?.roundId || `room:${snapshot.roomCode}`;
+      if (syncedDeckSourceRef.current === deckSourceKey) {
+         return;
+      }
+
       setSelectedDeckIds(snapshot.deckIds);
-   }, [currentRound?.roundId]);
+      syncedDeckSourceRef.current = deckSourceKey;
+   }, [currentRound?.roundId, snapshot?.deckIds, snapshot?.roomCode]);
 
    useEffect(() => {
       if (
@@ -492,6 +529,14 @@ export default function BattleRoomPage() {
             });
             setError(null);
          } catch (requestError) {
+            if (
+               requestError instanceof Error &&
+               isSessionExpiredMessage(requestError.message)
+            ) {
+               router.replace("/login");
+               return;
+            }
+
             setLocalBattle((current) =>
                current
                   ? {
@@ -506,7 +551,7 @@ export default function BattleRoomPage() {
             setSubmitLoading(false);
          }
       },
-      [clearQuestionTimer, currentRound, snapshot, submitLoading],
+      [clearQuestionTimer, currentRound, router, snapshot, submitLoading],
    );
 
    const advanceBattle = useCallback(
@@ -710,6 +755,14 @@ export default function BattleRoomPage() {
          setSnapshot(payload);
          setError(null);
       } catch (requestError) {
+         if (
+            requestError instanceof Error &&
+            isSessionExpiredMessage(requestError.message)
+         ) {
+            router.replace("/login");
+            return;
+         }
+
          setError(
             requestError instanceof Error
                ? requestError.message
@@ -765,6 +818,14 @@ export default function BattleRoomPage() {
          setLocalBattle(null);
          setError(null);
       } catch (requestError) {
+         if (
+            requestError instanceof Error &&
+            isSessionExpiredMessage(requestError.message)
+         ) {
+            router.replace("/login");
+            return;
+         }
+
          setError(
             requestError instanceof Error
                ? requestError.message
@@ -823,6 +884,9 @@ export default function BattleRoomPage() {
          ? currentRound.players.length >= 2 &&
            currentRound.players.every((player) => player.isReady)
          : false;
+   const roundPlayersByUserId = new Map(
+      (currentRound?.players || []).map((player) => [player.userId, player]),
+   );
    const winner = currentRound?.players.find(
       (player) => player.userId === currentRound.winnerUserId,
    );
@@ -1404,36 +1468,149 @@ export default function BattleRoomPage() {
 
                   <div className="mt-4 space-y-3">
                      {snapshot.players.map((player) => {
+                        const roundPlayer = roundPlayersByUserId.get(player.userId);
+                        const isViewer = player.userId === snapshot.viewerUserId;
+                        const hasFinishedCurrentRound =
+                           currentRound?.status === "active" && Boolean(roundPlayer?.submittedAt);
+
                         return (
                            <div
                               key={player.userId}
-                              className={`rounded-3xl border px-4 py-4 ${
-                                 player.userId === snapshot.viewerUserId
-                                    ? "border-emerald-500/40 bg-emerald-500/10"
-                                    : "border-slate-800 bg-slate-950/70"
-                              }`}>
-                              <div className="flex items-center justify-between gap-3">
-                                 <div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                       <p
-                                          className={`text-base font-semibold ${getPremiumNameClass(
-                                             player.isPremium,
-                                          )}`}>
-                                          {player.username}
+                              className={`rounded-3xl border px-4 py-4 ${getPlayerCardClass(
+                                 isViewer,
+                                 player.isPremium,
+                              )}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                 <div className="min-w-0">
+                                    <p
+                                       className={`truncate text-base font-semibold ${getPremiumNameClass(
+                                          player.isPremium,
+                                       )}`}>
+                                       {player.username}
+                                    </p>
+
+                                    {currentRound?.status === "waiting" && roundPlayer && (
+                                       <p className="mt-2 text-sm text-slate-400">
+                                          {roundPlayer.isReady ? "Ready to start" : "Not ready yet"}
                                        </p>
-                                       {player.isPremium && (
-                                          <span className="rounded-full border border-amber-400/25 bg-amber-400/8 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100/80">
-                                             Premium
+                                    )}
+
+                                    {currentRound?.status === "waiting" && !roundPlayer && (
+                                       <p className="mt-2 text-sm text-slate-500">
+                                          Waiting for the next round.
+                                       </p>
+                                    )}
+
+                                    {currentRound?.status === "active" && hasFinishedCurrentRound && (
+                                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                                          <span className="font-medium text-emerald-200">
+                                             Finished
                                           </span>
+                                          <span className="text-slate-300">
+                                             {roundPlayer?.score ?? 0} correct
+                                          </span>
+                                          <span className="text-slate-300">
+                                             {formatSeconds(roundPlayer?.totalResponseMs ?? 0)}
+                                          </span>
+                                       </div>
+                                    )}
+
+                                    {currentRound?.status === "active" &&
+                                       roundPlayer &&
+                                       !hasFinishedCurrentRound && (
+                                          <p className="mt-2 text-sm text-slate-400">
+                                             Still answering this round.
+                                          </p>
                                        )}
-                                    </div>
+
+                                    {currentRound?.status === "active" && !roundPlayer && (
+                                       <p className="mt-2 text-sm text-slate-500">
+                                          Waiting for the next round.
+                                       </p>
+                                    )}
+
+                                    {currentRound?.status === "finished" && roundPlayer && (
+                                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-300">
+                                          <span>{roundPlayer.score} correct</span>
+                                          <span>{formatSeconds(roundPlayer.totalResponseMs)}</span>
+                                       </div>
+                                    )}
+
+                                    {!currentRound && (
+                                       <p className="mt-2 text-sm text-slate-500">
+                                          In the room lobby.
+                                       </p>
+                                    )}
                                  </div>
+
+                                 {hasFinishedCurrentRound && (
+                                    <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-200">
+                                       Done
+                                    </span>
+                                 )}
+                                 {currentRound?.status === "finished" && roundPlayer && (
+                                    <span className="text-sm font-medium text-emerald-200">
+                                       {roundPlayer.score} pts
+                                    </span>
+                                 )}
+                                 {currentRound?.status === "waiting" && roundPlayer?.isReady && (
+                                    <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-200">
+                                       Ready
+                                    </span>
+                                 )}
+                                 {isViewer && !hasFinishedCurrentRound && currentRound?.status !== "finished" && (
+                                    <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-200">
+                                       You
+                                    </span>
+                                 )}
+                                 {!isViewer &&
+                                    currentRound?.status === "active" &&
+                                    roundPlayer &&
+                                    !hasFinishedCurrentRound && (
+                                       <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                                          Playing
+                                       </span>
+                                    )}
+                                 {!isViewer && !roundPlayer && currentRound && (
+                                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                                       Waiting
+                                    </span>
+                                 )}
                               </div>
+                              {hasFinishedCurrentRound && (
+                                 <p className="mt-2 text-xs text-slate-400">
+                                    Submitted for Round {currentRound?.roundNumber}. Waiting for the remaining players.
+                                 </p>
+                              )}
+                              {currentRound?.status === "finished" && roundPlayer?.submittedAt && (
+                                 <p className="mt-2 text-xs text-slate-400">
+                                    Round {currentRound.roundNumber} complete.
+                                 </p>
+                              )}
+                              {currentRound?.status === "active" &&
+                                 roundPlayer &&
+                                 !hasFinishedCurrentRound && (
+                                    <p className="mt-2 text-xs text-slate-500">
+                                       Current round is still in progress.
+                                    </p>
+                                 )}
+                              {currentRound?.status === "waiting" &&
+                                 roundPlayer &&
+                                 !roundPlayer.isReady && (
+                                    <p className="mt-2 text-xs text-slate-500">
+                                       This player has not readied up yet.
+                                    </p>
+                                 )}
+                              {currentRound && !roundPlayer && (
+                                 <p className="mt-2 text-xs text-slate-500">
+                                    Joined the room, but not included in this round.
+                                 </p>
+                              )}
                            </div>
                         );
                      })}
-                  </div>
-               </div>
+                   </div>
+                </div>
 
                <div className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900/60 text-sm text-slate-400">
                   <button

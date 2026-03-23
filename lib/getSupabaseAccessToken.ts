@@ -10,7 +10,12 @@ export async function getSupabaseAccessToken() {
       throw new Error("Failed to read your session.");
    }
 
-   if (session?.access_token) {
+   const nowSeconds = Math.floor(Date.now() / 1000);
+   const expiresAt = session?.expires_at ?? 0;
+   const needsRefresh =
+      !session?.access_token || (expiresAt > 0 && expiresAt <= nowSeconds + 30);
+
+   if (!needsRefresh && session?.access_token) {
       return session.access_token;
    }
 
