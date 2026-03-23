@@ -3,16 +3,10 @@
 import { useEffect, useState, MouseEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
+import Image from "next/image";
 import { getPremiumStatus } from "@/lib/premium";
 import { useRouter } from "next/navigation";
-import {
-   HiOutlineBookOpen,
-   HiOutlineGlobeAlt,
-   HiOutlineSparkles,
-   HiOutlineSquares2X2,
-} from "react-icons/hi2";
 import { PiBookOpenTextLight } from "react-icons/pi";
-import type { IconType } from "react-icons";
 
 type FolderTheme = "ocean" | "emerald" | "sunset" | "violet";
 
@@ -33,29 +27,29 @@ type Folder = {
 };
 
 type FolderThemeConfig = {
-   icon: IconType;
+   logoSrc: string;
    accent: string;
    glow: string;
 };
 
 const FOLDER_THEME_MAP: Record<FolderTheme, FolderThemeConfig> = {
    ocean: {
-      icon: HiOutlineGlobeAlt,
+      logoSrc: "/foldericon1.png",
       accent: "from-cyan-400/30 via-sky-500/18 to-slate-950/10",
       glow: "bg-cyan-400/20",
    },
    emerald: {
-      icon: HiOutlineBookOpen,
+      logoSrc: "/foldericon2.png",
       accent: "from-emerald-400/30 via-lime-500/18 to-slate-950/10",
       glow: "bg-emerald-400/20",
    },
    sunset: {
-      icon: HiOutlineSparkles,
+      logoSrc: "/foldericon3.png",
       accent: "from-amber-400/30 via-orange-500/18 to-slate-950/10",
       glow: "bg-orange-400/20",
    },
    violet: {
-      icon: HiOutlineSquares2X2,
+      logoSrc: "/foldericon4.png",
       accent: "from-violet-400/30 via-fuchsia-500/18 to-slate-950/10",
       glow: "bg-violet-400/20",
    },
@@ -379,7 +373,6 @@ export default function VocabularyPage() {
                   {publicFolders.map((folder) => {
                      const visual =
                         FOLDER_THEME_MAP[folder.folder_theme] || FOLDER_THEME_MAP.ocean;
-                     const Icon = visual.icon;
                      const deckCount = folderDeckCounts[folder.id] || 0;
 
                      return (
@@ -396,8 +389,14 @@ export default function VocabularyPage() {
 
                            <div className="relative flex h-full flex-col">
                               <div className="flex items-start justify-between gap-4">
-                                 <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl text-slate-100">
-                                    <Icon />
+                                 <span className="inline-flex h-12 w-28 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-3">
+                                    <Image
+                                       src={visual.logoSrc}
+                                       alt={`${folder.title} logo`}
+                                       width={160}
+                                       height={64}
+                                       className="h-8 w-full object-contain"
+                                    />
                                  </span>
 
                                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
