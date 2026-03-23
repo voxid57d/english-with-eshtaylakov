@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
@@ -13,7 +14,7 @@ const CARD_HOLDER = "Voxid Eshtaylakov";
 
 export default function PremiumPage() {
    const router = useRouter();
-   const [user, setUser] = useState<any>(null);
+   const [user, setUser] = useState<User | null>(null);
    const [isPremium, setIsPremium] = useState(false);
    const [loading, setLoading] = useState(true);
    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);

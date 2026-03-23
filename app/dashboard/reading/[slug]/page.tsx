@@ -22,6 +22,10 @@ type SaveStatusState = null | {
    message: string;
 };
 
+function getErrorMessage(error: unknown, fallback: string) {
+   return error instanceof Error ? error.message : fallback;
+}
+
 export default function ReadingArticlePage() {
    const params = useParams();
    const router = useRouter();
@@ -74,9 +78,9 @@ export default function ReadingArticlePage() {
             if (!data) throw new Error("Article not found.");
 
             setArticle(data as Article);
-         } catch (err: any) {
+         } catch (err) {
             console.error(err);
-            setError(err.message ?? "Failed to load article");
+            setError(getErrorMessage(err, "Failed to load article"));
          } finally {
             setLoading(false);
          }
@@ -104,11 +108,9 @@ export default function ReadingArticlePage() {
             if (error) throw error;
 
             setIsFinished(Boolean(data?.finished));
-         } catch (err: any) {
+         } catch (err) {
             console.warn(err);
-            setProgressError(
-               err?.message ?? "Could not load reading progress."
-            );
+            setProgressError(getErrorMessage(err, "Could not load reading progress."));
          } finally {
             setProgressLoading(false);
          }
@@ -140,9 +142,9 @@ export default function ReadingArticlePage() {
          if (error) throw error;
 
          setIsFinished(nextFinished);
-      } catch (err: any) {
+      } catch (err) {
          console.error(err);
-         setProgressError(err?.message ?? "Could not update reading progress.");
+         setProgressError(getErrorMessage(err, "Could not update reading progress."));
       } finally {
          setProgressLoading(false);
       }
@@ -243,14 +245,15 @@ export default function ReadingArticlePage() {
             state: "saved",
             message: `Saved "${payload.word}" to your "Reading – Saved words" deck.`,
          });
-      } catch (err: any) {
+      } catch (err) {
          console.error(err);
          setSaveStatus({
             word: payload.word,
             state: "error",
-            message:
-               err?.message ??
+            message: getErrorMessage(
+               err,
                `Failed to save "${payload.word}". Please try again.`,
+            ),
          });
       }
    };

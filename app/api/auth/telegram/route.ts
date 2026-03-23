@@ -22,11 +22,12 @@ function safeCompareHex(a: string, b: string) {
 function verifyTelegram(payload: TelegramPayload, botToken: string) {
    // Telegram tells us "hash" is the signature, so we exclude it from the signed data
    const { hash, ...data } = payload;
+   const payloadData = data as Omit<TelegramPayload, "hash">;
 
    // Build the "data-check-string": key=value lines sorted alphabetically
-   const dataCheckString = Object.keys(data)
+   const dataCheckString = (Object.keys(payloadData) as (keyof typeof payloadData)[])
       .sort()
-      .map((k) => `${k}=${(data as any)[k]}`)
+      .map((k) => `${k}=${payloadData[k]}`)
       .join("\n");
 
    // secret_key = SHA256(bot_token)

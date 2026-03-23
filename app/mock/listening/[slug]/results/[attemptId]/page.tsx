@@ -44,6 +44,10 @@ type ListeningAttempt = {
    created_at: string;
 };
 
+type ListeningSectionRow = {
+   id: string;
+};
+
 export default function ListeningResultsPage() {
    const params = useParams();
    const router = useRouter();
@@ -138,8 +142,8 @@ export default function ListeningResultsPage() {
 
             if (sectionsError) throw sectionsError;
 
-            const sectionIds = (sectionsData || []).map(
-               (s: any) => s.id as string
+            const sectionIds = ((sectionsData || []) as ListeningSectionRow[]).map(
+               (section) => section.id
             );
 
             if (sectionIds.length === 0) {
@@ -159,8 +163,8 @@ export default function ListeningResultsPage() {
             setQuestions((questionsData || []) as ListeningQuestion[]);
 
             // 5) Load options for those questions
-            const questionIds = (questionsData || []).map(
-               (q: any) => q.id as string
+            const questionIds = ((questionsData || []) as ListeningQuestion[]).map(
+               (question) => question.id
             );
 
             if (questionIds.length > 0) {

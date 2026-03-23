@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -29,7 +30,7 @@ type ListeningBlock = {
    type: string;
    content: string | null;
    question_id: string | null;
-   extra_data: any | null;
+   extra_data: Record<string, unknown> | null;
 };
 
 type ListeningQuestion = {
@@ -343,9 +344,9 @@ export default function ListeningTestPage() {
             setQuestions((questionsData || []) as ListeningQuestion[]);
 
             // 5) Options
-            const questionIds = (questionsData || []).map(
-               (q: any) => q.id as string,
-            );
+             const questionIds = ((questionsData || []) as ListeningQuestion[]).map(
+                (question) => question.id,
+             );
 
             if (questionIds.length > 0) {
                const { data: optionsData, error: optionsError } = await supabase
@@ -368,7 +369,7 @@ export default function ListeningTestPage() {
       }
 
       load();
-   }, [slug]);
+    }, [router, slug]);
 
    // ---------- Answer handling ----------
 
@@ -567,10 +568,17 @@ export default function ListeningTestPage() {
 
       if (block.type === "image" && block.content) {
          return (
-            <img
+            <Image
                key={block.id}
                src={block.content}
-               alt={(block.extra_data?.alt as string) || "Image"}
+               alt={
+                  typeof block.extra_data?.alt === "string"
+                     ? block.extra_data.alt
+                     : "Image"
+               }
+               width={1200}
+               height={800}
+               unoptimized
                className="w-full max-w-4xl mx-auto my-4 rounded-lg border border-slate-700"
             />
          );

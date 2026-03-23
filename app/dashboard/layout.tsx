@@ -41,6 +41,7 @@ export default function DashboardLayout({
 
       async function checkUser() {
          let { data, error } = await supabase.auth.getUser();
+         let refreshFailureMessage: string | null = null;
 
          if (!data.user) {
             try {
@@ -49,14 +50,14 @@ export default function DashboardLayout({
                data = retryResult.data;
                error = retryResult.error;
             } catch (refreshError) {
-               error =
+               refreshFailureMessage =
                   refreshError instanceof Error
-                     ? refreshError
-                     : new Error("Failed to refresh your session.");
+                     ? refreshError.message
+                     : "Failed to refresh your session.";
             }
          }
 
-         if (error) {
+          if (error || refreshFailureMessage) {
             console.error("Error getting user:", error);
             router.push("/login");
             return;

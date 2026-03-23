@@ -1,6 +1,22 @@
 // app/api/dictionary/route.ts
 import { NextResponse } from "next/server";
 
+type DictionaryApiDefinition = {
+   definition: string;
+   example?: string;
+};
+
+type DictionaryApiMeaning = {
+   partOfSpeech: string;
+   definitions?: DictionaryApiDefinition[];
+};
+
+type DictionaryApiEntry = {
+   word: string;
+   phonetic?: string;
+   meanings?: DictionaryApiMeaning[];
+};
+
 export async function GET(request: Request) {
    const { searchParams } = new URL(request.url);
    const word = searchParams.get("word");
@@ -26,7 +42,7 @@ export async function GET(request: Request) {
          );
       }
 
-      const data = await apiRes.json();
+      const data = (await apiRes.json()) as DictionaryApiEntry[];
 
       // We will return only the most useful parts in a simpler shape
       const first = data[0];
@@ -35,9 +51,9 @@ export async function GET(request: Request) {
          word: first.word,
          phonetic: first.phonetic ?? null,
          meanings:
-            first.meanings?.map((m: any) => ({
+            first.meanings?.map((m) => ({
                partOfSpeech: m.partOfSpeech,
-               definitions: m.definitions?.map((d: any) => ({
+               definitions: m.definitions?.map((d) => ({
                   definition: d.definition,
                   example: d.example ?? null,
                })),

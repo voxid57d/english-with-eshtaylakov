@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -20,6 +20,13 @@ const LEVELS = ["A1", "A2", "B1", "B2", "C1"] as const;
 type Level = (typeof LEVELS)[number];
 type OpenLevel = "ALL" | Level | "UNASSIGNED";
 type ViewMode = "level" | "newest";
+type ReadingProgressRow = {
+   article_id: string;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+   return error instanceof Error ? error.message : fallback;
+}
 
 export default function ReadingPage() {
    const [articles, setArticles] = useState<Article[]>([]);
@@ -37,6 +44,18 @@ export default function ReadingPage() {
    );
 
    const router = useRouter();
+
+   const sortUnfinishedFirst = useCallback(
+      (list: Article[]) => {
+         return [...list].sort((a, b) => {
+            const aFinished = finishedArticleIds.has(a.id);
+            const bFinished = finishedArticleIds.has(b.id);
+            if (aFinished === bFinished) return 0;
+            return aFinished ? 1 : -1;
+         });
+      },
+      [finishedArticleIds]
+   );
 
    useEffect(() => {
       const load = async () => {
@@ -87,13 +106,15 @@ export default function ReadingPage() {
                );
             } else {
                const ids = new Set<string>(
-                  (progressData || []).map((r: any) => r.article_id as string)
+                  ((progressData || []) as ReadingProgressRow[]).map(
+                     (row) => row.article_id
+                  )
                );
                setFinishedArticleIds(ids);
             }
-         } catch (err: any) {
+         } catch (err) {
             console.error(err);
-            setError(err.message ?? "Failed to load articles");
+            setError(getErrorMessage(err, "Failed to load articles"));
          } finally {
             setLoading(false);
          }
@@ -107,15 +128,6 @@ export default function ReadingPage() {
       const lvl = (a.level || "").trim().toUpperCase();
       if (LEVELS.includes(lvl as Level)) return lvl as Level;
       return "UNASSIGNED";
-   };
-
-   const sortUnfinishedFirst = (list: Article[]) => {
-      return [...list].sort((a, b) => {
-         const aFinished = finishedArticleIds.has(a.id);
-         const bFinished = finishedArticleIds.has(b.id);
-         if (aFinished === bFinished) return 0;
-         return aFinished ? 1 : -1; // finished goes to bottom
-      });
    };
 
    const countsByLevel = useMemo(() => {
@@ -162,7 +174,7 @@ export default function ReadingPage() {
 
       const filtered = articles.filter((a) => getLevelBucket(a) === openLevel);
       return sortUnfinishedFirst(filtered);
-   }, [articles, viewMode, openLevel, finishedArticleIds]);
+   }, [articles, openLevel, sortUnfinishedFirst, viewMode]);
 
    const FolderChip = ({
       label,

@@ -1,6 +1,12 @@
 "use client";
 
-export default function ExercisePanel({ selectedExercises }: any) {
+type ExercisePanelProps = {
+   selectedExercises: "vocabulary" | "reading" | "listening" | string;
+};
+
+export default function ExercisePanel({
+   selectedExercises,
+}: ExercisePanelProps) {
    return (
       <div className="rounded-xl border border-slate-800 p-4">
          {selectedExercises === "vocabulary" && (

@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
@@ -10,8 +10,6 @@ import PageShellWithFooter from "@/components/PageShellWithFooter";
 import TelegramLoginButton from "@/components/TelegramLoginButton";
 
 export default function SignupPage() {
-   const router = useRouter();
-
    const [email, setEmail] = useState("");
    const [password, setPassword] = useState("");
    const [loading, setLoading] = useState(false);
@@ -74,7 +72,7 @@ export default function SignupPage() {
          );
          setEmail("");
          setPassword("");
-      } catch (err) {
+      } catch {
          setError("Something went wrong. Please try again.");
       } finally {
          setLoading(false);
@@ -226,11 +224,11 @@ export default function SignupPage() {
 
                <p className="text-xs text-center text-slate-400">
                   Already have an account?{" "}
-                  <a
+                  <Link
                      href="/login"
                      className="text-emerald-400 hover:text-emerald-300 hover:underline">
                      Log in
-                  </a>
+                  </Link>
                </p>
 
                <p className="text-[11px] text-center text-slate-500 mt-1">
@@ -238,11 +236,11 @@ export default function SignupPage() {
                </p>
 
                <p className="text-xs text-center text-slate-500 mt-2">
-                  <a
+                  <Link
                      href="/"
                      className="hover:text-emerald-400 hover:underline transition">
                      ← Back to Home
-                  </a>
+                  </Link>
                </p>
             </div>
          </main>

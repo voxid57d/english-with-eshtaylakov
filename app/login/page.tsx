@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { FcGoogle } from "react-icons/fc";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 import { useRouter } from "next/navigation";
@@ -212,20 +213,20 @@ export default function Login() {
                {showOtherLogin && (
                   <p className="text-xs text-center text-slate-400">
                      Don&apos;t have an account?{" "}
-                     <a
-                        href="/signup"
-                        className="text-emerald-400 hover:underline hover:text-emerald-300">
-                        Sign up
-                     </a>
+                      <Link
+                         href="/signup"
+                         className="text-emerald-400 hover:underline hover:text-emerald-300">
+                         Sign up
+                      </Link>
                   </p>
                )}
 
                <p className="text-xs text-center text-slate-500 mt-2">
-                  <a
-                     href="/"
-                     className="hover:text-emerald-400 hover:underline transition">
+                   <Link
+                      href="/"
+                      className="hover:text-emerald-400 hover:underline transition">
                      ← Back to Home
-                  </a>
+                   </Link>
                </p>
             </div>
          </main>
