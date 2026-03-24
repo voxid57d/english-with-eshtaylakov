@@ -1,17 +1,26 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
 import ArticleReader from "@/components/ArticleReader";
 import { PiCheckCircleLight } from "react-icons/pi";
+import {
+   getReadingLevelLabel,
+   normalizeReadingContentBlocks,
+   type ReadingContentBlock,
+} from "@/lib/readingContent";
 
 type Article = {
    id: string;
    title: string;
    slug: string;
+   short_summary: string | null;
    content: string;
+   content_blocks: ReadingContentBlock[] | null;
+   cover_image_url: string | null;
    level: string | null;
    is_premium: boolean;
 };
@@ -36,10 +45,7 @@ export default function ReadingArticlePage() {
    const [error, setError] = useState<string | null>(null);
    const [isPremium, setIsPremium] = useState(false);
    const [userId, setUserId] = useState<string | null>(null);
-
    const [saveStatus, setSaveStatus] = useState<SaveStatusState>(null);
-
-   // Reading progress state
    const [isFinished, setIsFinished] = useState(false);
    const [progressLoading, setProgressLoading] = useState(false);
    const [progressError, setProgressError] = useState<string | null>(null);
@@ -50,7 +56,6 @@ export default function ReadingArticlePage() {
             setLoading(true);
             setError(null);
 
-            // 1) Get user
             const { data: userData, error: userError } =
                await supabase.auth.getUser();
             if (userError) throw userError;
@@ -63,14 +68,14 @@ export default function ReadingArticlePage() {
 
             setUserId(user.id);
 
-            // 2) Check premium status
             const premium = await getPremiumStatus(user.id);
             setIsPremium(premium);
 
-            // 3) Load article by slug
             const { data, error: articleError } = await supabase
                .from("reading_articles")
-               .select("id, title, slug, content, level, is_premium")
+               .select(
+                  "id, title, slug, short_summary, content, content_blocks, cover_image_url, level, is_premium"
+               )
                .eq("slug", slug)
                .single();
 
@@ -78,9 +83,9 @@ export default function ReadingArticlePage() {
             if (!data) throw new Error("Article not found.");
 
             setArticle(data as Article);
-         } catch (err) {
-            console.error(err);
-            setError(getErrorMessage(err, "Failed to load article"));
+         } catch (requestError) {
+            console.error(requestError);
+            setError(getErrorMessage(requestError, "Failed to load article"));
          } finally {
             setLoading(false);
          }
@@ -89,7 +94,6 @@ export default function ReadingArticlePage() {
       if (slug) load();
    }, [slug, router]);
 
-   // Load finished status (after userId + article.id are known)
    useEffect(() => {
       const loadProgress = async () => {
          if (!userId || !article?.id) return;
@@ -98,19 +102,21 @@ export default function ReadingArticlePage() {
             setProgressLoading(true);
             setProgressError(null);
 
-            const { data, error } = await supabase
+            const { data, error: progressErrorResult } = await supabase
                .from("reading_progress")
                .select("finished")
                .eq("user_id", userId)
                .eq("article_id", article.id)
                .maybeSingle();
 
-            if (error) throw error;
+            if (progressErrorResult) throw progressErrorResult;
 
             setIsFinished(Boolean(data?.finished));
-         } catch (err) {
-            console.warn(err);
-            setProgressError(getErrorMessage(err, "Could not load reading progress."));
+         } catch (requestError) {
+            console.warn(requestError);
+            setProgressError(
+               getErrorMessage(requestError, "Could not load reading progress.")
+            );
          } finally {
             setProgressLoading(false);
          }
@@ -119,7 +125,6 @@ export default function ReadingArticlePage() {
       loadProgress();
    }, [userId, article?.id]);
 
-   // Toggle finished/un-finished
    const toggleFinished = async () => {
       if (!userId || !article?.id) return;
 
@@ -129,28 +134,31 @@ export default function ReadingArticlePage() {
 
          const nextFinished = !isFinished;
 
-         const { error } = await supabase.from("reading_progress").upsert(
-            {
-               user_id: userId,
-               article_id: article.id,
-               finished: nextFinished,
-               finished_at: nextFinished ? new Date().toISOString() : null,
-            },
-            { onConflict: "user_id,article_id" }
-         );
+         const { error: updateError } = await supabase
+            .from("reading_progress")
+            .upsert(
+               {
+                  user_id: userId,
+                  article_id: article.id,
+                  finished: nextFinished,
+                  finished_at: nextFinished ? new Date().toISOString() : null,
+               },
+               { onConflict: "user_id,article_id" }
+            );
 
-         if (error) throw error;
+         if (updateError) throw updateError;
 
          setIsFinished(nextFinished);
-      } catch (err) {
-         console.error(err);
-         setProgressError(getErrorMessage(err, "Could not update reading progress."));
+      } catch (requestError) {
+         console.error(requestError);
+         setProgressError(
+            getErrorMessage(requestError, "Could not update reading progress.")
+         );
       } finally {
          setProgressLoading(false);
       }
    };
 
-   // Save word to Reading deck
    const handleSaveWord = async (payload: {
       word: string;
       definition: string;
@@ -172,9 +180,8 @@ export default function ReadingArticlePage() {
             message: `Saving "${payload.word}"...`,
          });
 
-         const deckName = "Reading – Saved words";
+         const deckName = "Reading - Saved words";
 
-         // 1) Find existing deck
          const { data: decks, error: deckError } = await supabase
             .from("vocabulary_decks")
             .select("id")
@@ -186,7 +193,6 @@ export default function ReadingArticlePage() {
          let deckId: string;
 
          if (!decks || decks.length === 0) {
-            // 2) Create deck
             const { data: newDeck, error: createError } = await supabase
                .from("vocabulary_decks")
                .insert({
@@ -199,8 +205,6 @@ export default function ReadingArticlePage() {
                .single();
 
             if (createError) throw createError;
-
-            // ✅ Fix: newDeck can be null in types, so guard it
             if (!newDeck?.id) {
                throw new Error("Deck was not created. Please try again.");
             }
@@ -210,7 +214,6 @@ export default function ReadingArticlePage() {
             deckId = decks[0].id;
          }
 
-         // 3) Check if this word already exists
          const { data: existingCards, error: cardError } = await supabase
             .from("vocabulary_cards")
             .select("id")
@@ -223,12 +226,11 @@ export default function ReadingArticlePage() {
             setSaveStatus({
                word: payload.word,
                state: "exists",
-               message: `"${payload.word}" is already in your "Reading – Saved words" deck.`,
+               message: `"${payload.word}" is already in your "Reading - Saved words" deck.`,
             });
             return;
          }
 
-         // 4) Insert new card
          const { error: insertError } = await supabase
             .from("vocabulary_cards")
             .insert({
@@ -243,16 +245,16 @@ export default function ReadingArticlePage() {
          setSaveStatus({
             word: payload.word,
             state: "saved",
-            message: `Saved "${payload.word}" to your "Reading – Saved words" deck.`,
+            message: `Saved "${payload.word}" to your "Reading - Saved words" deck.`,
          });
-      } catch (err) {
-         console.error(err);
+      } catch (requestError) {
+         console.error(requestError);
          setSaveStatus({
             word: payload.word,
             state: "error",
             message: getErrorMessage(
-               err,
-               `Failed to save "${payload.word}". Please try again.`,
+               requestError,
+               `Failed to save "${payload.word}". Please try again.`
             ),
          });
       }
@@ -261,7 +263,7 @@ export default function ReadingArticlePage() {
    if (loading) {
       return (
          <div className="space-y-4">
-            <p className="text-slate-400 text-sm">Loading article…</p>
+            <p className="text-sm text-slate-400">Loading article...</p>
          </div>
       );
    }
@@ -269,66 +271,99 @@ export default function ReadingArticlePage() {
    if (error || !article) {
       return (
          <div className="space-y-4">
-            <p className="text-red-400 text-sm">
-               {error ?? "Article not found."}
-            </p>
+            <p className="text-sm text-red-400">{error ?? "Article not found."}</p>
          </div>
       );
    }
 
    const locked = article.is_premium && !isPremium;
+   const levelLabel = getReadingLevelLabel(article.level);
+   const contentBlocks = normalizeReadingContentBlocks(
+      article.content_blocks,
+      article.content
+   );
 
    return (
-      <div className="space-y-6">
+      <div className="mx-auto w-full max-w-6xl space-y-8">
          <button
             onClick={() => router.push("/dashboard/reading")}
-            className="text-sm text-slate-400 hover:text-emerald-300 cursor-pointer">
-            ← Back to reading list
+            className="text-sm text-slate-400 transition hover:text-emerald-300 cursor-pointer">
+            Back to reading list
          </button>
 
-         <div className="space-y-2">
-            <h1 className="text-2xl font-semibold">{article.title}</h1>
+         <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900/40">
+            <div className="grid gap-0 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+               <div className="flex flex-col justify-center p-6 sm:p-8 lg:p-10">
+                  <div className="flex flex-wrap items-center gap-2">
+                     {levelLabel && (
+                        <span className="rounded-full bg-slate-800 px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-100">
+                           {levelLabel}
+                        </span>
+                     )}
+                     {article.is_premium && (
+                        <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-xs uppercase tracking-[0.18em] text-amber-300">
+                           Premium
+                        </span>
+                     )}
+                     {!locked && isFinished && (
+                        <span className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-3 py-1 text-xs uppercase tracking-[0.18em] text-emerald-300">
+                           Finished
+                        </span>
+                     )}
+                  </div>
 
-            <div className="flex items-center gap-2 text-sm text-slate-400">
-               {article.level && (
-                  <span className="px-2 py-1 rounded-full bg-slate-800 text-slate-200 text-xs">
-                     {article.level}
-                  </span>
-               )}
-               {article.is_premium && (
-                  <span className="px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs">
-                     Premium
-                  </span>
-               )}
-               {!locked && isFinished && (
-                  <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/40 text-xs">
-                     Finished
-                  </span>
+                  <h1 className="mt-5 max-w-3xl text-4xl font-semibold leading-tight text-white md:text-5xl">
+                     {article.title}
+                  </h1>
+
+                  {article.short_summary && (
+                     <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300 md:text-lg">
+                        {article.short_summary}
+                     </p>
+                  )}
+
+                  {progressError && (
+                     <p className="mt-4 text-xs text-amber-300">{progressError}</p>
+                  )}
+               </div>
+
+               {article.cover_image_url ? (
+                  <div className="relative min-h-[240px] border-t border-slate-800 xl:min-h-full xl:border-l xl:border-t-0">
+                     <Image
+                        src={article.cover_image_url}
+                        alt={article.title}
+                        fill
+                        sizes="(min-width: 1280px) 38vw, 100vw"
+                        className="object-cover"
+                     />
+                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/35 via-transparent to-transparent xl:bg-gradient-to-l xl:from-slate-950/10 xl:to-transparent" />
+                  </div>
+               ) : (
+                  <div className="flex min-h-[240px] items-center justify-center border-t border-slate-800 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.16),transparent_35%),linear-gradient(135deg,rgba(15,23,42,0.92),rgba(2,6,23,0.98))] p-8 text-center text-sm text-slate-400 xl:border-l xl:border-t-0">
+                     Add a cover image to give this article a stronger first impression.
+                  </div>
                )}
             </div>
-
-            {progressError && (
-               <p className="text-xs text-amber-300">{progressError}</p>
-            )}
-         </div>
+         </section>
 
          {locked ? (
-            <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 text-slate-200 text-sm">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-200">
                This article is available only for premium members.
                <br />
                Please upgrade your account to read it.
             </div>
          ) : (
-            <>
+            <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
                <ArticleReader
                   text={article.content}
+                  blocks={contentBlocks}
                   onSaveWord={handleSaveWord}
                   saveStatus={saveStatus}
                   showHelper={false}
                />
 
-               <div className="flex items-center justify-between gap-4">
-                  <p className="text-slate-400 text-sm">
+               <div className="flex flex-col gap-4 rounded-[1.5rem] border border-slate-800 bg-slate-900/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-slate-400">
                      Click any word in the text to see its definition.
                   </p>
 
@@ -337,10 +372,10 @@ export default function ReadingArticlePage() {
                      onClick={toggleFinished}
                      disabled={progressLoading}
                      className={[
-                        "inline-flex items-center gap-2 px-3 py-2 rounded-full text-sm border transition",
+                        "inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm transition",
                         progressLoading
-                           ? "opacity-60 cursor-not-allowed"
-                           : "opacity-95 cursor-pointer",
+                           ? "cursor-not-allowed opacity-60"
+                           : "cursor-pointer opacity-95",
                         isFinished
                            ? "border-slate-700/70 bg-slate-900/40 text-slate-200 hover:border-emerald-400/40"
                            : "border-emerald-400/70 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300",
@@ -348,14 +383,14 @@ export default function ReadingArticlePage() {
                      <PiCheckCircleLight className="text-base" />
                      <span>
                         {progressLoading
-                           ? "Saving…"
+                           ? "Saving..."
                            : isFinished
-                           ? "Mark as unfinished"
-                           : "Mark as finished"}
+                             ? "Mark as unfinished"
+                             : "Mark as finished"}
                      </span>
                   </button>
                </div>
-            </>
+            </div>
          )}
       </div>
    );
