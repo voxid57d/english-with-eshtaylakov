@@ -983,12 +983,61 @@ export default function ListeningTestPage() {
 
    if (loading) {
       return (
-         <main className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
-            Loading listening test…
+         <main
+            aria-live="polite"
+            aria-busy="true"
+            className="min-h-screen bg-slate-950 pb-16 text-slate-100">
+            <div className="w-full px-4 py-4 lg:px-10 lg:py-6">
+               <div className="space-y-3">
+                  <div className="h-9 w-80 max-w-full rounded-full bg-slate-700/80 skeleton-shimmer" />
+                  <div className="h-4 w-2/3 max-w-full rounded-full bg-slate-900 skeleton-shimmer" />
+               </div>
+
+               <div className="mt-6 h-12 w-full rounded-xl bg-slate-900/70 skeleton-shimmer" />
+
+               <div className="mt-6 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+                  <div className="space-y-3">
+                     <div className="h-7 w-48 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                     <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-4">
+                        <div className="flex items-start gap-3">
+                           <div className="h-7 w-7 rounded-full bg-slate-800 skeleton-shimmer" />
+                           <div className="flex-1 space-y-2">
+                              <div className="h-4 w-28 rounded-full bg-slate-800 skeleton-shimmer" />
+                              <div className="h-4 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                              <div className="h-4 w-10/12 rounded-full bg-slate-800/70 skeleton-shimmer" />
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+
+                  <div className="mt-6 space-y-4">
+                     {Array.from({ length: 5 }).map((_, index) => (
+                        <div key={index} className="space-y-2">
+                           <div className="h-5 w-3/4 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                           <div className="h-11 rounded-lg border border-slate-700 bg-slate-950/30 skeleton-shimmer" />
+                        </div>
+                     ))}
+                  </div>
+               </div>
+            </div>
+
+            <div className="fixed inset-x-0 bottom-0 border-t border-slate-800 bg-slate-950/95">
+               <div className="flex items-center gap-3 px-4 py-2 lg:px-10">
+                  <div className="flex flex-1 gap-2 overflow-x-auto">
+                     {Array.from({ length: 8 }).map((_, index) => (
+                        <div
+                           key={index}
+                           className="h-8 w-8 shrink-0 rounded-full bg-slate-900 skeleton-shimmer"
+                        />
+                     ))}
+                  </div>
+                  <div className="h-10 w-36 rounded-full bg-slate-900 skeleton-shimmer" />
+                  <div className="h-10 w-32 rounded-full bg-slate-800 skeleton-shimmer" />
+               </div>
+            </div>
          </main>
       );
    }
-
    if (error || !test || !section) {
       return (
          <main className="min-h-screen flex items-center justify-center bg-slate-950 text-red-400">
@@ -1140,3 +1189,5 @@ export default function ListeningTestPage() {
       </main>
    );
 }
+
+

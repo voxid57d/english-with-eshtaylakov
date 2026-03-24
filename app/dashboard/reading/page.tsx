@@ -249,6 +249,62 @@ export default function ReadingPage() {
       );
    };
 
+   const loadingSkeleton = (
+      <section aria-live="polite" aria-busy="true" className="space-y-6">
+         <div className="flex flex-wrap items-start justify-between gap-4 sm:flex-nowrap">
+            <div className="space-y-3">
+               <div className="h-8 w-40 rounded-full bg-slate-700/80 skeleton-shimmer" />
+               <div className="h-4 w-96 max-w-full rounded-full bg-slate-900 skeleton-shimmer" />
+            </div>
+
+            <div className="h-10 w-44 rounded-full border border-slate-800 bg-slate-900/80 skeleton-shimmer" />
+         </div>
+
+         <div className="flex flex-wrap gap-2">
+            {Array.from({ length: 5 }).map((_, index) => (
+               <div
+                  key={index}
+                  className="h-9 w-24 rounded-full border border-slate-800 bg-slate-900/60 skeleton-shimmer"
+               />
+            ))}
+         </div>
+
+         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+               <div
+                  key={index}
+                  className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60">
+                  <div className="min-h-40 space-y-5 bg-slate-900/70 p-5">
+                     <div className="flex items-start justify-between gap-3">
+                        <div className="h-6 w-20 rounded-full bg-slate-800 skeleton-shimmer" />
+                        <div className="h-6 w-18 rounded-full bg-slate-800 skeleton-shimmer" />
+                     </div>
+                     <div className="space-y-3">
+                        <div className="h-8 w-3/4 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                        <div className="h-8 w-1/2 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                     </div>
+                  </div>
+
+                  <div className="relative h-48 overflow-hidden bg-slate-950/70 p-6">
+                     <div className="absolute inset-0 bg-slate-900/70 skeleton-shimmer" />
+                     <div className="absolute inset-x-6 bottom-6 flex items-end justify-between gap-4">
+                        <div className="w-full max-w-[14rem] rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3">
+                           <div className="space-y-2">
+                              <div className="h-3 rounded-full bg-slate-800 skeleton-shimmer" />
+                              <div className="h-3 w-11/12 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                              <div className="h-3 w-8/12 rounded-full bg-slate-800/70 skeleton-shimmer" />
+                           </div>
+                        </div>
+
+                        <div className="h-8 w-24 shrink-0 rounded-full border border-slate-800 bg-slate-900/70 skeleton-shimmer" />
+                     </div>
+                  </div>
+               </div>
+            ))}
+         </div>
+      </section>
+   );
+
    return (
       <div className="space-y-6">
          {/* Header */}
@@ -318,9 +374,7 @@ export default function ReadingPage() {
             </div>
          )}
 
-         {loading && (
-            <p className="text-slate-400 text-sm">Loading articles…</p>
-         )}
+         {loading && loadingSkeleton}
 
          {error && !loading && <p className="text-red-400 text-sm">{error}</p>}
 

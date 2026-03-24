@@ -358,7 +358,32 @@ export default function DeckPage() {
    };
 
    if (loadingDeck) {
-      return <div className="text-slate-400">Loading deck...</div>;
+      return (
+         <section aria-live="polite" aria-busy="true" className="space-y-6">
+            <div className="h-4 w-40 rounded-full bg-slate-800 skeleton-shimmer" />
+
+            <div className="flex flex-wrap items-center justify-between gap-4">
+               <div className="space-y-3">
+                  <div className="h-8 w-64 max-w-full rounded-full bg-slate-700/80 skeleton-shimmer" />
+                  <div className="h-4 w-[28rem] max-w-full rounded-full bg-slate-900 skeleton-shimmer" />
+               </div>
+
+               <div className="flex gap-3">
+                  <div className="h-10 w-28 rounded-full bg-slate-800 skeleton-shimmer" />
+                  <div className="h-10 w-28 rounded-full bg-slate-800 skeleton-shimmer" />
+               </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5 space-y-4">
+               <div className="h-6 w-40 rounded-full bg-slate-800 skeleton-shimmer" />
+               <div className="space-y-2">
+                  <div className="h-3 rounded-full bg-slate-800 skeleton-shimmer" />
+                  <div className="h-3 w-10/12 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                  <div className="h-3 w-8/12 rounded-full bg-slate-800/70 skeleton-shimmer" />
+               </div>
+            </div>
+         </section>
+      );
    }
 
    if (!deck) {
@@ -513,7 +538,36 @@ export default function DeckPage() {
          />
 
          {cardsLoading ? (
-            <p className="text-sm text-slate-500">Loading cards...</p>
+            <section aria-live="polite" aria-busy="true" className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+               {Array.from({ length: 6 }).map((_, index) => (
+                  <div
+                     key={index}
+                     className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-4">
+                     <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-2 flex-1">
+                           <div className="h-7 w-2/3 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                           <div className="h-4 w-24 rounded-full bg-slate-800 skeleton-shimmer" />
+                        </div>
+                        <div className="h-5 w-14 rounded-full bg-slate-800 skeleton-shimmer" />
+                     </div>
+
+                     <div className="space-y-2">
+                        <div className="h-3 rounded-full bg-slate-800 skeleton-shimmer" />
+                        <div className="h-3 w-11/12 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                        <div className="h-3 w-7/12 rounded-full bg-slate-800/70 skeleton-shimmer" />
+                     </div>
+
+                     <div className="flex gap-1 pt-2">
+                        {Array.from({ length: 4 }).map((_, barIndex) => (
+                           <div
+                              key={barIndex}
+                              className="h-2 flex-1 rounded-full bg-slate-800 skeleton-shimmer"
+                           />
+                        ))}
+                     </div>
+                  </div>
+               ))}
+            </section>
          ) : !hasAnyCards ? (
             <p className="text-sm text-slate-500">
                No cards yet in this deck. Add some to get started.

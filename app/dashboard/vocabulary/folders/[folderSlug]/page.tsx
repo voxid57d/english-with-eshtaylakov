@@ -92,7 +92,35 @@ export default function VocabularyFolderPage() {
    }, [folderSlug]);
 
    if (loading) {
-      return <div className="text-sm text-slate-400">Loading folder...</div>;
+      return (
+         <section aria-live="polite" aria-busy="true" className="space-y-6">
+            <div className="h-4 w-36 rounded-full bg-slate-800 skeleton-shimmer" />
+
+            <div className="space-y-3">
+               <div className="h-4 w-28 rounded-full bg-slate-900 skeleton-shimmer" />
+               <div className="h-8 w-64 max-w-full rounded-full bg-slate-700/80 skeleton-shimmer" />
+               <div className="h-4 w-[32rem] max-w-full rounded-full bg-slate-900 skeleton-shimmer" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+               {Array.from({ length: 6 }).map((_, index) => (
+                  <div
+                     key={index}
+                     className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-4">
+                     <div className="flex items-start justify-between gap-3">
+                        <div className="h-7 w-40 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                        <div className="h-6 w-20 rounded-full bg-slate-800 skeleton-shimmer" />
+                     </div>
+                     <div className="space-y-2">
+                        <div className="h-3 rounded-full bg-slate-800 skeleton-shimmer" />
+                        <div className="h-3 w-11/12 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                     </div>
+                     <div className="h-3 w-20 rounded-full bg-slate-900 skeleton-shimmer" />
+                  </div>
+               ))}
+            </div>
+         </section>
+      );
    }
 
    if (error) {

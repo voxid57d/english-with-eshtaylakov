@@ -114,6 +114,54 @@ export default function LeaderboardPage() {
       })
       .slice(0, 15);
 
+   const loadingSkeleton = (
+      <div
+         aria-live="polite"
+         aria-busy="true"
+         className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40">
+         <div className="hidden border-b border-slate-800 px-4 py-3 sm:grid sm:grid-cols-[72px_minmax(0,1fr)_140px_120px] sm:gap-3">
+            <div className="h-3 w-10 rounded-full bg-slate-800 skeleton-shimmer" />
+            <div className="h-3 w-14 rounded-full bg-slate-800 skeleton-shimmer" />
+            <div className="ml-auto h-3 w-20 rounded-full bg-slate-800 skeleton-shimmer" />
+            <div className="ml-auto h-3 w-14 rounded-full bg-slate-800 skeleton-shimmer" />
+         </div>
+
+         {Array.from({ length: 8 }).map((_, index) => (
+            <div key={index}>
+               <div className="mx-3 mb-3 rounded-2xl border border-slate-800 p-4 first:mt-3 sm:hidden">
+                  <div className="flex items-start justify-between gap-3">
+                     <div className="min-w-0 space-y-2">
+                        <div className="h-4 w-10 rounded-full bg-slate-800 skeleton-shimmer" />
+                        <div className="h-6 w-32 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                        <div className="h-3 w-14 rounded-full bg-slate-900 skeleton-shimmer" />
+                     </div>
+
+                     <div className="space-y-2 text-right">
+                        <div className="ml-auto h-3 w-16 rounded-full bg-slate-900 skeleton-shimmer" />
+                        <div className="ml-auto h-6 w-20 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                     </div>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-800/80 bg-slate-950/35 px-3 py-2">
+                     <div className="h-3 w-12 rounded-full bg-slate-900 skeleton-shimmer" />
+                     <div className="h-5 w-20 rounded-full bg-slate-800 skeleton-shimmer" />
+                  </div>
+               </div>
+
+               <div className="hidden items-center border-b border-slate-700/80 px-4 py-4 last:border-b-0 sm:grid sm:grid-cols-[72px_minmax(0,1fr)_140px_120px] sm:gap-3">
+                  <div className="h-4 w-10 rounded-full bg-slate-800 skeleton-shimmer" />
+                  <div className="space-y-2">
+                     <div className="h-5 w-36 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                     <div className="h-3 w-12 rounded-full bg-slate-900 skeleton-shimmer" />
+                  </div>
+                  <div className="ml-auto h-5 w-24 rounded-full bg-slate-800 skeleton-shimmer" />
+                  <div className="ml-auto h-5 w-20 rounded-full bg-slate-800 skeleton-shimmer" />
+               </div>
+            </div>
+         ))}
+      </div>
+   );
+
    return (
       <div className="space-y-6">
          <header className="flex items-start justify-between gap-4 flex-wrap">
@@ -128,11 +176,7 @@ export default function LeaderboardPage() {
             </div>
          </header>
 
-         {loading && (
-            <div className="rounded-xl border border-slate-800 p-4 text-sm text-slate-400">
-               Loading leaderboard...
-            </div>
-         )}
+         {loading && loadingSkeleton}
 
          {!loading && error && (
             <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-4 text-sm text-red-400">

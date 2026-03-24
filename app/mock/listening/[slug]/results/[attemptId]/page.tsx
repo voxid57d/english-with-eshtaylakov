@@ -199,12 +199,35 @@ export default function ListeningResultsPage() {
 
    if (loading) {
       return (
-         <main className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
-            Loading results…
+         <main
+            aria-live="polite"
+            aria-busy="true"
+            className="min-h-screen bg-slate-950 text-slate-100">
+            <div className="mx-auto max-w-3xl px-4 py-6">
+               <div className="space-y-3">
+                  <div className="h-9 w-72 max-w-full rounded-full bg-slate-700/80 skeleton-shimmer" />
+                  <div className="h-5 w-40 rounded-full bg-slate-800 skeleton-shimmer" />
+               </div>
+
+               <div className="mt-6 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                     <div
+                        key={index}
+                        className="border-b border-slate-800 pb-3 pt-1 last:border-b-0">
+                        <div className="space-y-2">
+                           <div className="h-5 w-4/5 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                           <div className="h-4 w-2/3 rounded-full bg-slate-800 skeleton-shimmer" />
+                           <div className="h-4 w-1/2 rounded-full bg-slate-900 skeleton-shimmer" />
+                        </div>
+                     </div>
+                  ))}
+               </div>
+
+               <div className="mt-6 h-10 w-32 rounded-full bg-slate-900 skeleton-shimmer" />
+            </div>
          </main>
       );
    }
-
    if (error || !attempt || !test) {
       return (
          <main className="min-h-screen flex items-center justify-center bg-slate-950 text-red-400">
@@ -289,3 +312,5 @@ export default function ListeningResultsPage() {
       </main>
    );
 }
+
+

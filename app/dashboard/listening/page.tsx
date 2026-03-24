@@ -7,7 +7,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
 import { PiHeadphonesLight } from "react-icons/pi";
 
-// ---- Types ----
 type Level = "A1" | "A2" | "B1" | "B2" | "C1";
 
 type ListeningTest = {
@@ -37,7 +36,6 @@ export default function ListeningPage() {
          setLoading(true);
          setError(null);
 
-         // 1) Get current user
          const {
             data: { user },
             error: userError,
@@ -55,11 +53,9 @@ export default function ListeningPage() {
             return;
          }
 
-         // 2) Check premium status
          const premium = await getPremiumStatus(user.id);
          setIsPremium(premium);
 
-         // 3) Fetch all graded listening tests & podcasts
          const { data: testsData, error: testsError } = await supabase
             .from("gl_tests")
             .select("id, slug, title, level, is_podcast, requires_premium")
@@ -72,10 +68,8 @@ export default function ListeningPage() {
             return;
          }
 
-         const typedTests = (testsData || []) as ListeningTest[];
-         setTests(typedTests);
+         setTests((testsData || []) as ListeningTest[]);
 
-         // 4) Fetch completed attempts for this user
          const { data: attemptsData, error: attemptsError } = await supabase
             .from("gl_attempts")
             .select("test_id")
@@ -96,11 +90,9 @@ export default function ListeningPage() {
       load();
    }, [router]);
 
-   // Separate podcasts from normal tests
    const podcastTests = tests.filter((t) => t.is_podcast);
    const normalTests = tests.filter((t) => !t.is_podcast);
 
-   // Group normal tests by level
    const testsByLevel: Record<Level, ListeningTest[]> = {
       A1: [],
       A2: [],
@@ -113,11 +105,75 @@ export default function ListeningPage() {
       testsByLevel[test.level].push(test);
    }
 
+   const loadingSkeleton = (
+      <section aria-live="polite" aria-busy="true" className="space-y-8">
+         <div className="space-y-3">
+            <div className="h-8 w-40 rounded-full bg-slate-700/80 skeleton-shimmer" />
+            <div className="h-4 w-96 max-w-full rounded-full bg-slate-900 skeleton-shimmer" />
+         </div>
+
+         <section className="space-y-3">
+            <div className="flex items-center gap-2">
+               <div className="h-7 w-28 rounded-full bg-slate-800 skeleton-shimmer" />
+               <div className="h-6 w-28 rounded-full border border-slate-800 bg-slate-900/60 skeleton-shimmer" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+               {Array.from({ length: 3 }).map((_, index) => (
+                  <div
+                     key={`podcast-${index}`}
+                     className="space-y-3 rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
+                     <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 space-y-2">
+                           <div className="h-5 w-3/4 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                           <div className="h-4 w-32 rounded-full bg-slate-800 skeleton-shimmer" />
+                        </div>
+                        <div className="space-y-2">
+                           <div className="h-6 w-12 rounded-full bg-slate-800 skeleton-shimmer" />
+                           <div className="h-6 w-18 rounded-full bg-slate-800 skeleton-shimmer" />
+                        </div>
+                     </div>
+                  </div>
+               ))}
+            </div>
+         </section>
+
+         <section className="space-y-6">
+            {Array.from({ length: 3 }).map((_, groupIndex) => (
+               <div key={groupIndex} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                     <div className="h-7 w-36 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                     <div className="h-6 w-24 rounded-full border border-slate-800 bg-slate-900/60 skeleton-shimmer" />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                     {Array.from({ length: 3 }).map((_, cardIndex) => (
+                        <div
+                           key={`${groupIndex}-${cardIndex}`}
+                           className="space-y-3 rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
+                           <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 space-y-2">
+                                 <div className="h-5 w-4/5 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                                 <div className="h-4 w-36 rounded-full bg-slate-800 skeleton-shimmer" />
+                              </div>
+                              <div className="space-y-2">
+                                 <div className="h-6 w-12 rounded-full bg-slate-800 skeleton-shimmer" />
+                                 <div className="h-6 w-16 rounded-full bg-slate-800 skeleton-shimmer" />
+                              </div>
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+               </div>
+            ))}
+         </section>
+      </section>
+   );
+
    return (
       <div className="space-y-8">
-         {/* Header (no subscription status chip) */}
          <div>
-            <h1 className="text-2xl font-semibold flex items-center gap-2">
+            <h1 className="flex items-center gap-2 text-2xl font-semibold">
                <PiHeadphonesLight className="text-emerald-400" />
                <span>Listening</span>
             </h1>
@@ -127,22 +183,19 @@ export default function ListeningPage() {
             </p>
          </div>
 
-         {loading && (
-            <p className="text-sm text-slate-300">Loading listening content…</p>
-         )}
+         {loading && loadingSkeleton}
 
          {!loading && error && <p className="text-sm text-red-400">{error}</p>}
 
-         {/* Podcast section */}
          {!loading && podcastTests.length > 0 && (
             <section className="space-y-3">
-               <h2 className="text-lg font-semibold flex items-center gap-2">
+               <h2 className="flex items-center gap-2 text-lg font-semibold">
                   <span>Podcasts</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
+                  <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
                      Just listen &amp; read
                   </span>
                </h2>
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {podcastTests.map((test) => (
                      <ListeningCard
                         key={test.id}
@@ -155,7 +208,6 @@ export default function ListeningPage() {
             </section>
          )}
 
-         {/* Graded listening by level */}
          {!loading && (
             <section className="space-y-6">
                {LEVELS.map((level) => {
@@ -164,14 +216,14 @@ export default function ListeningPage() {
 
                   return (
                      <div key={level} className="space-y-3">
-                        <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <h2 className="flex items-center gap-2 text-lg font-semibold">
                            <span>{level} Listening</span>
-                           <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-600">
+                           <span className="rounded-full border border-slate-600 bg-slate-800 px-2 py-0.5 text-xs text-slate-200">
                               {levelTests.length} exercise
                               {levelTests.length > 1 ? "s" : ""}
                            </span>
                         </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                            {levelTests.map((test) => (
                               <ListeningCard
                                  key={test.id}
@@ -197,7 +249,6 @@ export default function ListeningPage() {
    );
 }
 
-// ---- Card component ----
 function ListeningCard({
    test,
    isCompleted,
@@ -211,15 +262,12 @@ function ListeningCard({
    const isPremiumExercise = test.requires_premium;
    const isLocked = isPremiumExercise && !isPremiumUser;
 
-   // Card styles
    const premiumClasses =
       "rounded-xl border border-amber-400/70 bg-slate-900/70 hover:border-amber-300 hover:bg-slate-900 transition shadow-sm shadow-amber-900/40 p-4 space-y-2";
    const normalClasses =
       "rounded-xl border border-slate-700/70 bg-slate-900/70 hover:border-emerald-500/70 hover:bg-slate-900 transition shadow-sm shadow-slate-950/40 p-4 space-y-2";
 
-   // PREMIUM EXERCISE (visible as premium for everyone)
    if (isPremiumExercise) {
-      // locked → click goes to /premium
       if (isLocked) {
          return (
             <div
@@ -234,7 +282,6 @@ function ListeningCard({
          );
       }
 
-      // unlocked → click opens the test
       return (
          <Link
             href={`/dashboard/listening/${test.slug}`}
@@ -248,7 +295,6 @@ function ListeningCard({
       );
    }
 
-   // NON-PREMIUM EXERCISE
    return (
       <Link
          href={`/dashboard/listening/${test.slug}`}
@@ -271,35 +317,32 @@ function CardContent({
       <>
          <div className="flex items-start justify-between gap-2">
             <div>
-               <p className="text-sm font-semibold text-slate-50 line-clamp-2">
+               <p className="line-clamp-2 text-sm font-semibold text-slate-50">
                   {test.title}
                </p>
-               <p className="text-xs text-slate-400 mt-1">
+               <p className="mt-1 text-xs text-slate-400">
                   {test.is_podcast ? "Podcast mode" : "Graded listening test"}
                </p>
                {isLocked && (
-                  <p className="text-[11px] text-slate-400 mt-2">
+                  <p className="mt-2 text-[11px] text-slate-400">
                      This listening exercise is available for Premium users.
                   </p>
                )}
             </div>
 
             <div className="flex flex-col items-end gap-1">
-               {/* Level badge */}
-               <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-600">
+               <span className="rounded-full border border-slate-600 bg-slate-800 px-2 py-0.5 text-[11px] text-slate-200">
                   {test.level}
                </span>
 
-               {/* Done badge (only when unlocked) */}
                {isCompleted && !isLocked && (
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-400/60">
+                  <span className="rounded-full border border-emerald-400/60 bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300">
                      Done
                   </span>
                )}
 
-               {/* Premium badge (for all premium exercises, locked or not) */}
                {test.requires_premium && (
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 border border-amber-400/70">
+                  <span className="rounded-full border border-amber-400/70 bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-200">
                      Premium
                   </span>
                )}

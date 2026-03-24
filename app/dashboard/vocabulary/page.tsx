@@ -255,6 +255,34 @@ export default function VocabularyPage() {
       publicFolders.length === 0 &&
       publicStandaloneDecks.length === 0;
 
+   const loadingSkeleton = (
+      <section aria-live="polite" aria-busy="true" className="space-y-6">
+         <div className="space-y-3">
+            <div className="h-7 w-56 rounded-full bg-slate-800/90 skeleton-shimmer" />
+            <div className="h-4 w-80 max-w-full rounded-full bg-slate-900 skeleton-shimmer" />
+         </div>
+
+         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+               <div
+                  key={index}
+                  className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 space-y-4">
+                  <div className="h-5 w-24 rounded-full bg-slate-800 skeleton-shimmer" />
+                  <div className="h-8 w-3/4 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                  <div className="space-y-2">
+                     <div className="h-3 rounded-full bg-slate-800 skeleton-shimmer" />
+                     <div className="h-3 w-10/12 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                  </div>
+                  <div className="pt-2 flex items-center gap-2">
+                     <div className="h-8 w-24 rounded-full bg-slate-800 skeleton-shimmer" />
+                     <div className="h-8 w-20 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                  </div>
+               </div>
+            ))}
+         </div>
+      </section>
+   );
+
    return (
       <div className="space-y-6">
          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -324,7 +352,7 @@ export default function VocabularyPage() {
             </form>
          )}
 
-         {loading && <div className="text-sm text-slate-400">Loading vocabulary...</div>}
+         {loading && loadingSkeleton}
 
          {!loading && error && <div className="text-sm text-red-400">{error}</div>}
 

@@ -262,8 +262,56 @@ export default function ReadingArticlePage() {
 
    if (loading) {
       return (
-         <div className="space-y-4">
-            <p className="text-sm text-slate-400">Loading article...</p>
+         <div
+            aria-live="polite"
+            aria-busy="true"
+            className="mx-auto w-full max-w-6xl space-y-8">
+            <div className="h-4 w-36 rounded-full bg-slate-800 skeleton-shimmer" />
+
+            <section className="overflow-hidden rounded-[2rem] border border-slate-800 bg-slate-900/40">
+               <div className="grid gap-0 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+                  <div className="flex flex-col justify-center p-6 sm:p-8 lg:p-10">
+                     <div className="flex flex-wrap items-center gap-2">
+                        <div className="h-7 w-20 rounded-full bg-slate-800 skeleton-shimmer" />
+                        <div className="h-7 w-24 rounded-full bg-slate-800 skeleton-shimmer" />
+                     </div>
+
+                     <div className="mt-5 space-y-3">
+                        <div className="h-10 w-3/4 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                        <div className="h-10 w-1/2 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                     </div>
+
+                     <div className="mt-5 max-w-2xl space-y-3">
+                        <div className="h-4 rounded-full bg-slate-800 skeleton-shimmer" />
+                        <div className="h-4 w-11/12 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                        <div className="h-4 w-9/12 rounded-full bg-slate-800/70 skeleton-shimmer" />
+                     </div>
+                  </div>
+
+                  <div className="relative min-h-[240px] border-t border-slate-800 bg-slate-900/70 xl:min-h-full xl:border-l xl:border-t-0">
+                     <div className="absolute inset-0 skeleton-shimmer" />
+                  </div>
+               </div>
+            </section>
+
+            <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+               <section className="rounded-[1.75rem] border border-slate-800 bg-slate-900/40 p-5 sm:p-6">
+                  <div className="space-y-6">
+                     {Array.from({ length: 3 }).map((_, sectionIndex) => (
+                        <div key={sectionIndex} className="space-y-3">
+                           <div className="h-4 w-44 rounded-full bg-slate-800 skeleton-shimmer" />
+                           <div className="h-4 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                           <div className="h-4 w-11/12 rounded-full bg-slate-800/70 skeleton-shimmer" />
+                           <div className="h-4 w-8/12 rounded-full bg-slate-800/60 skeleton-shimmer" />
+                        </div>
+                     ))}
+                  </div>
+               </section>
+
+               <div className="flex justify-end">
+                  <div className="h-11 w-40 rounded-full border border-slate-800 bg-slate-900/50 skeleton-shimmer" />
+               </div>
+            </div>
          </div>
       );
    }
