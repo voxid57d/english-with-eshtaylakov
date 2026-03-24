@@ -384,9 +384,6 @@ export default function ArticleReader({
       <div ref={containerRef} className="relative space-y-6">
          <div className={["rounded-[2rem] border", theme.shell].join(" ")}>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/5 px-5 py-4 md:px-8">
-               <p className={["text-xs uppercase tracking-[0.24em]", theme.helper].join(" ")}>
-                  Reading theme
-               </p>
                <div className="flex flex-wrap gap-2">
                   {(["dark", "amber", "paper"] as ReaderTheme[]).map((themeKey) => {
                      const option = READER_THEMES[themeKey];
@@ -520,8 +517,12 @@ export default function ArticleReader({
                         setData(null);
                         setError(null);
                      }}
-                     className={["cursor-pointer text-xs", theme.popupPhonetic].join(" ")}>
-                     x
+                     className={[
+                        "cursor-pointer rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em]",
+                        theme.popupPhonetic,
+                        theme.popupBorder,
+                     ].join(" ")}>
+                     Close
                   </button>
                </div>
 

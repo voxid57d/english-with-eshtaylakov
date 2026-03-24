@@ -362,11 +362,7 @@ export default function ReadingArticlePage() {
                   showHelper={false}
                />
 
-               <div className="flex flex-col gap-4 rounded-[1.5rem] border border-slate-800 bg-slate-900/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-slate-400">
-                     Click any word in the text to see its definition.
-                  </p>
-
+               <div className="flex flex-col gap-4 rounded-[1.5rem] border border-slate-800 bg-slate-900/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-end">
                   <button
                      type="button"
                      onClick={toggleFinished}
