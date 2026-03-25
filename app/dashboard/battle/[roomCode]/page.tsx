@@ -229,6 +229,7 @@ export default function BattleRoomPage() {
    const [isRoomRulesOpen, setIsRoomRulesOpen] = useState(false);
    const questionTimerRef = useRef<number | null>(null);
    const syncedDeckSourceRef = useRef<string | null>(null);
+   const countdownScrollKeyRef = useRef<string | null>(null);
 
    const currentRound = snapshot?.currentRound ?? null;
 
@@ -856,6 +857,19 @@ export default function BattleRoomPage() {
       };
    }, [showActiveQuestionOverlay]);
 
+   useEffect(() => {
+      const countdownKey =
+         currentRound?.status === "active" && countdownMs > 0
+            ? `${currentRound.id}:${currentRound.battleStartsAt ?? ""}`
+            : null;
+
+      if (countdownKey && countdownScrollKeyRef.current !== countdownKey) {
+         window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      countdownScrollKeyRef.current = countdownKey;
+   }, [countdownMs, currentRound]);
+
    if (loading) {
       return <div className="text-sm text-slate-400">Loading battle room...</div>;
    }
@@ -884,6 +898,11 @@ export default function BattleRoomPage() {
          ? currentRound.players.length >= 2 &&
            currentRound.players.every((player) => player.isReady)
          : false;
+   const showFloatingReadyButton =
+      currentRound?.status === "waiting" &&
+      currentRound.viewerIsParticipant &&
+      hasMinimumPlayers &&
+      !currentRound.viewerReady;
    const roundPlayersByUserId = new Map(
       (currentRound?.players || []).map((player) => [player.userId, player]),
    );
@@ -893,6 +912,20 @@ export default function BattleRoomPage() {
 
    return (
       <div className="space-y-6">
+         {showFloatingReadyButton && (
+            <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 px-4 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] sm:bottom-6 sm:px-6 lg:px-8">
+               <div className="mx-auto flex w-full max-w-5xl justify-center">
+                  <button
+                     type="button"
+                     onClick={handleReady}
+                     disabled={readyLoading}
+                     className="pointer-events-auto w-full max-w-sm cursor-pointer rounded-full bg-emerald-500 px-5 py-4 text-sm font-semibold text-slate-950 shadow-[0_18px_40px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
+                     {readyLoading ? "Loading..." : "I'm ready"}
+                  </button>
+               </div>
+            </div>
+         )}
+
          {showActiveQuestionOverlay && (
             <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/96 backdrop-blur-sm">
                <div className="flex min-h-full items-start justify-center p-4 sm:p-6 lg:p-8">
@@ -1015,7 +1048,10 @@ export default function BattleRoomPage() {
                </div>
 
                {currentRound?.status === "waiting" && (
-                  <div className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6 space-y-5">
+                  <div
+                     className={`rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6 space-y-5 ${
+                        showFloatingReadyButton ? "pb-32 sm:pb-36" : ""
+                     }`}>
                      <div>
                         <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
                            Round {currentRound.roundNumber}
@@ -1062,16 +1098,6 @@ export default function BattleRoomPage() {
 
                      {currentRound.viewerIsParticipant ? (
                         <>
-                           {hasMinimumPlayers && !currentRound.viewerReady && (
-                              <button
-                                 type="button"
-                                 onClick={handleReady}
-                                 disabled={readyLoading}
-                                 className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
-                                 {readyLoading ? "Loading..." : "I'm ready"}
-                              </button>
-                           )}
-
                            {currentRound.viewerReady && !everyoneReady && (
                               <p className="text-sm text-slate-300">
                                  You are ready. Waiting for the remaining players.
