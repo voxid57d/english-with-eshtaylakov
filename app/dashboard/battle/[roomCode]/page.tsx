@@ -860,7 +860,7 @@ export default function BattleRoomPage() {
    useEffect(() => {
       const countdownKey =
          currentRound?.status === "active" && countdownMs > 0
-            ? `${currentRound.id}:${currentRound.battleStartsAt ?? ""}`
+            ? `${currentRound.roundId}:${currentRound.battleStartsAt ?? ""}`
             : null;
 
       if (countdownKey && countdownScrollKeyRef.current !== countdownKey) {
