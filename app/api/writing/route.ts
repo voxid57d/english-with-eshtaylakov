@@ -211,7 +211,17 @@ export async function PUT(req: Request) {
       }
 
       const answerChanged = existing ? existing.answer_text !== answerText : true;
-      const nextStatus = existing && !answerChanged ? existing.status : "draft";
+      let nextStatus: WritingSubmissionRow["status"] = "draft";
+
+      if (existing) {
+         if (!answerChanged) {
+            nextStatus = existing.status;
+         } else if (existing.status === "pending_feedback") {
+            nextStatus = "draft";
+         } else {
+            nextStatus = existing.status;
+         }
+      }
 
       const { data, error } = await supabaseAdmin
          .from("writing_submissions")
@@ -238,7 +248,6 @@ export async function PUT(req: Request) {
                   nextStatus === "feedback_ready"
                      ? existing?.feedback_given_at || null
                      : null,
-               feedback_given_by: nextStatus === "feedback_ready" ? null : null,
             },
             {
                onConflict: "user_id,prompt_id",

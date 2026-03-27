@@ -46,6 +46,11 @@ type ToastState = {
 } | null;
 
 const WRITING_MODE_STORAGE_KEY = "writing-display-mode";
+const WRITING_AUTOSAVE_INTERVAL_MS = 60_000;
+
+function getDraftStorageKey(promptId: string) {
+   return `writing-draft:${promptId}`;
+}
 
 async function getAccessToken() {
    const { data, error } = await supabase.auth.getSession();
@@ -112,13 +117,16 @@ export default function WritingPromptPage() {
    const [timerNow, setTimerNow] = useState(Date.now());
    const [startedAt, setStartedAt] = useState<number | null>(null);
    const [saving, setSaving] = useState(false);
+    const [isAutoSaving, setIsAutoSaving] = useState(false);
    const [submitting, setSubmitting] = useState(false);
    const [showFeedback, setShowFeedback] = useState(false);
    const [toast, setToast] = useState<ToastState>(null);
+   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
    const [displayMode, setDisplayMode] = useState<WritingDisplayMode>("dark");
    const [leftPaneWidth, setLeftPaneWidth] = useState(42);
    const [isResizing, setIsResizing] = useState(false);
    const splitContainerRef = useRef<HTMLDivElement | null>(null);
+   const lastSavedTextRef = useRef("");
 
    const taskMeta = useMemo(
       () => (taskNumber ? getWritingTaskMeta(taskNumber) : null),
@@ -192,9 +200,16 @@ export default function WritingPromptPage() {
                return;
             }
 
+            const localDraft = window.localStorage.getItem(
+               getDraftStorageKey(matchedEntry.prompt.id)
+            );
+
             setIsPremium(premium);
             setEntry(matchedEntry);
-            setDraftText(matchedEntry.submission?.answerText || "");
+            const initialDraft = localDraft ?? matchedEntry.submission?.answerText ?? "";
+            setDraftText(initialDraft);
+            lastSavedTextRef.current = matchedEntry.submission?.answerText ?? "";
+            setLastSavedAt(matchedEntry.submission?.updatedAt ?? null);
             setStartedAt(Date.now());
             setTimerNow(Date.now());
          } catch (requestError) {
@@ -224,6 +239,70 @@ export default function WritingPromptPage() {
 
       return () => window.clearInterval(interval);
    }, [startedAt]);
+
+   useEffect(() => {
+      if (!entry?.prompt.id) {
+         return;
+      }
+
+      window.localStorage.setItem(getDraftStorageKey(entry.prompt.id), draftText);
+   }, [draftText, entry?.prompt.id]);
+
+   useEffect(() => {
+      if (!entry || !draftText.trim()) {
+         return;
+      }
+
+      if (draftText === lastSavedTextRef.current) {
+         return;
+      }
+
+      if (saving || isAutoSaving || submitting) {
+         return;
+      }
+
+      const timeoutId = window.setTimeout(() => {
+         const runAutoSave = async () => {
+            try {
+               setIsAutoSaving(true);
+               const token = await getAccessToken();
+               const response = await fetch("/api/writing", {
+                  method: "PUT",
+                  headers: {
+                     "Content-Type": "application/json",
+                     Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({
+                     promptId: entry.prompt.id,
+                     answerText: draftText,
+                  }),
+               });
+               const payload = await response.json();
+
+               if (!response.ok) {
+                  throw new Error(payload.error || "Failed to save your writing.");
+               }
+
+               const submission = payload.submission as WritingSubmission;
+               updateSubmission(submission);
+               lastSavedTextRef.current = draftText;
+               setLastSavedAt(submission.updatedAt);
+               window.localStorage.setItem(
+                  getDraftStorageKey(entry.prompt.id),
+                  draftText
+               );
+            } catch {
+               // Silent autosave failures should not interrupt writing.
+            } finally {
+               setIsAutoSaving(false);
+            }
+         };
+
+         void runAutoSave();
+      }, WRITING_AUTOSAVE_INTERVAL_MS);
+
+      return () => window.clearTimeout(timeoutId);
+   }, [draftText, entry, isAutoSaving, saving, submitting]);
 
    useEffect(() => {
       if (!isResizing) {
@@ -273,12 +352,21 @@ export default function WritingPromptPage() {
       setEntry((current) => (current ? { ...current, submission } : current));
    };
 
-   const handleSave = async () => {
+   const saveDraft = async (silent = false) => {
       if (!entry) return;
 
+      if (draftText === lastSavedTextRef.current) {
+         return;
+      }
+
       try {
-         setSaving(true);
-         setToast(null);
+         if (silent) {
+            setIsAutoSaving(true);
+         } else {
+            setSaving(true);
+            setToast(null);
+         }
+
          const token = await getAccessToken();
          const response = await fetch("/api/writing", {
             method: "PUT",
@@ -297,17 +385,36 @@ export default function WritingPromptPage() {
             throw new Error(payload.error || "Failed to save your writing.");
          }
 
-         updateSubmission(payload.submission as WritingSubmission);
-         setToast({ kind: "success", message: "Draft saved." });
+         const submission = payload.submission as WritingSubmission;
+         updateSubmission(submission);
+         lastSavedTextRef.current = draftText;
+         setLastSavedAt(submission.updatedAt);
+         window.localStorage.setItem(getDraftStorageKey(entry.prompt.id), draftText);
+
+         if (!silent) {
+            setToast({ kind: "success", message: "Draft saved." });
+         }
       } catch (error) {
-         setToast({
-            kind: "error",
-            message:
-               error instanceof Error ? error.message : "Failed to save your writing.",
-         });
+         if (!silent) {
+            setToast({
+               kind: "error",
+               message:
+                  error instanceof Error
+                     ? error.message
+                     : "Failed to save your writing.",
+            });
+         }
       } finally {
-         setSaving(false);
+         if (silent) {
+            setIsAutoSaving(false);
+         } else {
+            setSaving(false);
+         }
       }
+   };
+
+   const handleSave = async () => {
+      await saveDraft(false);
    };
 
    const handleSubmitForFeedback = async () => {
@@ -340,6 +447,9 @@ export default function WritingPromptPage() {
          }
 
          updateSubmission(payload.submission as WritingSubmission);
+         lastSavedTextRef.current = draftText;
+         setLastSavedAt((payload.submission as WritingSubmission).updatedAt);
+         window.localStorage.setItem(getDraftStorageKey(entry.prompt.id), draftText);
          setToast({
             kind: "success",
             message: "Your writing was sent to the admin for feedback.",
@@ -595,7 +705,11 @@ export default function WritingPromptPage() {
 
                   <div className="flex flex-wrap items-center justify-between gap-3">
                      <p className={`text-sm ${modeConfig.mutedText}`}>
-                        Saving keeps your current draft under this prompt.
+                        {isAutoSaving
+                           ? "Autosaving..."
+                           : lastSavedAt
+                             ? `Saved ${formatDate(lastSavedAt)}`
+                             : "Saving keeps your current draft under this prompt."}
                      </p>
 
                      <div className="flex flex-wrap items-center gap-3">
