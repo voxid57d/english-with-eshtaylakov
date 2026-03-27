@@ -8,6 +8,7 @@ import {
    PiReadCvLogoLight,
    PiHeadphonesLight,
    PiExamLight,
+   PiNotePencilLight,
    PiTrophyLight,
    PiSwordLight,
    PiCrownSimpleLight,
@@ -35,6 +36,12 @@ const links = [
       href: "/dashboard/listening",
       label: "Listening",
       icon: PiHeadphonesLight,
+   },
+   {
+      href: "/dashboard/writing",
+      label: "Writing",
+      icon: PiNotePencilLight,
+      badge: "NEW",
    },
    {
       href: "/dashboard/mock",
@@ -114,6 +121,12 @@ function Sidebar({ isOpenOnMobile, closeMobile, isPremium }: SidebarProps) {
                         }`}>
                         {link.label}
                      </span>
+
+                     {!collapsed && link.badge && (
+                        <span className="rounded-full border border-emerald-300/40 bg-emerald-400/15 px-2 py-0.5 text-[10px] font-semibold tracking-[0.18em] text-emerald-200 shadow-[0_0_18px_rgba(52,211,153,0.22)]">
+                           {link.badge}
+                        </span>
+                     )}
 
                      {!collapsed && (
                         <span
