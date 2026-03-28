@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import AdminSectionNav from "@/components/AdminSectionNav";
 
 type Folder = {
    id: string;
@@ -55,15 +56,6 @@ type CardDraft = {
    transcription: string;
 };
 
-type AdminUser = {
-   id: string;
-   email: string | null;
-   username: string | null;
-   isPremium: boolean;
-   createdAt: string | null;
-   lastSignInAt: string | null;
-};
-
 async function getAccessToken() {
    const { data, error } = await supabase.auth.getSession();
    if (error || !data.session?.access_token) {
@@ -78,14 +70,11 @@ export default function AdminVocabularyPage() {
    const [folders, setFolders] = useState<Folder[]>([]);
    const [decks, setDecks] = useState<Deck[]>([]);
    const [cards, setCards] = useState<Card[]>([]);
-   const [users, setUsers] = useState<AdminUser[]>([]);
    const [selectedDeckId, setSelectedDeckId] = useState("");
    const [loading, setLoading] = useState(true);
    const [cardsLoading, setCardsLoading] = useState(false);
    const [error, setError] = useState<string | null>(null);
    const [success, setSuccess] = useState<string | null>(null);
-   const [userSearch, setUserSearch] = useState("");
-   const [userSavingId, setUserSavingId] = useState<string | null>(null);
 
    const [folderTitle, setFolderTitle] = useState("");
    const [folderSlug, setFolderSlug] = useState("");
@@ -128,18 +117,6 @@ export default function AdminVocabularyPage() {
       () => folders.find((folder) => folder.id === selectedFolderId) || null,
       [folders, selectedFolderId]
    );
-   const filteredUsers = useMemo(() => {
-      const query = userSearch.trim().toLowerCase();
-      if (!query) {
-         return users;
-      }
-
-      return users.filter((user) =>
-         [user.email, user.username, user.id].some((value) =>
-            value?.toLowerCase().includes(query)
-         )
-      );
-   }, [userSearch, users]);
 
    useEffect(() => {
       const load = async () => {
@@ -147,24 +124,13 @@ export default function AdminVocabularyPage() {
             setLoading(true);
             setError(null);
             const token = await getAccessToken();
-            const [vocabularyResponse, usersResponse] = await Promise.all([
-               fetch("/api/admin/vocabulary", {
-                  headers: {
-                     Authorization: `Bearer ${token}`,
-                  },
-                  cache: "no-store",
-               }),
-               fetch("/api/admin/users", {
-                  headers: {
-                     Authorization: `Bearer ${token}`,
-                  },
-                  cache: "no-store",
-               }),
-            ]);
-            const [vocabularyPayload, usersPayload] = await Promise.all([
-               vocabularyResponse.json(),
-               usersResponse.json(),
-            ]);
+            const vocabularyResponse = await fetch("/api/admin/vocabulary", {
+               headers: {
+                  Authorization: `Bearer ${token}`,
+               },
+               cache: "no-store",
+            });
+            const vocabularyPayload = await vocabularyResponse.json();
 
             if (!vocabularyResponse.ok) {
                if (
@@ -180,15 +146,6 @@ export default function AdminVocabularyPage() {
                );
             }
 
-            if (!usersResponse.ok) {
-               if (usersResponse.status === 401 || usersResponse.status === 403) {
-                  router.replace("/dashboard");
-                  return;
-               }
-
-               throw new Error(usersPayload.error || "Failed to load admin data.");
-            }
-
             const nextFolders = (vocabularyPayload.folders || []) as Folder[];
             const nextDecks = (vocabularyPayload.decks || []) as Deck[];
             setFolders(nextFolders);
@@ -198,7 +155,6 @@ export default function AdminVocabularyPage() {
                   .map((folder) => folder.id),
             );
             setDecks(nextDecks);
-            setUsers((usersPayload.users || []) as AdminUser[]);
             const initialDeckId = nextDecks[0]?.id || "";
             setSelectedDeckId((current) => current || initialDeckId);
          } catch (requestError) {
@@ -815,78 +771,26 @@ export default function AdminVocabularyPage() {
       }
    };
 
-   const handleTogglePremium = async (user: AdminUser) => {
-      try {
-         setUserSavingId(user.id);
-         setError(null);
-         setSuccess(null);
-         const token = await getAccessToken();
-         const response = await fetch("/api/admin/users", {
-            method: "PATCH",
-            headers: {
-               "Content-Type": "application/json",
-               Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-               userId: user.id,
-               isPremium: !user.isPremium,
-            }),
-         });
-         const payload = await response.json();
-
-         if (!response.ok) {
-            throw new Error(payload.error || "Failed to update premium status.");
-         }
-
-         const updatedUser = payload.user as {
-            id: string;
-            username: string | null;
-            isPremium: boolean;
-         };
-
-         setUsers((prev) =>
-            prev.map((current) =>
-               current.id === updatedUser.id
-                  ? {
-                       ...current,
-                       username: updatedUser.username,
-                       isPremium: updatedUser.isPremium,
-                    }
-                  : current
-            )
-         );
-         setSuccess(
-            updatedUser.isPremium
-               ? "User is now premium."
-               : "Premium access removed."
-         );
-      } catch (requestError) {
-         setError(
-            requestError instanceof Error
-               ? requestError.message
-               : "Failed to update premium status."
-         );
-      } finally {
-         setUserSavingId(null);
-      }
-   };
-
    return (
       <div className="space-y-8">
-         <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">
-               Admin
-            </p>
-            <h1 className="text-3xl font-semibold">Vocabulary admin</h1>
-            <p className="max-w-3xl text-sm text-slate-400">
-               Create folders, publish decks into folders, and add cards inside
-               each deck from one place.
-            </p>
-            <Link
-               href="/dashboard/vocabulary"
-               className="inline-flex text-sm text-slate-400 transition hover:text-slate-200">
-               Back to vocabulary
-            </Link>
+         <div className="space-y-4">
+            <AdminSectionNav />
+
+            <div className="space-y-2">
+               <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">
+                  Admin
+               </p>
+               <h1 className="text-3xl font-semibold">Vocabulary admin</h1>
+               <p className="max-w-3xl text-sm text-slate-400">
+                  Create folders, publish decks into folders, and add cards inside
+                  each deck from one place.
+               </p>
+               <Link
+                  href="/dashboard/vocabulary"
+                  className="inline-flex text-sm text-slate-400 transition hover:text-slate-200">
+                  Back to vocabulary
+               </Link>
+            </div>
          </div>
 
          {error && (
@@ -1238,75 +1142,6 @@ export default function AdminVocabularyPage() {
                </div>
 
                <div className="space-y-6">
-                  <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6">
-                     <div className="mb-4 space-y-1">
-                        <h2 className="text-xl font-semibold">Users</h2>
-                        <p className="text-sm text-slate-400">
-                           Search by email, username, or ID and toggle premium access.
-                        </p>
-                     </div>
-
-                     <input
-                        value={userSearch}
-                        onChange={(event) => setUserSearch(event.target.value)}
-                        placeholder="Search users"
-                        className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-emerald-500"
-                     />
-
-                     <div className="mt-4 space-y-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                           {filteredUsers.length} user
-                           {filteredUsers.length === 1 ? "" : "s"}
-                        </p>
-
-                        {filteredUsers.length === 0 ? (
-                           <p className="rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-500">
-                              No users matched your search.
-                           </p>
-                        ) : (
-                           <div className="max-h-[34rem] space-y-3 overflow-y-auto pr-1">
-                              {filteredUsers.map((user) => (
-                                 <div
-                                    key={user.id}
-                                    className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                       <div className="min-w-0">
-                                          <p className="truncate font-semibold text-slate-100">
-                                             {user.email || "No email"}
-                                          </p>
-                                          <p className="mt-1 text-sm text-slate-400">
-                                             Username: {user.username || "Not set"}
-                                          </p>
-                                          <p className="mt-1 text-xs text-slate-500">
-                                             Premium: {user.isPremium ? "Yes" : "No"}
-                                          </p>
-                                          <p className="mt-1 break-all text-[11px] text-slate-600">
-                                             ID: {user.id}
-                                          </p>
-                                       </div>
-                                       <button
-                                          type="button"
-                                          onClick={() => handleTogglePremium(user)}
-                                          disabled={userSavingId === user.id}
-                                          className={`cursor-pointer rounded-full px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                                             user.isPremium
-                                                ? "border border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
-                                                : "bg-emerald-500 text-slate-950 hover:bg-emerald-400"
-                                          }`}>
-                                          {userSavingId === user.id
-                                             ? "Saving..."
-                                             : user.isPremium
-                                               ? "Remove premium"
-                                               : "Make premium"}
-                                       </button>
-                                    </div>
-                                 </div>
-                              ))}
-                           </div>
-                        )}
-                     </div>
-                  </section>
-
                   <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6">
                      <div className="mb-4 space-y-1">
                         <h2 className="text-xl font-semibold">Edit selected deck</h2>

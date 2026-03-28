@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import AdminSectionNav from "@/components/AdminSectionNav";
 import {
    createReadingBlock,
    getReadingLevelLabel,
@@ -287,26 +288,30 @@ export default function AdminReadingPage() {
 
    return (
       <div className="space-y-6">
-         <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-               <h1 className="text-3xl font-semibold">Reading admin</h1>
-               <p className="mt-2 text-sm text-slate-400">
-                  Create and edit reading articles with cover images and structured body blocks.
-               </p>
-            </div>
+         <div className="space-y-4">
+            <AdminSectionNav />
 
-            <div className="flex items-center gap-3">
-               <Link
-                  href="/dashboard/reading"
-                  className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-900">
-                  View reading
-               </Link>
-               <button
-                  type="button"
-                  onClick={resetForNew}
-                  className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
-                  New article
-               </button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+               <div>
+                  <h1 className="text-3xl font-semibold">Reading admin</h1>
+                  <p className="mt-2 text-sm text-slate-400">
+                     Create and edit reading articles with cover images and structured body blocks.
+                  </p>
+               </div>
+
+               <div className="flex items-center gap-3">
+                  <Link
+                     href="/dashboard/reading"
+                     className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-900">
+                     View reading
+                  </Link>
+                  <button
+                     type="button"
+                     onClick={resetForNew}
+                     className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
+                     New article
+                  </button>
+               </div>
             </div>
          </div>
 

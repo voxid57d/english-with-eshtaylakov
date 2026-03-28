@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -269,26 +270,26 @@ export default function ReadingPage() {
             ))}
          </div>
 
-         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 4 }).map((_, index) => (
                <div
                   key={index}
                   className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60">
-                  <div className="min-h-40 space-y-5 bg-slate-900/70 p-5">
+                  <div className="min-h-28 space-y-4 bg-slate-900/70 p-4">
                      <div className="flex items-start justify-between gap-3">
                         <div className="h-6 w-20 rounded-full bg-slate-800 skeleton-shimmer" />
                         <div className="h-6 w-18 rounded-full bg-slate-800 skeleton-shimmer" />
                      </div>
                      <div className="space-y-3">
-                        <div className="h-8 w-3/4 rounded-full bg-slate-700/80 skeleton-shimmer" />
-                        <div className="h-8 w-1/2 rounded-full bg-slate-800/80 skeleton-shimmer" />
+                        <div className="h-7 w-3/4 rounded-full bg-slate-700/80 skeleton-shimmer" />
+                        <div className="h-7 w-1/2 rounded-full bg-slate-800/80 skeleton-shimmer" />
                      </div>
                   </div>
 
-                  <div className="relative h-48 overflow-hidden bg-slate-950/70 p-6">
+                  <div className="relative h-36 overflow-hidden bg-slate-950/70 p-4">
                      <div className="absolute inset-0 bg-slate-900/70 skeleton-shimmer" />
-                     <div className="absolute inset-x-6 bottom-6 flex items-end justify-between gap-4">
-                        <div className="w-full max-w-[14rem] rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3">
+                     <div className="absolute inset-x-4 bottom-4 flex items-end justify-between gap-3">
+                        <div className="w-full max-w-[12rem] rounded-2xl border border-slate-800 bg-slate-900/70 px-3 py-2.5">
                            <div className="space-y-2">
                               <div className="h-3 rounded-full bg-slate-800 skeleton-shimmer" />
                               <div className="h-3 w-11/12 rounded-full bg-slate-800/80 skeleton-shimmer" />
@@ -385,7 +386,7 @@ export default function ReadingPage() {
          )}
 
          {!loading && !error && visibleArticles.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                {visibleArticles.map((article) => {
                   const locked = article.is_premium && !isPremium;
                   const finished = finishedArticleIds.has(article.id);
@@ -405,17 +406,17 @@ export default function ReadingPage() {
                         ].join(" ")}>
                         <div
                            className={[
-                              "relative min-h-40 overflow-hidden bg-gradient-to-br p-5",
+                              "relative min-h-28 overflow-hidden bg-gradient-to-br p-4",
                               cardStyle.gradient,
                            ].join(" ")}>
                            <div
                               className={[
-                                 "absolute -right-6 -top-8 h-28 w-28 rounded-full blur-2xl",
+                                 "absolute -right-6 -top-8 h-24 w-24 rounded-full blur-2xl",
                                  cardStyle.glow,
                               ].join(" ")}
                            />
                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.18),transparent_45%)]" />
-                           <div className="relative flex h-full flex-col justify-between gap-5">
+                           <div className="relative flex h-full flex-col gap-4">
                               <div className="flex items-start justify-between gap-2">
                                  <span
                                     className={[
@@ -440,21 +441,24 @@ export default function ReadingPage() {
                                  </div>
                               </div>
 
-                              <div className="relative max-w-[16rem]">
-                                 <div className="text-2xl font-semibold leading-tight text-white">
+                              <div className="relative max-w-[14rem]">
+                                 <div className="line-clamp-2 text-[1.7rem] font-semibold leading-[1.05] text-white">
                                     {article.title}
                                  </div>
                               </div>
                            </div>
                         </div>
 
-                        <div className="relative h-48 overflow-hidden bg-slate-950/70">
+                        <div className="relative h-36 overflow-hidden bg-slate-950/70">
                            {hasCoverImage ? (
                               <>
-                                 <img
+                                 <Image
                                     src={article.cover_image_url!}
                                     alt={article.title}
+                                    fill
+                                    sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
                                     className="absolute inset-0 h-full w-full object-cover"
+                                    unoptimized
                                  />
                                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-slate-900/10" />
                               </>
@@ -463,27 +467,27 @@ export default function ReadingPage() {
                                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.12),transparent_22%),radial-gradient(circle_at_80%_30%,rgba(255,255,255,0.08),transparent_18%),linear-gradient(135deg,rgba(15,23,42,0.65),rgba(2,6,23,0.95))]" />
                                  <div
                                     className={[
-                                       "absolute left-6 top-8 h-20 w-20 rounded-3xl bg-gradient-to-br opacity-90 blur-[1px]",
+                                       "absolute left-5 top-6 h-16 w-16 rounded-3xl bg-gradient-to-br opacity-90 blur-[1px]",
                                        cardStyle.gradient,
                                     ].join(" ")}
                                  />
                                  <div
                                     className={[
-                                       "absolute bottom-8 right-8 h-24 w-24 rounded-full opacity-70 blur-sm",
+                                       "absolute bottom-6 right-6 h-20 w-20 rounded-full opacity-70 blur-sm",
                                        cardStyle.glow,
                                     ].join(" ")}
                                  />
                               </>
                            )}
-                           <div className="absolute inset-x-6 bottom-6 flex items-end justify-between gap-4">
-                              <div className="max-w-[14rem] rounded-2xl border border-white/10 bg-slate-900/65 px-4 py-3 backdrop-blur-sm">
-                                 <div className="text-sm leading-6 text-slate-100 line-clamp-3">
+                           <div className="absolute inset-x-4 bottom-4 flex items-end justify-between gap-3">
+                              <div className="max-w-[12rem] rounded-2xl border border-white/10 bg-slate-900/65 px-3 py-2.5 backdrop-blur-sm">
+                                 <div className="line-clamp-2 text-sm leading-5 text-slate-100">
                                     {article.short_summary ||
                                        "A short reading designed to build confidence, vocabulary, and understanding."}
                                  </div>
                               </div>
 
-                              <div className="shrink-0 rounded-full border border-white/10 bg-slate-900/65 px-3 py-1.5 text-xs text-slate-300 backdrop-blur-sm">
+                              <div className="shrink-0 rounded-full border border-white/10 bg-slate-900/65 px-3 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-sm">
                                  {locked
                                     ? "Premium"
                                     : finished

@@ -12,6 +12,7 @@ import {
    PiUploadSimpleLight,
 } from "react-icons/pi";
 import { supabase } from "@/lib/supabaseClient";
+import AdminSectionNav from "@/components/AdminSectionNav";
 import { WRITING_TASKS, type WritingTaskNumber } from "@/lib/writing";
 
 type AdminPrompt = {
@@ -485,24 +486,28 @@ export default function AdminWritingPage() {
 
    return (
       <div className="space-y-6">
-         <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-               <h1 className="text-3xl font-semibold">Writing admin</h1>
-               <p className="mt-2 text-sm text-slate-400">
-                  Create as many Task 1 and Task 2 prompts as you need, then review
-                  the premium submissions waiting for feedback.
-               </p>
-            </div>
+         <div className="space-y-4">
+            <AdminSectionNav />
 
-            <div className="flex items-center gap-3">
-               <Link
-                  href="/dashboard/writing"
-                  className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-900">
-                  View writing page
-               </Link>
-               <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">
-                  {pendingCountLabel}
-               </span>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+               <div>
+                  <h1 className="text-3xl font-semibold">Writing admin</h1>
+                  <p className="mt-2 text-sm text-slate-400">
+                     Create as many Task 1 and Task 2 prompts as you need, then review
+                     the premium submissions waiting for feedback.
+                  </p>
+               </div>
+
+               <div className="flex items-center gap-3">
+                  <Link
+                     href="/dashboard/writing"
+                     className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-900">
+                     View writing page
+                  </Link>
+                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">
+                     {pendingCountLabel}
+                  </span>
+               </div>
             </div>
          </div>
 
