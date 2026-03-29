@@ -18,6 +18,10 @@ const adminLinks = [
       label: "Reading",
    },
    {
+      href: "/dashboard/admin/mock-reading",
+      label: "IELTS Reading",
+   },
+   {
       href: "/dashboard/admin/writing",
       label: "Writing",
    },

@@ -17,6 +17,12 @@ const adminCards = [
          "Create and edit reading articles, cover images, and structured body blocks.",
    },
    {
+      href: "/dashboard/admin/mock-reading",
+      title: "IELTS Reading",
+      description:
+         "Manage IELTS reading mock tests, passages, question sets, and scoring data.",
+   },
+   {
       href: "/dashboard/admin/writing",
       title: "Writing",
       description:

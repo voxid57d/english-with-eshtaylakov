@@ -14,6 +14,7 @@ import {
    PiCaretDoubleLeftLight,
    PiCaretDoubleRightLight,
    PiPaperPlaneTiltLight,
+   PiExamLight,
 } from "react-icons/pi";
 
 const links = [
@@ -37,6 +38,11 @@ const links = [
       label: "Writing",
       icon: PiNotePencilLight,
       badge: "NEW",
+   },
+   {
+      href: "/dashboard/mock",
+      label: "IELTS Mock",
+      icon: PiExamLight,
    },
    {
       href: "/dashboard/leaderboard",
