@@ -137,6 +137,7 @@ export default function ReadingMockTestPage() {
    const [summary, setSummary] = useState<ReturnType<typeof evaluateReadingMock> | null>(null);
    const [splitRatio, setSplitRatio] = useState(58);
    const [timerInitialized, setTimerInitialized] = useState(false);
+   const [mobilePanel, setMobilePanel] = useState<"passage" | "questions">("passage");
    const [selectedText, setSelectedText] = useState("");
    const [highlightsByPassage, setHighlightsByPassage] = useState<Record<string, string[]>>({});
    const [highlightButtonPosition, setHighlightButtonPosition] = useState<{
@@ -390,6 +391,7 @@ export default function ReadingMockTestPage() {
 
    function jumpToQuestion(question: ReadingMockQuestion) {
       setActivePassageId(question.passage_id);
+      setMobilePanel("questions");
       window.setTimeout(() => {
          questionRefs.current[question.id]?.scrollIntoView({
             behavior: "smooth",
@@ -783,6 +785,84 @@ export default function ReadingMockTestPage() {
       );
    }
 
+   function renderPassagePanel(containerClassName: string) {
+      if (!activePassage) return null;
+
+      return (
+         <section className={containerClassName}>
+            <div className="mb-4 flex flex-wrap gap-2">
+               {orderedPassages.map((passage) => (
+                  <button
+                     key={passage.id}
+                     type="button"
+                     onClick={() => setActivePassageId(passage.id)}
+                     className={[
+                        "rounded-full border px-4 py-2 text-sm transition",
+                        passage.id === activePassageId
+                           ? theme.accentClass
+                           : "border-slate-700/70 text-slate-300 hover:bg-slate-900/40",
+                     ].join(" ")}>
+                     {passage.label}
+                  </button>
+               ))}
+            </div>
+
+            <p className={`text-xs uppercase tracking-[0.2em] ${theme.mutedClass}`}>
+               {activePassage.label}
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold">{activePassage.title}</h2>
+            {activePassage.subtitle && (
+               <p className={`mt-2 text-base ${theme.mutedClass}`}>{activePassage.subtitle}</p>
+            )}
+            <article
+               ref={passageArticleRef}
+               onPointerUp={(event) => {
+                  lastPointerPositionRef.current = {
+                     x: event.clientX + window.scrollX,
+                     y: event.clientY + window.scrollY,
+                  };
+               }}
+               onMouseUp={handleSelectionChange}
+               onTouchEnd={handleSelectionChange}
+               className="mt-5 space-y-5 text-[17px] leading-9 xl:text-[18px] xl:leading-10">
+               {activePassage.content_blocks.map((block) => {
+                  if (block.type === "heading") {
+                     const Tag = block.level === "h3" ? "h3" : "h2";
+                     return (
+                        <Tag key={block.id} className="text-2xl font-semibold xl:text-[1.7rem]">
+                           {renderHighlightedText(block.text)}
+                        </Tag>
+                     );
+                  }
+                  if (block.type === "note") {
+                     return (
+                        <div key={block.id} className="rounded-2xl border border-slate-800 bg-slate-900/50 px-4 py-3 text-[15px] leading-8 text-slate-300 xl:text-base">
+                           {renderHighlightedText(block.text)}
+                        </div>
+                     );
+                  }
+                  return (
+                     <p key={block.id}>
+                        {block.label && <span className="mr-2 font-semibold">{block.label}</span>}
+                        {renderHighlightedText(block.text)}
+                     </p>
+                  );
+               })}
+            </article>
+         </section>
+      );
+   }
+
+   function renderQuestionsPanel(containerClassName: string) {
+      return (
+         <section className={containerClassName}>
+            <div className="space-y-5">
+               {activeBlocks.map((block) => renderBlock(block))}
+            </div>
+         </section>
+      );
+   }
+
    if (loading) {
       return (
          <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100">
@@ -919,76 +999,97 @@ export default function ReadingMockTestPage() {
                </section>
             )}
 
+            <div className="space-y-4 xl:hidden">
+               <section className={`rounded-3xl border p-3 ${theme.panelClass}`}>
+                  <div className="grid grid-cols-2 gap-2">
+                     <button
+                        type="button"
+                        onClick={() => setMobilePanel("passage")}
+                        className={`rounded-2xl border px-4 py-2.5 text-sm font-medium transition duration-200 ${
+                           mobilePanel === "passage"
+                              ? activePassageNavClass
+                              : inactivePassageNavClass
+                        }`}>
+                        Passage
+                     </button>
+                     <button
+                        type="button"
+                        onClick={() => setMobilePanel("questions")}
+                        className={`rounded-2xl border px-4 py-2.5 text-sm font-medium transition duration-200 ${
+                           mobilePanel === "questions"
+                              ? activePassageNavClass
+                              : inactivePassageNavClass
+                        }`}>
+                        Questions
+                     </button>
+                  </div>
+               </section>
+
+               {mobilePanel === "passage"
+                  ? renderPassagePanel(`rounded-3xl border p-5 ${theme.panelClass}`)
+                  : renderQuestionsPanel(`rounded-3xl border p-5 ${theme.panelClass}`)}
+
+               <section className={`rounded-3xl border p-4 ${bottomNavPanelClass}`}>
+                  <div className="space-y-3">
+                     <div className="-mx-1 overflow-x-auto px-1">
+                        <div className="flex w-max gap-2">
+                           {orderedPassages.map((passage) => (
+                              <button
+                                 key={passage.id}
+                                 type="button"
+                                 onClick={() => {
+                                    setActivePassageId(passage.id);
+                                    setMobilePanel("passage");
+                                 }}
+                                 className={[
+                                    "rounded-2xl border px-4 py-2 text-sm font-medium transition duration-200",
+                                    passage.id === activePassageId
+                                       ? activePassageNavClass
+                                       : inactivePassageNavClass,
+                                 ].join(" ")}>
+                                 {passage.label}
+                              </button>
+                           ))}
+                        </div>
+                     </div>
+                     <div className="-mx-1 overflow-x-auto px-1">
+                        <div className="flex w-max gap-2">
+                           {orderedQuestions
+                              .filter((question) => question.passage_id === activePassageId)
+                              .map((question) => (
+                                 <button
+                                    key={question.id}
+                                    type="button"
+                                    onClick={() => jumpToQuestion(question)}
+                                    className={[
+                                       "inline-flex h-10 min-w-10 items-center justify-center rounded-2xl border px-3 text-sm font-medium transition duration-200",
+                                       isQuestionAnswered(question, answers)
+                                          ? answeredQuestionNavClass
+                                          : unansweredQuestionNavClass,
+                                    ].join(" ")}>
+                                    {isQuestionAnswered(question, answers) ? (
+                                       <PiCheckCircleLight size={16} />
+                                    ) : (
+                                       question.question_number
+                                    )}
+                                 </button>
+                              ))}
+                        </div>
+                     </div>
+                  </div>
+               </section>
+            </div>
+
             <div
                ref={splitGridRef}
-               className="grid gap-5 xl:items-start"
+               className="hidden gap-5 xl:grid xl:items-start"
                style={{
                   gridTemplateColumns:
                      activePassage && typeof window !== "undefined"
                         ? `minmax(0, ${splitRatio}fr) minmax(14px,14px) minmax(340px, ${100 - splitRatio}fr)`
                         : undefined,
                }}>
-               <section className={`rounded-3xl border p-5 ${theme.panelClass}`}>
-                  <div className="mb-4 flex flex-wrap gap-2">
-                     {orderedPassages.map((passage) => (
-                        <button
-                           key={passage.id}
-                           type="button"
-                           onClick={() => setActivePassageId(passage.id)}
-                           className={[
-                              "rounded-full border px-4 py-2 text-sm transition",
-                              passage.id === activePassageId
-                                 ? theme.accentClass
-                                 : "border-slate-700/70 text-slate-300 hover:bg-slate-900/40",
-                           ].join(" ")}>
-                           {passage.label}
-                        </button>
-                     ))}
-                  </div>
-
-                  <p className={`text-xs uppercase tracking-[0.2em] ${theme.mutedClass}`}>
-                     {activePassage.label}
-                  </p>
-                  <h2 className="mt-2 text-3xl font-semibold">{activePassage.title}</h2>
-                  {activePassage.subtitle && (
-                     <p className={`mt-2 text-base ${theme.mutedClass}`}>{activePassage.subtitle}</p>
-                  )}
-                  <article
-                     ref={passageArticleRef}
-                     onPointerUp={(event) => {
-                        lastPointerPositionRef.current = {
-                           x: event.clientX + window.scrollX,
-                           y: event.clientY + window.scrollY,
-                        };
-                     }}
-                     onMouseUp={handleSelectionChange}
-                     onTouchEnd={handleSelectionChange}
-                     className="mt-5 space-y-5 text-[17px] leading-9 xl:text-[18px] xl:leading-10">
-                     {activePassage.content_blocks.map((block) => {
-                        if (block.type === "heading") {
-                           const Tag = block.level === "h3" ? "h3" : "h2";
-                           return (
-                              <Tag key={block.id} className="text-2xl font-semibold xl:text-[1.7rem]">
-                                 {renderHighlightedText(block.text)}
-                              </Tag>
-                           );
-                        }
-                        if (block.type === "note") {
-                           return (
-                              <div key={block.id} className="rounded-2xl border border-slate-800 bg-slate-900/50 px-4 py-3 text-[15px] leading-8 text-slate-300 xl:text-base">
-                                 {renderHighlightedText(block.text)}
-                              </div>
-                           );
-                        }
-                        return (
-                           <p key={block.id}>
-                              {block.label && <span className="mr-2 font-semibold">{block.label}</span>}
-                              {renderHighlightedText(block.text)}
-                           </p>
-                        );
-                     })}
-                  </article>
-               </section>
+               {renderPassagePanel(`rounded-3xl border p-5 ${theme.panelClass}`)}
 
                <div className="hidden xl:flex items-stretch justify-center">
                   <div className="flex h-full min-h-[20rem] w-full items-center justify-center">
@@ -1007,14 +1108,10 @@ export default function ReadingMockTestPage() {
                   </div>
                </div>
 
-               <section className={`rounded-3xl border p-5 ${theme.panelClass}`}>
-                  <div className="space-y-5">
-                     {activeBlocks.map((block) => renderBlock(block))}
-                  </div>
-               </section>
+               {renderQuestionsPanel(`rounded-3xl border p-5 ${theme.panelClass}`)}
             </div>
 
-            <section className={`rounded-3xl border p-5 ${bottomNavPanelClass}`}>
+            <section className={`hidden rounded-3xl border p-5 xl:block ${bottomNavPanelClass}`}>
                <div className="grid gap-5 xl:grid-cols-2">
                   <div>
                      <div className="flex flex-wrap gap-2">

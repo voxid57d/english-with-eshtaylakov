@@ -81,8 +81,22 @@ export default function MockListeningPage() {
          </header>
 
          {loading ? (
-            <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-400">
-               Loading listening tests...
+            <div className="space-y-3">
+               {Array.from({ length: 4 }).map((_, index) => (
+                  <div
+                     key={`listening-skeleton-${index}`}
+                     className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                     <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1 space-y-3">
+                           <div className="h-5 w-52 max-w-[70%] rounded-full bg-slate-700/80 skeleton-shimmer" />
+                           <div className="h-4 w-4/5 rounded-full bg-slate-800 skeleton-shimmer" />
+                           <div className="h-4 w-2/3 rounded-full bg-slate-900 skeleton-shimmer" />
+                           <div className="h-3 w-20 rounded-full bg-slate-800 skeleton-shimmer" />
+                        </div>
+                        <div className="mt-1 h-4 w-16 rounded-full bg-slate-800 skeleton-shimmer" />
+                     </div>
+                  </div>
+               ))}
             </div>
          ) : error ? (
             <div className="rounded-3xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-200">
