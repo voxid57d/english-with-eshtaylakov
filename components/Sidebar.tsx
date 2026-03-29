@@ -106,10 +106,14 @@ function Sidebar({ isOpenOnMobile, closeMobile, isPremium }: SidebarProps) {
 
          setFeedbackMessage("");
          setIsFeedbackOpen(false);
-         setFeedbackSuccess("Thanks, your feedback was sent to the admin panel.");
+         setFeedbackSuccess(
+            "Thanks, your feedback was sent to the admin panel.",
+         );
       } catch (error) {
          setFeedbackError(
-            error instanceof Error ? error.message : "Failed to submit feedback."
+            error instanceof Error
+               ? error.message
+               : "Failed to submit feedback.",
          );
       } finally {
          setIsSubmittingFeedback(false);
@@ -174,7 +178,9 @@ function Sidebar({ isOpenOnMobile, closeMobile, isPremium }: SidebarProps) {
                      onClick={() => void handleSubmitFeedback()}
                      disabled={isSubmittingFeedback}
                      className="flex-1 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
-                     {isSubmittingFeedback ? "Submitting..." : "Submit feedback"}
+                     {isSubmittingFeedback
+                        ? "Submitting..."
+                        : "Submit feedback"}
                   </button>
                   <button
                      type="button"
@@ -207,7 +213,9 @@ function Sidebar({ isOpenOnMobile, closeMobile, isPremium }: SidebarProps) {
 
                if (collapsed) {
                   return (
-                     <div key={link.href} className="group relative flex justify-center">
+                     <div
+                        key={link.href}
+                        className="group relative flex justify-center">
                         <Link
                            href={link.href}
                            onClick={closeMobile}
@@ -348,8 +356,8 @@ function Sidebar({ isOpenOnMobile, closeMobile, isPremium }: SidebarProps) {
                   </div>
                ) : (
                   <>
-                     <span className="pl-1 text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                        Navigation
+                     <span className="pl-1 text-[14px] uppercase tracking-[0.22em] text-slate-500">
+                        Menu
                      </span>
                      <button
                         onClick={() => setCollapsed(true)}
