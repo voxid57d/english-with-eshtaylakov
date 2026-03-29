@@ -51,7 +51,18 @@ function normalizePassages(value: unknown) {
             content_blocks: normalizePassageBlocks(raw.content_blocks),
          };
       })
-      .filter(Boolean);
+      .filter(
+         (
+            item
+         ): item is {
+            id: string;
+            passage_number: number;
+            label: string;
+            title: string;
+            subtitle: string | null;
+            content_blocks: ReturnType<typeof normalizePassageBlocks>;
+         } => item !== null
+      );
 }
 
 function normalizeBlocks(value: unknown) {
@@ -91,7 +102,20 @@ function normalizeBlocks(value: unknown) {
                   : {},
          };
       })
-      .filter(Boolean);
+      .filter(
+         (
+            item
+         ): item is {
+            id: string;
+            passage_id: string;
+            order_index: number;
+            type: ReturnType<typeof normalizeReadingMockBlockType>;
+            title: string;
+            instructions: string[];
+            shared_content: Record<string, unknown>;
+            meta: Record<string, unknown>;
+         } => item !== null
+      );
 }
 
 function normalizeQuestions(value: unknown) {
@@ -127,7 +151,20 @@ function normalizeQuestions(value: unknown) {
                   : {},
          };
       })
-      .filter(Boolean);
+      .filter(
+         (
+            item
+         ): item is {
+            id: string;
+            passage_id: string;
+            block_id: string;
+            question_number: number;
+            order_index: number;
+            prompt: string;
+            answer_key: ReturnType<typeof normalizeAnswerKey>;
+            meta: Record<string, unknown>;
+         } => item !== null
+      );
 }
 
 function normalizeOptions(value: unknown): ReadingMockOption[] {

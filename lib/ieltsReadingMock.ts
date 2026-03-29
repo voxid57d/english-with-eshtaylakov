@@ -215,9 +215,8 @@ export function createReadingMockQuestion(
 export function normalizePassageBlocks(value: unknown): ReadingPassageBlock[] {
    if (!Array.isArray(value)) return [];
 
-   return value
-      .map((item) => {
-         if (!item || typeof item !== "object") return null;
+   return value.reduce<ReadingPassageBlock[]>((accumulator, item) => {
+         if (!item || typeof item !== "object") return accumulator;
          const raw = item as Record<string, unknown>;
          const type = raw.type;
          const id =
@@ -225,23 +224,25 @@ export function normalizePassageBlocks(value: unknown): ReadingPassageBlock[] {
                ? raw.id
                : crypto.randomUUID();
          const text = typeof raw.text === "string" ? raw.text.trim() : "";
-         if (!text) return null;
+         if (!text) return accumulator;
 
          if (type === "heading") {
-            return {
+            accumulator.push({
                id,
                type,
                text,
                level: raw.level === "h3" ? "h3" : "h2",
-            } satisfies ReadingPassageBlock;
+            } satisfies ReadingPassageBlock);
+            return accumulator;
          }
 
          if (type === "note") {
-            return { id, type, text } satisfies ReadingPassageBlock;
+            accumulator.push({ id, type, text } satisfies ReadingPassageBlock);
+            return accumulator;
          }
 
          if (type === "paragraph") {
-            return {
+            accumulator.push({
                id,
                type,
                text,
@@ -249,12 +250,12 @@ export function normalizePassageBlocks(value: unknown): ReadingPassageBlock[] {
                   typeof raw.label === "string" && raw.label.trim()
                      ? raw.label.trim()
                      : undefined,
-            } satisfies ReadingPassageBlock;
+            } satisfies ReadingPassageBlock);
+            return accumulator;
          }
 
-         return null;
-      })
-      .filter((item): item is ReadingPassageBlock => item !== null);
+         return accumulator;
+      }, []);
 }
 
 export function normalizeReadingMockQuestionType(
