@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PiCaretDownBold, PiCrownSimpleFill } from "react-icons/pi";
+import { PiCaretDownBold, PiCheckCircleFill, PiCrownSimpleFill } from "react-icons/pi";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { supabase } from "@/lib/supabaseClient";
@@ -133,6 +133,18 @@ function getPlayerCardClass(isViewer: boolean, isPremium: boolean) {
    }
 
    return "border-slate-800 bg-slate-950/70";
+}
+
+function getWaitingRoomNameClass(isViewer: boolean, isPremium: boolean) {
+   if (isViewer) {
+      return "text-emerald-300";
+   }
+
+   if (isPremium) {
+      return "text-amber-100";
+   }
+
+   return "text-slate-100";
 }
 
 function getSubmitErrorMessage(error: unknown) {
@@ -1336,7 +1348,32 @@ export default function BattleRoomPage() {
    }, [countdownMs, currentRound]);
 
    if (loading) {
-      return <div className="text-sm text-slate-400">Loading battle room...</div>;
+      return (
+         <div className="flex min-h-[70vh] items-center justify-center px-4">
+            <div className="w-full max-w-xl rounded-[2rem] border border-slate-800 bg-slate-900/60 p-8 text-center shadow-[0_30px_80px_rgba(2,6,23,0.45)]">
+               <div className="mx-auto flex w-fit items-center gap-4 rounded-full border border-slate-800 bg-slate-950/80 px-5 py-4">
+                  <Image
+                     src="/logo-white.png"
+                     alt=""
+                     aria-hidden="true"
+                     width={120}
+                     height={40}
+                     className="h-8 w-auto opacity-90 animate-pulse"
+                  />
+                  <div className="h-8 w-8 rounded-full border-4 border-slate-700 border-t-emerald-400 animate-spin" />
+               </div>
+               <p className="mt-6 text-xs uppercase tracking-[0.3em] text-emerald-300">
+                  Vocabulary battle
+               </p>
+               <h2 className="mt-3 text-2xl font-semibold text-slate-50">
+                  Loading battle room
+               </h2>
+               <p className="mt-3 text-sm text-slate-400">
+                  Syncing players, rounds, and room state...
+               </p>
+            </div>
+         </div>
+      );
    }
 
    if (error && !snapshot) {
@@ -1511,9 +1548,7 @@ export default function BattleRoomPage() {
 
                {currentRound?.status === "waiting" && (
                   <div
-                     className={`rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6 space-y-5 ${
-                        showFloatingReadyButton ? "pb-32 sm:pb-36" : ""
-                     }`}>
+                     className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6 space-y-5">
                      <div>
                         <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
                            Round {currentRound.roundNumber}
@@ -1528,28 +1563,39 @@ export default function BattleRoomPage() {
                      </div>
 
                      <div className="grid gap-4 md:grid-cols-2">
-                        {currentRound.players.map((player) => (
+                        {currentRound.players.map((player) => {
+                           const isViewer = player.userId === snapshot.viewerUserId;
+
+                           return (
                            <div
                               key={player.userId}
-                              className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+                              className={`rounded-3xl border bg-slate-950/70 p-5 ${
+                                 player.isPremium
+                                    ? "border-amber-400/40"
+                                    : "border-slate-800"
+                              }`}>
                               <div className="flex items-center gap-2">
                                  <p
-                                    className={`text-lg font-semibold ${getPremiumNameClass(
+                                    className={`text-lg font-semibold ${getWaitingRoomNameClass(
+                                       isViewer,
                                        player.isPremium,
                                     )}`}>
                                     {player.username}
                                  </p>
-                                 {player.isPremium && (
-                                    <span className="rounded-full border border-amber-400/25 bg-amber-400/8 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100/80">
-                                       Premium
+                              </div>
+                              <div className="mt-2 flex items-center gap-2 text-sm text-slate-400">
+                                 {player.isReady && (
+                                    <span className="text-emerald-300">
+                                       <PiCheckCircleFill size={14} />
                                     </span>
                                  )}
+                                 <span>
+                                    {player.isReady ? "Ready to start" : "Not ready yet"}
+                                 </span>
                               </div>
-                              <p className="mt-2 text-sm text-slate-400">
-                                 {player.isReady ? "Ready to start" : "Not ready yet"}
-                              </p>
                            </div>
-                        ))}
+                           );
+                        })}
                      </div>
 
                      {!hasMinimumPlayers && (
