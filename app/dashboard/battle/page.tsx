@@ -361,11 +361,6 @@ export default function BattleLobbyPage() {
                      {joinLoading ? "Joining..." : "Join room"}
                   </button>
                </form>
-
-               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
-                  Round rules: {questionCount} questions, {BATTLE_TIME_LIMIT_SECONDS} seconds each, same
-                  shared set, higher score wins. Curiosity Points are awarded each round.
-               </div>
             </section>
 
             <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">

@@ -1091,7 +1091,6 @@ export async function buildBattleRoomSnapshot(
    roomCode: string,
    viewerUserId: string,
 ): Promise<BattleRoomSnapshot | null> {
-   await cleanupBattleRooms();
    let room = await getRoomByCode(roomCode);
    if (!room) {
       return null;
@@ -1117,6 +1116,7 @@ export async function buildBattleRoomSnapshot(
    );
 
    return {
+      roomId: room.id,
       roomCode: room.code,
       roomStatus: room.status,
       hostUserId: room.host_user_id,
@@ -1575,4 +1575,91 @@ export async function createNextBattleRound(
       refreshedRoom,
       (refreshedRoom.completed_round_count ?? 0) + 1,
    );
+}
+
+export async function removePlayerFromBattleRoom(
+   roomCode: string,
+   hostUserId: string,
+   targetUserId: string,
+) {
+   const room = await loadRoomForParticipant(roomCode, hostUserId);
+
+   if (room.host_user_id !== hostUserId) {
+      throw new Error("Only the room host can remove players.");
+   }
+
+   if (hostUserId === targetUserId) {
+      throw new Error("The host cannot remove themselves from the room.");
+   }
+
+   const members = await getRoomMembers(room.id);
+   const targetMember = members.find((member) => member.user_id === targetUserId);
+
+   if (!targetMember) {
+      throw new Error("Player not found in this room.");
+   }
+
+   const currentRound = await getLatestRoundForRoom(room.id);
+   if (currentRound && currentRound.status !== "finished") {
+      await supabaseAdmin
+         .from("vocab_battle_round_answers")
+         .delete()
+         .eq("round_id", currentRound.id)
+         .eq("user_id", targetUserId);
+
+      const { error: roundPlayerDeleteError } = await supabaseAdmin
+         .from("vocab_battle_round_players")
+         .delete()
+         .eq("round_id", currentRound.id)
+         .eq("user_id", targetUserId);
+
+      if (roundPlayerDeleteError) {
+         throw new Error("Failed to remove the player from the current round.");
+      }
+   }
+
+   const { error: memberDeleteError } = await supabaseAdmin
+      .from("vocab_battle_room_players")
+      .delete()
+      .eq("room_id", room.id)
+      .eq("user_id", targetUserId);
+
+   if (memberDeleteError) {
+      throw new Error("Failed to remove the player from the room.");
+   }
+
+   const refreshedRound = await getLatestRoundForRoom(room.id);
+   if (refreshedRound && refreshedRound.status === "active") {
+      const remainingPlayers = await getRoundPlayers(refreshedRound.id);
+      const everyoneSubmitted =
+         remainingPlayers.length >= 1 &&
+         remainingPlayers.every((player) => Boolean(player.submitted_at));
+
+      if (everyoneSubmitted) {
+         await finalizeRound(refreshedRound.id);
+      }
+   }
+}
+
+export async function forceFinishBattleRound(roomCode: string, hostUserId: string) {
+   const room = await loadRoomForParticipant(roomCode, hostUserId);
+
+   if (room.host_user_id !== hostUserId) {
+      throw new Error("Only the room host can force-finish the round.");
+   }
+
+   const currentRound = await getLatestRoundForRoom(room.id);
+   if (!currentRound) {
+      throw new Error("There is no round in this room.");
+   }
+
+   if (currentRound.status === "finished") {
+      return currentRound;
+   }
+
+   if (currentRound.status !== "active") {
+      throw new Error("Only active rounds can be force-finished.");
+   }
+
+   return finalizeRound(currentRound.id);
 }

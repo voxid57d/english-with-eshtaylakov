@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PiCaretDownBold, PiCrownSimpleFill } from "react-icons/pi";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -59,6 +60,50 @@ type LocalBattleState = {
    pendingSubmission: boolean;
 };
 
+type JoinAnnouncementPayload = {
+   roomId: string;
+   roomCode: string;
+   viewerUserId: string;
+   viewerIsRoomMember: boolean;
+   username: string;
+   isPremium: boolean;
+   joinedAt: string;
+};
+
+type BattleBroadcastPayload =
+   | {
+        kind: "snapshot-refresh";
+        roomCode: string;
+        sentAt: string;
+     }
+   | {
+        kind: "player-joined";
+        roomCode: string;
+        userId: string;
+        username: string;
+        isPremium: boolean;
+        joinedAt: string;
+     }
+   | {
+        kind: "player-ready";
+        roomCode: string;
+        roundId: string;
+        userId: string;
+        readyAt: string;
+     }
+   | {
+        kind: "player-submitted";
+        roomCode: string;
+        roundId: string;
+        userId: string;
+        submittedAt: string;
+     }
+   | {
+        kind: "next-round-started";
+        roomCode: string;
+        sentAt: string;
+     };
+
 function createInitialLocalState(roundId: string): LocalBattleState {
    return {
       roundId,
@@ -83,12 +128,8 @@ function getPremiumNameClass(isPremium: boolean) {
 }
 
 function getPlayerCardClass(isViewer: boolean, isPremium: boolean) {
-   if (isViewer) {
-      return "border-emerald-500/40 bg-emerald-500/10";
-   }
-
    if (isPremium) {
-      return "border-slate-700/90 bg-[linear-gradient(135deg,rgba(120,113,108,0.18),rgba(30,41,59,0.92))]";
+      return "border-amber-400/40 bg-[linear-gradient(135deg,rgba(245,158,11,0.12),rgba(30,41,59,0.92))]";
    }
 
    return "border-slate-800 bg-slate-950/70";
@@ -115,6 +156,94 @@ function isSessionExpiredMessage(message: string) {
       message === "Failed to read your session." ||
       message === "Unauthorized."
    );
+}
+
+function applyBattleBroadcastToSnapshot(
+   snapshot: BattleRoomSnapshot,
+   payload: BattleBroadcastPayload,
+): BattleRoomSnapshot {
+   if (payload.roomCode !== snapshot.roomCode) {
+      return snapshot;
+   }
+
+   if (payload.kind === "player-joined") {
+      const alreadyInRoom = snapshot.players.some(
+         (player) => player.userId === payload.userId,
+      );
+
+      if (alreadyInRoom) {
+         return snapshot;
+      }
+
+      return {
+         ...snapshot,
+         players: [
+            ...snapshot.players,
+            {
+               userId: payload.userId,
+               username: payload.username,
+               isPremium: payload.isPremium,
+               joinedAt: payload.joinedAt,
+            },
+         ],
+      };
+   }
+
+   if (!snapshot.currentRound) {
+      return snapshot;
+   }
+
+   if (
+      (payload.kind === "player-ready" || payload.kind === "player-submitted") &&
+      payload.roundId !== snapshot.currentRound.roundId
+   ) {
+      return snapshot;
+   }
+
+   if (payload.kind === "player-ready") {
+      return {
+         ...snapshot,
+         currentRound: {
+            ...snapshot.currentRound,
+            viewerReady:
+               snapshot.viewerUserId === payload.userId
+                  ? true
+                  : snapshot.currentRound.viewerReady,
+            players: snapshot.currentRound.players.map((player) =>
+               player.userId === payload.userId
+                  ? {
+                       ...player,
+                       isReady: true,
+                       readyAt: payload.readyAt,
+                    }
+                  : player,
+            ),
+         },
+      };
+   }
+
+   if (payload.kind === "player-submitted") {
+      return {
+         ...snapshot,
+         currentRound: {
+            ...snapshot.currentRound,
+            viewerSubmitted:
+               snapshot.viewerUserId === payload.userId
+                  ? true
+                  : snapshot.currentRound.viewerSubmitted,
+            players: snapshot.currentRound.players.map((player) =>
+               player.userId === payload.userId
+                  ? {
+                       ...player,
+                       submittedAt: payload.submittedAt,
+                    }
+                  : player,
+            ),
+         },
+      };
+   }
+
+   return snapshot;
 }
 
 function RoundHistoryCard({ entry }: { entry: BattleHistoryEntry }) {
@@ -219,6 +348,8 @@ export default function BattleRoomPage() {
    const [readyLoading, setReadyLoading] = useState(false);
    const [submitLoading, setSubmitLoading] = useState(false);
    const [nextRoundLoading, setNextRoundLoading] = useState(false);
+   const [forceFinishLoading, setForceFinishLoading] = useState(false);
+   const [removingPlayerId, setRemovingPlayerId] = useState<string | null>(null);
    const [now, setNow] = useState(0);
    const [localBattle, setLocalBattle] = useState<LocalBattleState | null>(null);
    const [availableDecks, setAvailableDecks] = useState<PublicDeck[]>([]);
@@ -230,6 +361,11 @@ export default function BattleRoomPage() {
    const questionTimerRef = useRef<number | null>(null);
    const syncedDeckSourceRef = useRef<string | null>(null);
    const countdownScrollKeyRef = useRef<string | null>(null);
+   const joinAnnouncementRef = useRef<string | null>(null);
+   const joinAnnouncementPayloadRef = useRef<JoinAnnouncementPayload | null>(null);
+   const snapshotRequestIdRef = useRef(0);
+   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
+   const roomChannelRef = useRef<RealtimeChannel | null>(null);
 
    const currentRound = snapshot?.currentRound ?? null;
 
@@ -295,7 +431,33 @@ export default function BattleRoomPage() {
       };
    }, []);
 
+   const handleSnapshotError = useCallback(
+      (requestError: unknown) => {
+         const message =
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to load battle room.";
+         const status =
+            requestError instanceof Error &&
+            "status" in requestError &&
+            typeof requestError.status === "number"
+               ? requestError.status
+               : null;
+
+         if (isSessionExpiredMessage(message) || status === 401) {
+            router.replace("/login");
+            return;
+         }
+
+         setError(message);
+         setLoading(false);
+      },
+      [router],
+   );
+
    const loadSnapshot = useCallback(async () => {
+      const requestId = snapshotRequestIdRef.current + 1;
+      snapshotRequestIdRef.current = requestId;
       const token = await getSupabaseAccessToken();
       const response = await fetch(
          `/api/vocabulary-battle/rooms/${encodeURIComponent(roomCode)}`,
@@ -316,71 +478,235 @@ export default function BattleRoomPage() {
          throw requestError;
       }
 
+      if (snapshotRequestIdRef.current !== requestId) {
+         return;
+      }
+
       setSnapshot(payload);
       setError(null);
       setLoading(false);
    }, [roomCode]);
 
-   const shouldPoll = useMemo(() => {
-      if (!snapshot) return true;
-      if (snapshot.roomStatus === "expired" && currentRound?.status === "finished") {
-         return false;
-      }
-      if (!currentRound) return true;
-      if (currentRound.status === "waiting") return true;
-      if (currentRound.status === "active" && !currentRound.battleStartsAt) return true;
-      if (currentRound.status === "active" && currentRound.viewerSubmitted) return true;
-      if (snapshot.roomStatus === "open" && currentRound.status === "finished") return true;
-      return false;
-   }, [currentRound, snapshot]);
-
    useEffect(() => {
-      let cancelled = false;
-
       const load = async () => {
          try {
             await loadSnapshot();
          } catch (requestError) {
-            const message =
-               requestError instanceof Error
-                  ? requestError.message
-                  : "Failed to load battle room.";
-            const status =
-               requestError instanceof Error &&
-               "status" in requestError &&
-               typeof requestError.status === "number"
-                  ? requestError.status
-                  : null;
-
-            if (isSessionExpiredMessage(message) || status === 401) {
-               router.replace("/login");
-               return;
-            }
-
-            if (!cancelled) {
-               setError(message);
-               setLoading(false);
-            }
+            handleSnapshotError(requestError);
          }
       };
 
       void load();
+   }, [handleSnapshotError, loadSnapshot]);
 
-      if (!shouldPoll) {
-         return () => {
-            cancelled = true;
-         };
+   const refreshSnapshot = useCallback(async () => {
+      try {
+         await loadSnapshot();
+      } catch (requestError) {
+         handleSnapshotError(requestError);
+      }
+   }, [handleSnapshotError, loadSnapshot]);
+
+   const scheduleSnapshotRefresh = useCallback(
+      (delayMs = 120) => {
+         if (realtimeRefreshTimeoutRef.current) {
+            window.clearTimeout(realtimeRefreshTimeoutRef.current);
+         }
+
+         realtimeRefreshTimeoutRef.current = window.setTimeout(() => {
+            realtimeRefreshTimeoutRef.current = null;
+            void refreshSnapshot();
+         }, delayMs);
+      },
+      [refreshSnapshot],
+   );
+
+   const broadcastRoomUpdate = useCallback(async (payload: BattleBroadcastPayload) => {
+      const channel = roomChannelRef.current;
+      if (!channel) {
+         return;
       }
 
-      const intervalId = window.setInterval(() => {
-         void load();
-      }, 1000);
+      await channel.send({
+         type: "broadcast",
+         event: "room-update",
+         payload,
+      });
+   }, []);
+
+   useEffect(() => {
+      return () => {
+         if (realtimeRefreshTimeoutRef.current) {
+            window.clearTimeout(realtimeRefreshTimeoutRef.current);
+            realtimeRefreshTimeoutRef.current = null;
+         }
+      };
+   }, []);
+
+   useEffect(() => {
+      if (!snapshot?.roomId || !snapshot.viewerUserId) {
+         joinAnnouncementPayloadRef.current = null;
+         return;
+      }
+
+      const viewer = snapshot.players.find(
+         (player) => player.userId === snapshot.viewerUserId,
+      );
+
+      if (!viewer) {
+         joinAnnouncementPayloadRef.current = null;
+         return;
+      }
+
+      joinAnnouncementPayloadRef.current = {
+         roomId: snapshot.roomId,
+         roomCode: snapshot.roomCode,
+         viewerUserId: snapshot.viewerUserId,
+         viewerIsRoomMember: snapshot.viewerIsRoomMember,
+         username: viewer.username,
+         isPremium: viewer.isPremium,
+         joinedAt: viewer.joinedAt,
+      };
+   }, [
+      snapshot?.players,
+      snapshot?.roomCode,
+      snapshot?.roomId,
+      snapshot?.viewerIsRoomMember,
+      snapshot?.viewerUserId,
+   ]);
+
+   useEffect(() => {
+      if (!snapshot?.roomId) {
+         return;
+      }
+
+      const roomChannel = supabase.channel(`battle-room:${snapshot.roomId}`);
+      roomChannelRef.current = roomChannel;
+      const handleRoomChange = () => scheduleSnapshotRefresh();
+
+      roomChannel
+         .on("broadcast", { event: "room-update" }, ({ payload }) => {
+            const roomUpdate = payload as BattleBroadcastPayload;
+
+            setSnapshot((current) =>
+               current ? applyBattleBroadcastToSnapshot(current, roomUpdate) : current,
+            );
+            scheduleSnapshotRefresh(0);
+         })
+         .on("postgres_changes", {
+            event: "*",
+            schema: "public",
+            table: "vocab_battle_rooms",
+            filter: `id=eq.${snapshot.roomId}`,
+         }, handleRoomChange)
+         .on("postgres_changes", {
+            event: "*",
+            schema: "public",
+            table: "vocab_battle_room_players",
+            filter: `room_id=eq.${snapshot.roomId}`,
+         }, handleRoomChange)
+         .on("postgres_changes", {
+            event: "*",
+            schema: "public",
+            table: "vocab_battle_rounds",
+            filter: `room_id=eq.${snapshot.roomId}`,
+         }, handleRoomChange)
+         .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+               void refreshSnapshot();
+
+               const joinPayload = joinAnnouncementPayloadRef.current;
+
+               if (
+                  joinPayload?.viewerIsRoomMember &&
+                  joinPayload.roomId === snapshot.roomId &&
+                  joinAnnouncementRef.current !==
+                     `${joinPayload.roomId}:${joinPayload.viewerUserId}`
+               ) {
+                  joinAnnouncementRef.current =
+                     `${joinPayload.roomId}:${joinPayload.viewerUserId}`;
+                  void broadcastRoomUpdate({
+                     kind: "player-joined",
+                     roomCode: joinPayload.roomCode,
+                     userId: joinPayload.viewerUserId,
+                     username: joinPayload.username,
+                     isPremium: joinPayload.isPremium,
+                     joinedAt: joinPayload.joinedAt,
+                  });
+               }
+            }
+
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+               scheduleSnapshotRefresh(0);
+            }
+         });
 
       return () => {
-         cancelled = true;
-         window.clearInterval(intervalId);
+         if (roomChannelRef.current === roomChannel) {
+            roomChannelRef.current = null;
+         }
+         void supabase.removeChannel(roomChannel);
       };
-   }, [loadSnapshot, router, shouldPoll]);
+   }, [
+      broadcastRoomUpdate,
+      refreshSnapshot,
+      scheduleSnapshotRefresh,
+      snapshot?.roomId,
+   ]);
+
+   useEffect(() => {
+      if (!currentRound?.roundId) {
+         return;
+      }
+
+      const roundChannel = supabase.channel(`battle-round:${currentRound.roundId}`);
+      const handleRoundChange = () => scheduleSnapshotRefresh();
+
+      roundChannel
+         .on("postgres_changes", {
+            event: "*",
+            schema: "public",
+            table: "vocab_battle_round_players",
+            filter: `round_id=eq.${currentRound.roundId}`,
+         }, handleRoundChange)
+         .on("postgres_changes", {
+            event: "*",
+            schema: "public",
+            table: "vocab_battle_round_questions",
+            filter: `round_id=eq.${currentRound.roundId}`,
+         }, handleRoundChange)
+         .on("postgres_changes", {
+            event: "*",
+            schema: "public",
+            table: "vocab_battle_round_answers",
+            filter: `round_id=eq.${currentRound.roundId}`,
+         }, handleRoundChange)
+         .subscribe((status) => {
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+               scheduleSnapshotRefresh(0);
+            }
+         });
+
+      return () => {
+         void supabase.removeChannel(roundChannel);
+      };
+   }, [currentRound?.roundId, scheduleSnapshotRefresh]);
+
+   useEffect(() => {
+      const handleVisibilityChange = () => {
+         if (document.visibilityState === "visible") {
+            scheduleSnapshotRefresh(0);
+         }
+      };
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      window.addEventListener("focus", handleVisibilityChange);
+
+      return () => {
+         document.removeEventListener("visibilitychange", handleVisibilityChange);
+         window.removeEventListener("focus", handleVisibilityChange);
+      };
+   }, [scheduleSnapshotRefresh]);
 
    useEffect(() => {
       if (!snapshot?.deckIds?.length) {
@@ -529,6 +855,13 @@ export default function BattleRoomPage() {
                };
             });
             setError(null);
+            void broadcastRoomUpdate({
+               kind: "player-submitted",
+               roomCode: snapshot.roomCode,
+               roundId: currentRound.roundId,
+               userId: payload.viewerUserId,
+               submittedAt: new Date().toISOString(),
+            });
          } catch (requestError) {
             if (
                requestError instanceof Error &&
@@ -552,7 +885,14 @@ export default function BattleRoomPage() {
             setSubmitLoading(false);
          }
       },
-      [clearQuestionTimer, currentRound, router, snapshot, submitLoading],
+      [
+         broadcastRoomUpdate,
+         clearQuestionTimer,
+         currentRound,
+         router,
+         snapshot,
+         submitLoading,
+      ],
    );
 
    const advanceBattle = useCallback(
@@ -755,6 +1095,13 @@ export default function BattleRoomPage() {
 
          setSnapshot(payload);
          setError(null);
+         void broadcastRoomUpdate({
+            kind: "player-ready",
+            roomCode: snapshot.roomCode,
+            roundId: currentRound.roundId,
+            userId: payload.viewerUserId,
+            readyAt: new Date().toISOString(),
+         });
       } catch (requestError) {
          if (
             requestError instanceof Error &&
@@ -818,6 +1165,11 @@ export default function BattleRoomPage() {
          setSnapshot(payload);
          setLocalBattle(null);
          setError(null);
+         void broadcastRoomUpdate({
+            kind: "next-round-started",
+            roomCode: snapshot.roomCode,
+            sentAt: new Date().toISOString(),
+         });
       } catch (requestError) {
          if (
             requestError instanceof Error &&
@@ -834,6 +1186,119 @@ export default function BattleRoomPage() {
          );
       } finally {
          setNextRoundLoading(false);
+      }
+   };
+
+   const handleForceFinishRound = async () => {
+      if (!snapshot || !currentRound || forceFinishLoading) return;
+
+      const shouldContinue = window.confirm(
+         "Force-finish this round and show results with the submissions received so far?",
+      );
+
+      if (!shouldContinue) {
+         return;
+      }
+
+      try {
+         setForceFinishLoading(true);
+         const token = await getSupabaseAccessToken();
+         const response = await fetch("/api/vocabulary-battle/force-finish", {
+            method: "POST",
+            headers: {
+               "Content-Type": "application/json",
+               Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+               roomCode: snapshot.roomCode,
+            }),
+         });
+
+         const payload = await response.json();
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to force-finish round.");
+         }
+
+         setSnapshot(payload);
+         setError(null);
+         void broadcastRoomUpdate({
+            kind: "snapshot-refresh",
+            roomCode: snapshot.roomCode,
+            sentAt: new Date().toISOString(),
+         });
+      } catch (requestError) {
+         if (
+            requestError instanceof Error &&
+            isSessionExpiredMessage(requestError.message)
+         ) {
+            router.replace("/login");
+            return;
+         }
+
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to force-finish round.",
+         );
+      } finally {
+         setForceFinishLoading(false);
+      }
+   };
+
+   const handleRemovePlayer = async (targetUserId: string, username: string) => {
+      if (!snapshot || removingPlayerId) return;
+
+      const shouldContinue = window.confirm(
+         `Remove ${username} from this room? They will also be removed from the current unfinished round.`,
+      );
+
+      if (!shouldContinue) {
+         return;
+      }
+
+      try {
+         setRemovingPlayerId(targetUserId);
+         const token = await getSupabaseAccessToken();
+         const response = await fetch("/api/vocabulary-battle/remove-player", {
+            method: "POST",
+            headers: {
+               "Content-Type": "application/json",
+               Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+               roomCode: snapshot.roomCode,
+               targetUserId,
+            }),
+         });
+
+         const payload = await response.json();
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to remove player.");
+         }
+
+         setSnapshot(payload);
+         setError(null);
+         void broadcastRoomUpdate({
+            kind: "snapshot-refresh",
+            roomCode: snapshot.roomCode,
+            sentAt: new Date().toISOString(),
+         });
+      } catch (requestError) {
+         if (
+            requestError instanceof Error &&
+            isSessionExpiredMessage(requestError.message)
+         ) {
+            router.replace("/login");
+            return;
+         }
+
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to remove player.",
+         );
+      } finally {
+         setRemovingPlayerId(null);
       }
    };
 
@@ -903,9 +1368,6 @@ export default function BattleRoomPage() {
       currentRound.viewerIsParticipant &&
       hasMinimumPlayers &&
       !currentRound.viewerReady;
-   const roundPlayersByUserId = new Map(
-      (currentRound?.players || []).map((player) => [player.userId, player]),
-   );
    const winner = currentRound?.players.find(
       (player) => player.userId === currentRound.winnerUserId,
    );
@@ -1123,6 +1585,24 @@ export default function BattleRoomPage() {
                      <p className="mx-auto mt-3 max-w-lg text-sm text-slate-300">
                         Everyone is ready. The battle opens when the countdown reaches zero.
                      </p>
+                  </div>
+               )}
+
+               {snapshot.viewerIsHost && currentRound?.status === "active" && (
+                  <div className="rounded-[2rem] border border-amber-500/25 bg-amber-500/10 p-6">
+                     <p className="text-xs uppercase tracking-[0.3em] text-amber-200">
+                        Host controls
+                     </p>
+                     <p className="mt-2 text-sm text-amber-100">
+                        If someone has stopped playing, you can force-finish the round and reveal results using the answers submitted so far.
+                     </p>
+                     <button
+                        type="button"
+                        onClick={handleForceFinishRound}
+                        disabled={forceFinishLoading}
+                        className="mt-4 cursor-pointer rounded-full border border-amber-300/40 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+                        {forceFinishLoading ? "Finishing round..." : "Force finish round"}
+                     </button>
                   </div>
                )}
 
@@ -1494,10 +1974,7 @@ export default function BattleRoomPage() {
 
                   <div className="mt-4 space-y-3">
                      {snapshot.players.map((player) => {
-                        const roundPlayer = roundPlayersByUserId.get(player.userId);
                         const isViewer = player.userId === snapshot.viewerUserId;
-                        const hasFinishedCurrentRound =
-                           currentRound?.status === "active" && Boolean(roundPlayer?.submittedAt);
 
                         return (
                            <div
@@ -1514,124 +1991,22 @@ export default function BattleRoomPage() {
                                        )}`}>
                                        {player.username}
                                     </p>
-
-                                    {currentRound?.status === "waiting" && roundPlayer && (
-                                       <p className="mt-2 text-sm text-slate-400">
-                                          {roundPlayer.isReady ? "Ready to start" : "Not ready yet"}
-                                       </p>
-                                    )}
-
-                                    {currentRound?.status === "waiting" && !roundPlayer && (
-                                       <p className="mt-2 text-sm text-slate-500">
-                                          Waiting for the next round.
-                                       </p>
-                                    )}
-
-                                    {currentRound?.status === "active" && hasFinishedCurrentRound && (
-                                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                                          <span className="font-medium text-emerald-200">
-                                             Finished
-                                          </span>
-                                          <span className="text-slate-300">
-                                             {roundPlayer?.score ?? 0} correct
-                                          </span>
-                                          <span className="text-slate-300">
-                                             {formatSeconds(roundPlayer?.totalResponseMs ?? 0)}
-                                          </span>
-                                       </div>
-                                    )}
-
-                                    {currentRound?.status === "active" &&
-                                       roundPlayer &&
-                                       !hasFinishedCurrentRound && (
-                                          <p className="mt-2 text-sm text-slate-400">
-                                             Still answering this round.
-                                          </p>
-                                       )}
-
-                                    {currentRound?.status === "active" && !roundPlayer && (
-                                       <p className="mt-2 text-sm text-slate-500">
-                                          Waiting for the next round.
-                                       </p>
-                                    )}
-
-                                    {currentRound?.status === "finished" && roundPlayer && (
-                                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-300">
-                                          <span>{roundPlayer.score} correct</span>
-                                          <span>{formatSeconds(roundPlayer.totalResponseMs)}</span>
-                                       </div>
-                                    )}
-
-                                    {!currentRound && (
-                                       <p className="mt-2 text-sm text-slate-500">
-                                          In the room lobby.
-                                       </p>
-                                    )}
                                  </div>
 
-                                 {hasFinishedCurrentRound && (
-                                    <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-200">
-                                       Done
-                                    </span>
-                                 )}
-                                 {currentRound?.status === "finished" && roundPlayer && (
-                                    <span className="text-sm font-medium text-emerald-200">
-                                       {roundPlayer.score} pts
-                                    </span>
-                                 )}
-                                 {currentRound?.status === "waiting" && roundPlayer?.isReady && (
-                                    <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-200">
-                                       Ready
-                                    </span>
-                                 )}
-                                 {isViewer && !hasFinishedCurrentRound && currentRound?.status !== "finished" && (
-                                    <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-200">
-                                       You
-                                    </span>
-                                 )}
-                                 {!isViewer &&
-                                    currentRound?.status === "active" &&
-                                    roundPlayer &&
-                                    !hasFinishedCurrentRound && (
-                                       <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                                          Playing
-                                       </span>
-                                    )}
-                                 {!isViewer && !roundPlayer && currentRound && (
-                                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                                       Waiting
-                                    </span>
+                                 {snapshot.viewerIsHost && !isViewer && (
+                                    <button
+                                       type="button"
+                                       onClick={() =>
+                                          handleRemovePlayer(player.userId, player.username)
+                                       }
+                                       disabled={removingPlayerId === player.userId}
+                                       className="rounded-full border border-red-400/30 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+                                       {removingPlayerId === player.userId
+                                          ? "Removing"
+                                          : "Remove"}
+                                    </button>
                                  )}
                               </div>
-                              {hasFinishedCurrentRound && (
-                                 <p className="mt-2 text-xs text-slate-400">
-                                    Submitted for Round {currentRound?.roundNumber}. Waiting for the remaining players.
-                                 </p>
-                              )}
-                              {currentRound?.status === "finished" && roundPlayer?.submittedAt && (
-                                 <p className="mt-2 text-xs text-slate-400">
-                                    Round {currentRound.roundNumber} complete.
-                                 </p>
-                              )}
-                              {currentRound?.status === "active" &&
-                                 roundPlayer &&
-                                 !hasFinishedCurrentRound && (
-                                    <p className="mt-2 text-xs text-slate-500">
-                                       Current round is still in progress.
-                                    </p>
-                                 )}
-                              {currentRound?.status === "waiting" &&
-                                 roundPlayer &&
-                                 !roundPlayer.isReady && (
-                                    <p className="mt-2 text-xs text-slate-500">
-                                       This player has not readied up yet.
-                                    </p>
-                                 )}
-                              {currentRound && !roundPlayer && (
-                                 <p className="mt-2 text-xs text-slate-500">
-                                    Joined the room, but not included in this round.
-                                 </p>
-                              )}
                            </div>
                         );
                      })}

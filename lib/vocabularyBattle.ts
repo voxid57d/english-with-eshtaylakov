@@ -95,6 +95,7 @@ export type BattleHistoryEntry = {
 };
 
 export type BattleRoomSnapshot = {
+   roomId: string;
    roomCode: string;
    roomStatus: BattleRoomStatus;
    hostUserId: string;
