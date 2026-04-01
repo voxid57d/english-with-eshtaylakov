@@ -54,8 +54,8 @@ const NATURAL_SORT = new Intl.Collator(undefined, {
 });
 
 function getCuriosityPointReward(index: number) {
-   if (index === 0) return 10;
-   if (index === 1) return 5;
+   if (index === 0) return 20;
+   if (index === 1) return 10;
    return 0;
 }
 

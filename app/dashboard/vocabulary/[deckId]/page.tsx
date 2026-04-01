@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
 
 import PracticeView from "@/components/vocabulary/PracticeView";
+import TestView from "@/components/vocabulary/TestView";
 import { useSRS, CardWithHealth, COOLDOWN_MS } from "@/app/hooks/useSRS";
 
 type Deck = {
@@ -70,6 +72,8 @@ export default function DeckPage() {
    const [cardSaving, setCardSaving] = useState(false);
    const [cardError, setCardError] = useState<string | null>(null);
    const [deletingId, setDeletingId] = useState<string | null>(null);
+   const [activeMode, setActiveMode] = useState<"practice" | "test" | null>(null);
+   const [earnedCuriosityPoints, setEarnedCuriosityPoints] = useState(0);
 
    const [now, setNow] = useState(() => Date.now());
    useEffect(() => {
@@ -260,6 +264,7 @@ export default function DeckPage() {
    }, [srsState.practiceQueue, srsState.cooldownList, rawCards]);
 
    const hasAnyCards = allCardsForGrid.length > 0;
+   const canStartTest = rawCards.length >= 4;
    const backHref = deck?.folder
       ? `/dashboard/vocabulary/folders/${deck.folder.slug}`
       : "/dashboard/vocabulary";
@@ -357,6 +362,80 @@ export default function DeckPage() {
       }
    };
 
+   const handleTogglePracticeMode = () => {
+      if (activeMode === "practice") {
+         stopPractice();
+         setActiveMode(null);
+         return;
+      }
+
+      stopPractice();
+      startPractice();
+      setActiveMode("practice");
+   };
+
+   const handleToggleTestMode = () => {
+      if (activeMode === "test") {
+         setActiveMode(null);
+         return;
+      }
+
+      stopPractice();
+      setActiveMode("test");
+   };
+
+   const awardCuriosityPoint = useCallback(async () => {
+      if (!userId) {
+         return;
+      }
+
+      setEarnedCuriosityPoints((value) => value + 1);
+
+      const { data, error } = await supabase
+         .from("user_stats")
+         .select("user_id, curiosity_points")
+         .eq("user_id", userId)
+         .maybeSingle();
+
+      if (error) {
+         console.error("Error loading curiosity points:", error);
+         return;
+      }
+
+      const currentPoints =
+         data && typeof data.curiosity_points === "number"
+            ? data.curiosity_points
+            : 0;
+
+      const nextPoints = currentPoints + 1;
+
+      if (data?.user_id) {
+         const { error: updateError } = await supabase
+            .from("user_stats")
+            .update({
+               curiosity_points: nextPoints,
+            })
+            .eq("user_id", userId);
+
+         if (updateError) {
+            console.error("Error awarding curiosity point:", updateError);
+         }
+
+         return;
+      }
+
+      const { error: insertError } = await supabase.from("user_stats").insert({
+         user_id: userId,
+         streak: 0,
+         last_active_date: null,
+         curiosity_points: nextPoints,
+      });
+
+      if (insertError) {
+         console.error("Error awarding curiosity point:", insertError);
+      }
+   }, [userId]);
+
    if (loadingDeck) {
       return (
          <section aria-live="polite" aria-busy="true" className="space-y-6">
@@ -440,17 +519,32 @@ export default function DeckPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+               {earnedCuriosityPoints > 0 && (
+                  <div className="flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-sm font-semibold text-amber-100">
+                     <Image
+                        src="/cp-icon.svg"
+                        alt=""
+                        aria-hidden="true"
+                        width={16}
+                        height={16}
+                        className="h-4 w-4 shrink-0"
+                     />
+                     <span>+{earnedCuriosityPoints} Curiosity</span>
+                  </div>
+               )}
+
                <button
-                  onClick={() => {
-                     if (srsState.isPracticing) {
-                        stopPractice();
-                     } else {
-                        startPractice();
-                     }
-                  }}
+                  onClick={handleTogglePracticeMode}
                   disabled={!hasAnyCards}
                   className="cursor-pointer rounded-full border border-emerald-500 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50">
-                  {srsState.isPracticing ? "Stop practice" : "Start practice"}
+                  {activeMode === "practice" ? "Stop practice mode" : "Practice mode"}
+               </button>
+
+               <button
+                  onClick={handleToggleTestMode}
+                  disabled={!canStartTest}
+                  className="cursor-pointer rounded-full border border-amber-400/40 px-4 py-2 text-sm font-medium text-amber-200 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:opacity-50">
+                  {activeMode === "test" ? "Stop test mode" : "Test mode"}
                </button>
 
                {!deck.is_public && (
@@ -536,6 +630,14 @@ export default function DeckPage() {
             onToggleGrindMode={setGrindMode}
             setSwipe={setSwipe}
          />
+
+         {activeMode === "test" && (
+            <TestView
+               cards={rawCards}
+               onStop={() => setActiveMode(null)}
+               onCorrectAnswer={awardCuriosityPoint}
+            />
+         )}
 
          {cardsLoading ? (
             <section aria-live="polite" aria-busy="true" className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

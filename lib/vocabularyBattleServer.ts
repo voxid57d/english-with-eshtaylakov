@@ -113,7 +113,7 @@ type FolderBattleAccessRow = {
 const WAITING_ROUND_TTL_HOURS = 6;
 const ACTIVE_ROUND_TTL_HOURS = 2;
 const EXPIRED_ROOM_TTL_HOURS = 24;
-const CURIOSITY_POINT_REWARDS = [10, 5] as const;
+const CURIOSITY_POINT_REWARDS = [20, 10] as const;
 const NON_PREMIUM_ROOM_EXPIRATION_REASON =
    "This room reached 5 rounds. Premium is required for every player to continue. Upgrade to Premium or create a new room.";
 const ROOM_SELECT =
