@@ -17,6 +17,7 @@ type LeaderboardEntry = {
 };
 
 const STREAK_CURIOSITY_POINTS_PER_DAY = 50;
+const LEADERBOARD_ENTRY_LIMIT = 30;
 
 export default function LeaderboardPage() {
    const router = useRouter();
@@ -112,7 +113,7 @@ export default function LeaderboardPage() {
 
          return a.username.localeCompare(b.username);
       })
-      .slice(0, 15);
+      .slice(0, LEADERBOARD_ENTRY_LIMIT);
 
    const loadingSkeleton = (
       <div
@@ -171,7 +172,7 @@ export default function LeaderboardPage() {
                   <span>Leaderboard</span>
                </h1>
                <p className="text-sm text-slate-400">
-                  Top 15 users ranked by Curiosity Points
+                  Top {LEADERBOARD_ENTRY_LIMIT} users ranked by Curiosity Points
                </p>
             </div>
          </header>
