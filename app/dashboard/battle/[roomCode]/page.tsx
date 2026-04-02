@@ -1350,27 +1350,16 @@ export default function BattleRoomPage() {
    if (loading) {
       return (
          <div className="flex min-h-[70vh] items-center justify-center px-4">
-            <div className="w-full max-w-xl rounded-[2rem] border border-slate-800 bg-slate-900/60 p-8 text-center shadow-[0_30px_80px_rgba(2,6,23,0.45)]">
-               <div className="mx-auto flex w-fit items-center gap-4 rounded-full border border-slate-800 bg-slate-950/80 px-5 py-4">
-                  <Image
-                     src="/logo-white.png"
-                     alt=""
-                     aria-hidden="true"
-                     width={120}
-                     height={40}
-                     className="h-8 w-auto opacity-90 animate-pulse"
-                  />
-                  <div className="h-8 w-8 rounded-full border-4 border-slate-700 border-t-emerald-400 animate-spin" />
-               </div>
-               <p className="mt-6 text-xs uppercase tracking-[0.3em] text-emerald-300">
-                  Vocabulary battle
-               </p>
-               <h2 className="mt-3 text-2xl font-semibold text-slate-50">
-                  Loading battle room
-               </h2>
-               <p className="mt-3 text-sm text-slate-400">
-                  Syncing players, rounds, and room state...
-               </p>
+            <div className="flex w-fit items-center gap-4 rounded-full border border-slate-800 bg-slate-950/80 px-5 py-4 shadow-[0_30px_80px_rgba(2,6,23,0.45)]">
+               <Image
+                  src="/logo-text-white.png"
+                  alt=""
+                  aria-hidden="true"
+                  width={180}
+                  height={40}
+                  className="h-8 w-auto opacity-90 animate-pulse"
+               />
+               <div className="h-8 w-8 rounded-full border-4 border-slate-700 border-t-emerald-400 animate-spin" />
             </div>
          </div>
       );
@@ -1546,7 +1535,7 @@ export default function BattleRoomPage() {
                   </div>
                </div>
 
-               {currentRound?.status === "waiting" && (
+               {currentRound && currentRound.status !== "finished" && (
                   <div
                      className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6 space-y-5">
                      <div>
@@ -1554,12 +1543,15 @@ export default function BattleRoomPage() {
                            Round {currentRound.roundNumber}
                         </p>
                         <h2 className="mt-2 text-2xl font-semibold text-slate-50">
-                           Waiting room
+                           {currentRound.status === "waiting"
+                              ? "Waiting room"
+                              : "Round in progress"}
                         </h2>
-                        <p className="mt-2 text-sm text-slate-300">
-                           Players stay in the same room and can keep battling here. Once at least 2 players are
-                           ready, the next countdown begins.
-                        </p>
+                        {currentRound.status === "waiting" && (
+                           <p className="mt-2 text-sm text-slate-300">
+                              Players stay in the same room and can keep battling here. Once at least 2 players are ready, the next countdown begins.
+                           </p>
+                        )}
                      </div>
 
                      <div className="grid gap-4 md:grid-cols-2">
@@ -1584,13 +1576,21 @@ export default function BattleRoomPage() {
                                  </p>
                               </div>
                               <div className="mt-2 flex items-center gap-2 text-sm text-slate-400">
-                                 {player.isReady && (
+                                 {currentRound.status === "waiting" && player.isReady && (
                                     <span className="text-emerald-300">
                                        <PiCheckCircleFill size={14} />
                                     </span>
                                  )}
                                  <span>
-                                    {player.isReady ? "Ready to start" : "Not ready yet"}
+                                    {currentRound.status === "waiting"
+                                       ? player.isReady
+                                          ? "Ready to start"
+                                          : "Not ready yet"
+                                       : player.submittedAt
+                                         ? `${player.score} correct in ${formatSeconds(
+                                              player.totalResponseMs,
+                                           )}`
+                                         : "Still playing"}
                                  </span>
                               </div>
                            </div>
@@ -1598,13 +1598,13 @@ export default function BattleRoomPage() {
                         })}
                      </div>
 
-                     {!hasMinimumPlayers && (
+                     {currentRound.status === "waiting" && !hasMinimumPlayers && (
                         <p className="text-sm text-slate-400">
                            Waiting for more players to join. At least 2 players are needed to start a round.
                         </p>
                      )}
 
-                     {currentRound.viewerIsParticipant ? (
+                     {currentRound.status === "waiting" && currentRound.viewerIsParticipant ? (
                         <>
                            {currentRound.viewerReady && !everyoneReady && (
                               <p className="text-sm text-slate-300">
@@ -1612,11 +1612,16 @@ export default function BattleRoomPage() {
                               </p>
                            )}
                         </>
-                     ) : (
+                     ) : currentRound.status === "waiting" ? (
                         <p className="text-sm text-slate-300">
                            You joined the room after this round setup began. Wait here and you will be included in the next round.
                         </p>
-                     )}
+                     ) : !currentRound.viewerIsParticipant ? (
+                        <p className="text-sm text-slate-300">
+                           You joined after this round started, so you are watching this round and will be added to the next one.
+                        </p>
+                     ) : null}
+
                   </div>
                )}
 
@@ -1682,22 +1687,6 @@ export default function BattleRoomPage() {
                               Retry submission
                            </button>
                         )}
-                     </div>
-                  )}
-
-               {currentRound?.status === "active" &&
-                  !currentRound.viewerIsParticipant &&
-                  !currentRound.viewerSubmitted && (
-                     <div className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6">
-                        <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                           Round in progress
-                        </p>
-                        <p className="mt-3 text-xl font-semibold text-slate-50">
-                           You are in the room, but this round already started before you joined.
-                        </p>
-                        <p className="mt-2 text-sm text-slate-300">
-                           Stay in the room and you will be included automatically when the next round starts.
-                        </p>
                      </div>
                   )}
 
