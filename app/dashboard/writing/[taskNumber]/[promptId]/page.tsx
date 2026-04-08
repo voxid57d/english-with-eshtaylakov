@@ -506,7 +506,7 @@ export default function WritingPromptPage() {
          ) : (
             <div
                ref={splitContainerRef}
-               className="flex flex-col gap-4 lg:flex-row lg:items-stretch"
+               className="flex flex-col gap-3 lg:flex-row lg:items-stretch"
                style={{ cursor: isResizing ? "col-resize" : "default" }}>
                <section
                   className={[
@@ -575,8 +575,8 @@ export default function WritingPromptPage() {
                      type="button"
                      aria-label="Resize panels"
                      onPointerDown={() => setIsResizing(true)}
-                     className="group flex w-4 cursor-col-resize items-center justify-center">
-                     <span className="h-full w-1 rounded-full bg-slate-700 transition group-hover:bg-emerald-400" />
+                     className="group flex w-2.5 cursor-col-resize items-center justify-center">
+                     <span className="h-20 w-[2px] rounded-full bg-slate-600/80 transition group-hover:bg-emerald-400" />
                   </button>
                </div>
 

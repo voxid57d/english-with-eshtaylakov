@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -198,23 +199,23 @@ export default function ReadingMockTestPage() {
       ? "border-stone-300 bg-stone-50 text-stone-900 focus:border-sky-500"
       : "border-slate-600 bg-slate-950/70 text-slate-100 focus:border-emerald-500";
    const choiceChipClass = isLightTheme
-      ? "border-stone-300 bg-stone-50 text-stone-900 hover:-translate-y-0.5 hover:border-sky-400 hover:bg-sky-50"
-      : "border-slate-800 bg-slate-950/70 text-slate-200 hover:-translate-y-0.5 hover:border-slate-500";
+      ? "border-stone-300 bg-stone-50 text-stone-900 hover:border-sky-400 hover:bg-sky-50"
+      : "border-slate-800 bg-slate-950/70 text-slate-200 hover:border-slate-500";
    const answerPanelClass = isLightTheme
       ? "border-stone-300 bg-stone-50 text-stone-700"
       : "border-slate-800 bg-slate-900/70 text-slate-300";
    const highlightButtonClass = isLightTheme
       ? "border-amber-300/70 bg-white/95 text-amber-700 shadow-lg shadow-stone-300/30 hover:bg-amber-50"
       : "border-amber-400/40 bg-slate-950/95 text-amber-200 shadow-lg shadow-black/30 hover:bg-slate-900";
-   const dividerClass = isLightTheme
-      ? "bg-stone-300/80 hover:bg-stone-400"
-      : "bg-slate-800/70 hover:bg-slate-700/80";
    const dividerKnobClass = isLightTheme
-      ? "bg-stone-500 group-hover:bg-sky-500"
-      : "bg-slate-500 group-hover:bg-emerald-400";
+      ? "bg-stone-400/80 group-hover:bg-sky-500"
+      : "bg-slate-600/80 group-hover:bg-emerald-400";
    const bottomNavPanelClass = isLightTheme
       ? "border-stone-200 bg-stone-50/80"
       : theme.panelClass;
+   const scrollAreaClass = isLightTheme
+      ? "[scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.45)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-400/50 [&::-webkit-scrollbar-thumb:hover]:bg-stone-500/60"
+      : "[scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.3)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-500/35 [&::-webkit-scrollbar-thumb:hover]:bg-slate-400/50";
    const inactivePassageNavClass = isLightTheme
       ? "border-stone-300 bg-white text-stone-700 hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
       : "border-slate-700 bg-slate-900/70 text-slate-300 hover:-translate-y-0.5 hover:border-slate-500";
@@ -374,6 +375,49 @@ export default function ReadingMockTestPage() {
       };
    }, []);
 
+   useEffect(() => {
+      const mediaQuery = window.matchMedia("(min-width: 1280px)");
+      const html = document.documentElement;
+      const body = document.body;
+      const previousHtmlOverflow = html.style.overflow;
+      const previousBodyOverflow = body.style.overflow;
+
+      function syncDocumentScrollLock() {
+         if (mediaQuery.matches) {
+            html.style.overflow = "hidden";
+            body.style.overflow = "hidden";
+            return;
+         }
+
+         html.style.overflow = previousHtmlOverflow;
+         body.style.overflow = previousBodyOverflow;
+      }
+
+      syncDocumentScrollLock();
+      mediaQuery.addEventListener("change", syncDocumentScrollLock);
+
+      return () => {
+         mediaQuery.removeEventListener("change", syncDocumentScrollLock);
+         html.style.overflow = previousHtmlOverflow;
+         body.style.overflow = previousBodyOverflow;
+      };
+   }, []);
+
+   useEffect(() => {
+      function handleBeforeUnload(event: BeforeUnloadEvent) {
+         if (submitted) return;
+
+         event.preventDefault();
+         event.returnValue = "";
+      }
+
+      window.addEventListener("beforeunload", handleBeforeUnload);
+
+      return () => {
+         window.removeEventListener("beforeunload", handleBeforeUnload);
+      };
+   }, [submitted]);
+
    function formatTime(value: number) {
       const minutes = Math.floor(value / 60).toString().padStart(2, "0");
       const seconds = Math.floor(value % 60).toString().padStart(2, "0");
@@ -467,10 +511,8 @@ export default function ReadingMockTestPage() {
       }
 
       setHighlightButtonPosition({
-         x:
-            (pointer?.x ?? rect.right + window.scrollX) + 10,
-         y:
-            (pointer?.y ?? rect.top + window.scrollY) - 42,
+         x: (pointer?.x ?? rect.right) + 10,
+         y: (pointer?.y ?? rect.top) - 42,
          visible: true,
       });
    }
@@ -593,7 +635,7 @@ export default function ReadingMockTestPage() {
       return (
          <div
             key={block.id}
-            className={`rounded-3xl border p-5 transition duration-200 hover:-translate-y-0.5 ${blockShellClass}`}>
+            className={`rounded-3xl border p-5 transition duration-200 ${blockShellClass}`}>
             <h3 className={`text-2xl font-semibold ${isLightTheme ? "text-stone-900" : "text-slate-100"}`}>
                {block.title}
             </h3>
@@ -683,7 +725,7 @@ export default function ReadingMockTestPage() {
                            ref={(node) => {
                               questionRefs.current[question.id] = node;
                            }}
-                           className={`grid gap-4 rounded-2xl border p-4 transition duration-200 hover:-translate-y-0.5 md:grid-cols-[minmax(0,1fr)_220px] ${questionCardClass}`}>
+                           className={`grid gap-4 rounded-2xl border p-4 transition duration-200 md:grid-cols-[minmax(0,1fr)_220px] ${questionCardClass}`}>
                            <div>
                               <p className={`text-lg ${isLightTheme ? "text-stone-900" : "text-slate-100"}`}>
                                  <span className={`mr-3 inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2 font-semibold ${questionNumberClass}`}>
@@ -713,7 +755,7 @@ export default function ReadingMockTestPage() {
                            ref={(node) => {
                               questionRefs.current[question.id] = node;
                            }}
-                           className={`rounded-2xl border p-4 transition duration-200 hover:-translate-y-0.5 ${questionCardClass}`}>
+                           className={`rounded-2xl border p-4 transition duration-200 ${questionCardClass}`}>
                            <p className={`text-lg ${isLightTheme ? "text-stone-900" : "text-slate-100"}`}>
                               <span className={`mr-3 inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2 font-semibold ${questionNumberClass}`}>
                                  {question.question_number}
@@ -721,21 +763,55 @@ export default function ReadingMockTestPage() {
                               {question.prompt}
                            </p>
                            <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                              {choices.map((choice) => (
-                                 <label
-                                    key={choice}
-                                    className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${choiceChipClass}`}>
-                                    <input
-                                       type="radio"
-                                       name={question.id}
-                                       value={choice}
-                                       checked={getQuestionAnswerValue(answers, question.id) === choice}
-                                       onChange={(event) => updateAnswer(question.id, event.target.value)}
-                                       disabled={submitted}
-                                    />
-                                    <span>{choice}</span>
-                                 </label>
-                              ))}
+                              {choices.map((choice) => {
+                                 const isSelected =
+                                    getQuestionAnswerValue(answers, question.id) === choice;
+
+                                 return (
+                                    <label
+                                       key={choice}
+                                       className={[
+                                          "flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition",
+                                          choiceChipClass,
+                                          isSelected
+                                             ? isLightTheme
+                                                ? "border-sky-400 bg-sky-50 text-sky-800 shadow-[0_10px_24px_rgba(14,165,233,0.16)]"
+                                                : "border-emerald-400/70 bg-emerald-500/12 text-emerald-100 shadow-[0_10px_24px_rgba(16,185,129,0.14)]"
+                                             : "",
+                                       ].join(" ")}>
+                                       <input
+                                          type="radio"
+                                          name={question.id}
+                                          value={choice}
+                                          checked={isSelected}
+                                          onChange={(event) => updateAnswer(question.id, event.target.value)}
+                                          disabled={submitted}
+                                          className="sr-only"
+                                       />
+                                       <span
+                                          className={[
+                                             "inline-flex h-5 w-5 items-center justify-center rounded-full border transition",
+                                             isSelected
+                                                ? isLightTheme
+                                                   ? "border-sky-500 bg-sky-500"
+                                                   : "border-emerald-400 bg-emerald-400"
+                                                : isLightTheme
+                                                  ? "border-stone-400 bg-white"
+                                                  : "border-slate-500 bg-slate-950/80",
+                                          ].join(" ")}>
+                                          <span
+                                             className={[
+                                                "h-2 w-2 rounded-full transition",
+                                                isSelected
+                                                   ? "bg-white"
+                                                   : "bg-transparent",
+                                             ].join(" ")}
+                                          />
+                                       </span>
+                                       <span className={isSelected ? "font-semibold" : ""}>{choice}</span>
+                                    </label>
+                                 );
+                              })}
                            </div>
                         </div>
                      );
@@ -789,42 +865,27 @@ export default function ReadingMockTestPage() {
       if (!activePassage) return null;
 
       return (
-         <section className={containerClassName}>
-            <div className="mb-4 flex flex-wrap gap-2">
-               {orderedPassages.map((passage) => (
-                  <button
-                     key={passage.id}
-                     type="button"
-                     onClick={() => setActivePassageId(passage.id)}
-                     className={[
-                        "rounded-full border px-4 py-2 text-sm transition",
-                        passage.id === activePassageId
-                           ? theme.accentClass
-                           : "border-slate-700/70 text-slate-300 hover:bg-slate-900/40",
-                     ].join(" ")}>
-                     {passage.label}
-                  </button>
-               ))}
-            </div>
-
-            <p className={`text-xs uppercase tracking-[0.2em] ${theme.mutedClass}`}>
-               {activePassage.label}
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold">{activePassage.title}</h2>
-            {activePassage.subtitle && (
-               <p className={`mt-2 text-base ${theme.mutedClass}`}>{activePassage.subtitle}</p>
-            )}
+         <section className={`${containerClassName} flex min-h-0 flex-col`}>
             <article
                ref={passageArticleRef}
                onPointerUp={(event) => {
                   lastPointerPositionRef.current = {
-                     x: event.clientX + window.scrollX,
-                     y: event.clientY + window.scrollY,
+                     x: event.clientX,
+                     y: event.clientY,
                   };
                }}
                onMouseUp={handleSelectionChange}
                onTouchEnd={handleSelectionChange}
-               className="mt-5 space-y-5 text-[17px] leading-9 xl:text-[18px] xl:leading-10">
+               className={`mt-5 space-y-5 text-[17px] leading-9 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2 xl:text-[18px] xl:leading-10 ${scrollAreaClass}`}>
+               <div className="space-y-2">
+                  <p className={`text-xs uppercase tracking-[0.2em] ${theme.mutedClass}`}>
+                     {activePassage.label}
+                  </p>
+                  <h2 className="text-3xl font-semibold">{activePassage.title}</h2>
+                  {activePassage.subtitle && (
+                     <p className={`text-base ${theme.mutedClass}`}>{activePassage.subtitle}</p>
+                  )}
+               </div>
                {activePassage.content_blocks.map((block) => {
                   if (block.type === "heading") {
                      const Tag = block.level === "h3" ? "h3" : "h2";
@@ -855,8 +916,9 @@ export default function ReadingMockTestPage() {
 
    function renderQuestionsPanel(containerClassName: string) {
       return (
-         <section className={containerClassName}>
-            <div className="space-y-5">
+         <section className={`${containerClassName} xl:flex xl:min-h-0 xl:flex-col`}>
+            <div
+               className={`space-y-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2 ${scrollAreaClass}`}>
                {activeBlocks.map((block) => renderBlock(block))}
             </div>
          </section>
@@ -866,8 +928,18 @@ export default function ReadingMockTestPage() {
    if (loading) {
       return (
          <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100">
-            <div className="mx-auto max-w-7xl rounded-3xl border border-slate-800 bg-slate-900/60 p-6 text-sm text-slate-400">
-               Loading reading test...
+            <div className="flex min-h-[70vh] items-center justify-center px-4">
+               <div className="flex w-fit items-center gap-4 rounded-full border border-slate-800 bg-slate-950/80 px-5 py-4 shadow-[0_30px_80px_rgba(2,6,23,0.45)]">
+                  <Image
+                     src="/logo-text-white.png"
+                     alt=""
+                     aria-hidden="true"
+                     width={180}
+                     height={40}
+                     className="h-8 w-auto opacity-90 animate-pulse"
+                  />
+                  <div className="h-8 w-8 rounded-full border-4 border-slate-700 border-t-emerald-400 animate-spin" />
+               </div>
             </div>
          </main>
       );
@@ -884,7 +956,8 @@ export default function ReadingMockTestPage() {
    }
 
    return (
-      <main className={`min-h-screen border ${theme.shellClass} px-4 py-5 transition-colors`}>
+      <main
+         className={`min-h-screen border ${theme.shellClass} px-4 py-3 transition-colors xl:h-[100dvh] xl:min-h-0 xl:overflow-hidden`}>
          {highlightButtonPosition.visible && selectedText && (
             <button
                type="button"
@@ -899,105 +972,102 @@ export default function ReadingMockTestPage() {
                <span>Highlight</span>
             </button>
          )}
-         <div className="space-y-5">
-            <header className={`rounded-3xl border p-5 ${theme.panelClass}`}>
-               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                  <div>
-                     <h1 className="flex items-center gap-2 text-2xl font-semibold">
-                        <PiReadCvLogoLight size={26} />
-                        <span>{test.title}</span>
-                     </h1>
-                     {test.description && (
-                        <p className={`mt-2 max-w-3xl text-sm ${theme.mutedClass}`}>
-                           {test.description}
-                        </p>
-                     )}
-                  </div>
+         <div className="flex flex-col gap-3 xl:grid xl:h-full xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)_auto]">
+            <div className="space-y-3">
+               <header className={`rounded-3xl border p-3 xl:p-3 ${theme.panelClass}`}>
+                  <div className="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
+                     <div>
+                        <h1 className="flex items-center gap-2 text-xl font-semibold xl:text-2xl">
+                           <PiReadCvLogoLight size={24} />
+                           <span>{test.title}</span>
+                        </h1>
+                     </div>
 
-                  <div className="flex flex-wrap items-center gap-3">
-                     <div className="group relative">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="group relative">
+                           <button
+                              type="button"
+                              onClick={resetTimer}
+                              disabled={submitted}
+                              className={`inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm transition duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 ${theme.accentClass}`}>
+                              <PiClockCountdownLight size={18} />
+                              <span>{formatTime(remainingSeconds)}</span>
+                           </button>
+                           {!submitted && (
+                              <div
+                                 className={`pointer-events-none absolute right-0 top-[calc(100%+0.55rem)] z-20 w-max max-w-56 rounded-xl border px-3 py-2 text-xs opacity-0 shadow-lg transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 ${
+                                    isLightTheme
+                                       ? "border-stone-300 bg-white text-stone-700 shadow-stone-300/30"
+                                       : "border-slate-700 bg-slate-950 text-slate-200 shadow-black/30"
+                                 } -translate-y-1`}>
+                                 <span className="inline-flex items-center gap-1.5">
+                                    <PiArrowCounterClockwiseLight size={14} />
+                                    Click to restart the timer
+                                 </span>
+                              </div>
+                           )}
+                        </div>
+                        <div className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 px-3 py-1.5 text-sm">
+                           <PiPaletteLight size={16} />
+                           {READING_MOCK_THEME_OPTIONS.map((option) => {
+                              const Icon = THEME_ICONS[option.id];
+                              return (
+                                 <button
+                                    key={option.id}
+                                    type="button"
+                                    onClick={() => setThemeId(option.id)}
+                                    className={[
+                                       "inline-flex items-center gap-1 rounded-full px-3 py-1 transition duration-200 hover:-translate-y-0.5",
+                                       themeId === option.id
+                                          ? isLightTheme
+                                             ? option.id === "paper"
+                                                ? "bg-sky-100 text-sky-700 shadow-sm"
+                                                : "bg-stone-200 text-stone-700"
+                                             : "bg-white/10 text-white"
+                                          : theme.mutedClass,
+                                    ].join(" ")}>
+                                    <Icon size={14} />
+                                    <span>{option.label}</span>
+                                 </button>
+                              );
+                           })}
+                        </div>
                         <button
                            type="button"
-                           onClick={resetTimer}
-                           disabled={submitted}
-                           className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 ${theme.accentClass}`}>
-                           <PiClockCountdownLight size={18} />
-                           <span>{formatTime(remainingSeconds)}</span>
+                           onClick={() => void handleSubmit()}
+                           disabled={submitting || submitted}
+                           className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-slate-950 transition duration-200 hover:-translate-y-0.5 hover:bg-emerald-400 disabled:opacity-60">
+                           {submitted ? "Submitted" : submitting ? "Submitting..." : "Submit"}
                         </button>
-                        {!submitted && (
-                           <div
-                              className={`pointer-events-none absolute right-0 top-[calc(100%+0.55rem)] z-20 w-max max-w-56 rounded-xl border px-3 py-2 text-xs opacity-0 shadow-lg transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 ${
-                                 isLightTheme
-                                    ? "border-stone-300 bg-white text-stone-700 shadow-stone-300/30"
-                                    : "border-slate-700 bg-slate-950 text-slate-200 shadow-black/30"
-                              } -translate-y-1`}>
-                              <span className="inline-flex items-center gap-1.5">
-                                 <PiArrowCounterClockwiseLight size={14} />
-                                 Click to restart the timer
-                              </span>
-                           </div>
-                        )}
+                        <button
+                           type="button"
+                           onClick={() => router.push("/dashboard/mock/reading")}
+                           className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition duration-200 hover:-translate-y-0.5 ${
+                              isLightTheme
+                                 ? "border-stone-300 bg-white text-stone-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+                                 : "border-slate-700 bg-slate-900/70 text-slate-200 hover:border-slate-500 hover:bg-slate-900"
+                           }`}>
+                           <PiSignOutLight size={16} />
+                           <span>Exit</span>
+                        </button>
                      </div>
-                     <div className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 px-3 py-2 text-sm">
-                        <PiPaletteLight size={16} />
-                        {READING_MOCK_THEME_OPTIONS.map((option) => {
-                           const Icon = THEME_ICONS[option.id];
-                           return (
-                              <button
-                                 key={option.id}
-                                 type="button"
-                                 onClick={() => setThemeId(option.id)}
-                                 className={[
-                                    "inline-flex items-center gap-1 rounded-full px-3 py-1 transition duration-200 hover:-translate-y-0.5",
-                                    themeId === option.id
-                                       ? isLightTheme
-                                          ? option.id === "paper"
-                                             ? "bg-sky-100 text-sky-700 shadow-sm"
-                                             : "bg-stone-200 text-stone-700"
-                                          : "bg-white/10 text-white"
-                                       : theme.mutedClass,
-                                 ].join(" ")}>
-                                 <Icon size={14} />
-                                 <span>{option.label}</span>
-                              </button>
-                           );
-                        })}
-                     </div>
-                     <button
-                        type="button"
-                        onClick={() => void handleSubmit()}
-                        disabled={submitting || submitted}
-                        className="rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition duration-200 hover:-translate-y-0.5 hover:bg-emerald-400 disabled:opacity-60">
-                        {submitted ? "Submitted" : submitting ? "Submitting..." : "Submit"}
-                     </button>
-                     <button
-                        type="button"
-                        onClick={() => router.push("/dashboard/mock/reading")}
-                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition duration-200 hover:-translate-y-0.5 ${
-                           isLightTheme
-                              ? "border-stone-300 bg-white text-stone-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
-                              : "border-slate-700 bg-slate-900/70 text-slate-200 hover:border-slate-500 hover:bg-slate-900"
-                        }`}>
-                        <PiSignOutLight size={16} />
-                        <span>Exit</span>
-                     </button>
                   </div>
-               </div>
-            </header>
+               </header>
 
-            {summary && (
-               <section className={`rounded-3xl border p-5 ${theme.panelClass}`}>
-                  <h2 className="text-xl font-semibold">
-                     {summary.correctCount} / {summary.totalQuestions} correct
-                  </h2>
-                  <p className={`mt-2 text-sm ${theme.mutedClass}`}>
-                     Answered {summary.answeredCount}.{" "}
-                     {summary.unansweredNumbers.length > 0
-                        ? `Unanswered: ${summary.unansweredNumbers.join(", ")}.`
-                        : "All questions answered."}
-                  </p>
-               </section>
-            )}
+               {summary && (
+                  <section className={`rounded-3xl border p-4 ${theme.panelClass}`}>
+                     <h2 className="text-xl font-semibold">
+                        {summary.correctCount} / {summary.totalQuestions} correct
+                     </h2>
+                     <p className={`mt-2 text-sm ${theme.mutedClass}`}>
+                        Answered {summary.answeredCount}.{" "}
+                        {summary.unansweredNumbers.length > 0
+                           ? `Unanswered: ${summary.unansweredNumbers.join(", ")}.`
+                           : "All questions answered."}
+                     </p>
+                  </section>
+               )}
+            </div>
 
             <div className="space-y-4 xl:hidden">
                <section className={`rounded-3xl border p-3 ${theme.panelClass}`}>
@@ -1082,14 +1152,16 @@ export default function ReadingMockTestPage() {
 
             <div
                ref={splitGridRef}
-               className="hidden gap-5 xl:grid xl:items-start"
+               className="hidden gap-3 xl:grid xl:min-h-0 xl:flex-1 xl:items-stretch"
                style={{
                   gridTemplateColumns:
                      activePassage && typeof window !== "undefined"
-                        ? `minmax(0, ${splitRatio}fr) minmax(14px,14px) minmax(340px, ${100 - splitRatio}fr)`
+                        ? `minmax(0, ${splitRatio}fr) minmax(10px,10px) minmax(340px, ${100 - splitRatio}fr)`
                         : undefined,
                }}>
-               {renderPassagePanel(`rounded-3xl border p-5 ${theme.panelClass}`)}
+               {renderPassagePanel(
+                  `rounded-3xl border p-4 ${theme.panelClass} xl:h-full xl:min-h-0 xl:overflow-hidden`
+               )}
 
                <div className="hidden xl:flex items-stretch justify-center">
                   <div className="flex h-full min-h-[20rem] w-full items-center justify-center">
@@ -1102,17 +1174,19 @@ export default function ReadingMockTestPage() {
                            document.body.style.userSelect = "none";
                            event.currentTarget.setPointerCapture?.(event.pointerId);
                         }}
-                        className={`group flex h-full min-h-[20rem] w-4 cursor-col-resize items-center justify-center rounded-full transition ${dividerClass}`}>
-                        <span className={`flex h-16 w-1 rounded-full transition ${dividerKnobClass}`} />
+                        className="group flex h-full min-h-[20rem] w-2.5 cursor-col-resize items-center justify-center">
+                        <span className={`flex h-20 w-[2px] rounded-full transition ${dividerKnobClass}`} />
                      </button>
                   </div>
                </div>
 
-               {renderQuestionsPanel(`rounded-3xl border p-5 ${theme.panelClass}`)}
+               {renderQuestionsPanel(
+                  `rounded-3xl border p-4 ${theme.panelClass} xl:h-full xl:min-h-0 xl:overflow-hidden`
+               )}
             </div>
 
-            <section className={`hidden rounded-3xl border p-5 xl:block ${bottomNavPanelClass}`}>
-               <div className="grid gap-5 xl:grid-cols-2">
+            <section className={`hidden rounded-3xl border p-2.5 xl:block ${bottomNavPanelClass}`}>
+               <div className="grid gap-2.5 xl:grid-cols-2 xl:items-center">
                   <div>
                      <div className="flex flex-wrap gap-2">
                         {orderedPassages.map((passage) => (
@@ -1121,7 +1195,7 @@ export default function ReadingMockTestPage() {
                               type="button"
                               onClick={() => setActivePassageId(passage.id)}
                               className={[
-                                 "rounded-2xl border px-4 py-2 text-sm font-medium transition duration-200",
+                                 "rounded-2xl border px-3 py-1 text-sm font-medium transition duration-200",
                                  passage.id === activePassageId
                                     ? activePassageNavClass
                                     : inactivePassageNavClass,
@@ -1142,7 +1216,7 @@ export default function ReadingMockTestPage() {
                                  type="button"
                                  onClick={() => jumpToQuestion(question)}
                                  className={[
-                                    "inline-flex h-10 min-w-10 items-center justify-center rounded-2xl border px-3 text-sm font-medium transition duration-200",
+                                    "inline-flex h-8 min-w-8 items-center justify-center rounded-2xl border px-2.5 text-sm font-medium transition duration-200",
                                     isQuestionAnswered(question, answers)
                                        ? answeredQuestionNavClass
                                        : unansweredQuestionNavClass,

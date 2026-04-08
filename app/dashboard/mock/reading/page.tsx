@@ -75,7 +75,7 @@ export default function MockReadingPage() {
             <div>
                <h1 className="flex items-center gap-2 text-2xl font-semibold">
                   <PiReadCvLogoLight className="text-sky-400" size={26} />
-                  <span>Reading folder</span>
+                  <span>Reading</span>
                </h1>
                <p className="mt-1 text-sm text-slate-400">
                   Passage-based IELTS reading mock tests with timers and answer
