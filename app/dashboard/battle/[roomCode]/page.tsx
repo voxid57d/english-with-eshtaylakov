@@ -1535,6 +1535,20 @@ export default function BattleRoomPage() {
                   </div>
                </div>
 
+               {currentRound?.status === "active" && countdownMs > 0 && (
+                  <div className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6 text-center">
+                     <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
+                        Round {currentRound.roundNumber} countdown
+                     </p>
+                     <p className="mt-4 text-7xl font-semibold text-slate-50">
+                        {Math.ceil(countdownMs / 1000)}
+                     </p>
+                     <p className="mx-auto mt-3 max-w-lg text-sm text-slate-300">
+                        Everyone is ready. The battle opens when the countdown reaches zero.
+                     </p>
+                  </div>
+               )}
+
                {currentRound && currentRound.status !== "finished" && (
                   <div
                      className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6 space-y-5">
@@ -1622,20 +1636,6 @@ export default function BattleRoomPage() {
                         </p>
                      ) : null}
 
-                  </div>
-               )}
-
-               {currentRound?.status === "active" && countdownMs > 0 && (
-                  <div className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-6 text-center">
-                     <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
-                        Round {currentRound.roundNumber} countdown
-                     </p>
-                     <p className="mt-4 text-7xl font-semibold text-slate-50">
-                        {Math.ceil(countdownMs / 1000)}
-                     </p>
-                     <p className="mx-auto mt-3 max-w-lg text-sm text-slate-300">
-                        Everyone is ready. The battle opens when the countdown reaches zero.
-                     </p>
                   </div>
                )}
 
