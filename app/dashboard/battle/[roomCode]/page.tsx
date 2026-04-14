@@ -436,23 +436,36 @@ export default function BattleRoomPage() {
    );
 
    useEffect(() => {
-      pollingTimeoutRef.current = window.setTimeout(() => {
-         void (async () => {
-            try {
-               await loadSnapshot(true);
-            } catch (requestError) {
-               handleSnapshotError(requestError);
+      let cancelled = false;
+
+      const scheduleNextPoll = () => {
+         pollingTimeoutRef.current = window.setTimeout(() => {
+            void runPoll();
+         }, pollingIntervalMs);
+      };
+
+      const runPoll = async () => {
+         try {
+            await loadSnapshot(true);
+         } catch (requestError) {
+            handleSnapshotError(requestError);
+         } finally {
+            if (!cancelled) {
+               scheduleNextPoll();
             }
-         })();
-      }, pollingIntervalMs);
+         }
+      };
+
+      scheduleNextPoll();
 
       return () => {
+         cancelled = true;
          if (pollingTimeoutRef.current) {
             window.clearTimeout(pollingTimeoutRef.current);
             pollingTimeoutRef.current = null;
          }
       };
-   }, [handleSnapshotError, loadSnapshot, pollingIntervalMs, snapshot?.roomCode]);
+   }, [handleSnapshotError, loadSnapshot, pollingIntervalMs]);
 
    useEffect(() => {
       const handlePageActivity = () => {
