@@ -11,12 +11,8 @@ export default function WritingPage() {
             <div>
                <h1 className="flex items-center gap-2 text-3xl font-semibold">
                   <PiNotePencilLight className="text-emerald-400" />
-                  <span>Writing</span>
+                  <span>IELTS Writing</span>
                </h1>
-               <p className="mt-2 max-w-2xl text-sm text-slate-400">
-                  Choose a task first, then open one of its prompt cards like Test 1
-                  or Test 2 to start writing.
-               </p>
             </div>
          </div>
 
@@ -28,16 +24,11 @@ export default function WritingPage() {
                   className="group overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/70 transition hover:-translate-y-1 hover:border-emerald-500/40">
                   <div className="bg-[linear-gradient(135deg,rgba(16,185,129,0.2),rgba(15,23,42,0.08),rgba(251,191,36,0.08))] p-6">
                      <p className="text-xs uppercase tracking-[0.24em] text-emerald-300">
-                        Writing
+                        IELTS Writing
                      </p>
                      <h2 className="mt-2 text-3xl font-semibold text-white">
                         {task.title}
                      </h2>
-                     <p className="mt-6 text-sm leading-6 text-slate-300">
-                        {task.taskNumber === 1
-                           ? "Summarise visual information, report key features, and compare relevant data."
-                           : "Write a clear essay with reasons, examples, and a well-supported position."}
-                     </p>
                   </div>
 
                   <div className="flex items-center justify-between p-6">

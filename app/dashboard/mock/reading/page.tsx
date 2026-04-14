@@ -99,7 +99,7 @@ export default function MockReadingPage() {
                No reading tests have been added yet.
             </div>
          ) : (
-            <div className="space-y-3">
+            <div className="grid gap-4 lg:grid-cols-2">
                {tests.map((test) => {
                   const locked = test.is_premium && isPremiumUser === false;
 
@@ -114,28 +114,26 @@ export default function MockReadingPage() {
                               router.push(`/mock/reading/${test.slug}`);
                            }
                         }}
-                        className="w-full rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-left transition hover:-translate-y-[1px] hover:border-sky-400/30 hover:bg-slate-900">
-                        <div className="flex items-start justify-between gap-4">
-                           <div>
-                              <h2 className="font-semibold text-slate-50">
-                                 {test.title}
-                              </h2>
-                              {test.description && (
-                                 <p className="mt-2 text-sm text-slate-400">
-                                    {test.description}
+                        className="group w-full max-w-2xl overflow-hidden rounded-[1.75rem] border border-slate-800 bg-slate-900/70 text-left transition hover:-translate-y-1 hover:border-sky-400/35 hover:bg-slate-900">
+                        <div className="bg-[linear-gradient(135deg,rgba(14,165,233,0.16),rgba(59,130,246,0.06),rgba(15,23,42,0.02))] p-5">
+                           <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                 <p className="text-[11px] uppercase tracking-[0.24em] text-sky-300">
+                                    IELTS Reading
                                  </p>
-                              )}
-                              <p className="mt-3 text-xs text-slate-500">
-                                 {test.is_premium
-                                    ? locked
-                                       ? "Premium locked"
-                                       : "Premium"
-                                    : "Free"}
-                              </p>
+                                 <h2 className="mt-2 text-2xl font-semibold text-slate-50">
+                                    {test.title}
+                                 </h2>
+                              </div>
+                              <span className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs font-medium text-sky-200">
+                                 Full test
+                              </span>
                            </div>
+                        </div>
 
-                           <span className="text-sm font-medium text-sky-300">
-                              {locked ? "View plans ->" : "Start ->"}
+                        <div className="flex items-center justify-between gap-4 p-5">
+                           <span className="shrink-0 rounded-full border border-sky-400/20 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-300 transition group-hover:border-sky-300/35 group-hover:bg-sky-500/15 group-hover:text-sky-200">
+                              {locked ? "View plans ->" : "Start test ->"}
                            </span>
                         </div>
                      </button>

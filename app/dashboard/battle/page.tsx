@@ -385,11 +385,6 @@ export default function BattleLobbyPage() {
                </div>
                <h1 className="text-3xl font-semibold">Vocabulary battle</h1>
             </div>
-            <p className="max-w-2xl text-sm text-slate-400">
-               Create a private multiplayer room, combine one or more public
-               decks from folders, and keep playing multiple rounds in the same
-               room code.
-            </p>
          </div>
 
          {error && (
@@ -402,9 +397,6 @@ export default function BattleLobbyPage() {
             <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
                <div className="space-y-1">
                   <h2 className="text-xl font-semibold">Join by code</h2>
-                  <p className="text-sm text-slate-400">
-                     Ask the host for the six-character room code.
-                  </p>
                </div>
 
                <form onSubmit={handleJoin} className="space-y-4">
@@ -471,9 +463,6 @@ export default function BattleLobbyPage() {
             <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
                <div className="space-y-1">
                   <h2 className="text-xl font-semibold">Create a room</h2>
-                  <p className="text-sm text-slate-400">
-                     The first round is created immediately. After that, the same room can host multiple rounds.
-                  </p>
                </div>
 
                {loadingDecks ? (
