@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
-import { PiArrowLeftLight, PiReadCvLogoLight } from "react-icons/pi";
+import { PiReadCvLogoLight } from "react-icons/pi";
 
 type ReadingMockTestRow = {
    id: string;
@@ -65,22 +64,11 @@ export default function MockReadingPage() {
    return (
       <div className="space-y-6">
          <header className="space-y-3">
-            <Link
-               href="/dashboard/mock"
-               className="inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-slate-200">
-               <PiArrowLeftLight size={18} />
-               <span>Back to folders</span>
-            </Link>
-
             <div>
                <h1 className="flex items-center gap-2 text-2xl font-semibold">
                   <PiReadCvLogoLight className="text-sky-400" size={26} />
-                  <span>Reading</span>
+                  <span>IELTS Reading</span>
                </h1>
-               <p className="mt-1 text-sm text-slate-400">
-                  Passage-based IELTS reading mock tests with timers and answer
-                  review.
-               </p>
             </div>
          </header>
 

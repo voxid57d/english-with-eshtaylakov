@@ -23,6 +23,8 @@ import {
 import {
    PiCheckCircleLight,
    PiArrowCounterClockwiseLight,
+   PiCaretDownLight,
+   PiCheckLight,
    PiClockCountdownLight,
    PiMoonLight,
    PiPaletteLight,
@@ -46,7 +48,11 @@ function renderInlineTemplate(
    answers: ReadingMockAnswerMap,
    submitted: boolean,
    onAnswer: (questionId: string, value: string) => void,
-   isLightTheme: boolean
+   isLightTheme: boolean,
+   onRegisterQuestionRef: (
+      questionId: string,
+      node: HTMLSpanElement | null
+   ) => void
 ) {
    const parts = template.split(/(\[\[\d+\]\])/g);
    return parts.map((part, index) => {
@@ -62,6 +68,7 @@ function renderInlineTemplate(
       return (
          <span
             key={question.id}
+            ref={(node) => onRegisterQuestionRef(question.id, node)}
             className="mx-1 inline-flex items-baseline gap-1.5 align-baseline whitespace-nowrap">
             <span
                className={[
@@ -136,9 +143,11 @@ export default function ReadingMockTestPage() {
    const [remainingSeconds, setRemainingSeconds] = useState(READING_MOCK_DURATION_SECONDS);
    const [themeId, setThemeId] = useState<ReadingMockThemeId>("night");
    const [summary, setSummary] = useState<ReturnType<typeof evaluateReadingMock> | null>(null);
+   const [earnedCuriosityPoints, setEarnedCuriosityPoints] = useState(0);
    const [splitRatio, setSplitRatio] = useState(58);
    const [timerInitialized, setTimerInitialized] = useState(false);
    const [mobilePanel, setMobilePanel] = useState<"passage" | "questions">("passage");
+   const [openSelectQuestionId, setOpenSelectQuestionId] = useState<string | null>(null);
    const [selectedText, setSelectedText] = useState("");
    const [highlightsByPassage, setHighlightsByPassage] = useState<Record<string, string[]>>({});
    const [highlightButtonPosition, setHighlightButtonPosition] = useState<{
@@ -376,6 +385,18 @@ export default function ReadingMockTestPage() {
    }, []);
 
    useEffect(() => {
+      function handleWindowPointerDown() {
+         setOpenSelectQuestionId(null);
+      }
+
+      window.addEventListener("pointerdown", handleWindowPointerDown);
+
+      return () => {
+         window.removeEventListener("pointerdown", handleWindowPointerDown);
+      };
+   }, []);
+
+   useEffect(() => {
       const mediaQuery = window.matchMedia("(min-width: 1280px)");
       const html = document.documentElement;
       const body = document.body;
@@ -546,6 +567,71 @@ export default function ReadingMockTestPage() {
       }));
    }
 
+   useEffect(() => {
+      if (earnedCuriosityPoints <= 0) {
+         return;
+      }
+
+      const timeoutId = window.setTimeout(() => {
+         setEarnedCuriosityPoints(0);
+      }, 4000);
+
+      return () => window.clearTimeout(timeoutId);
+   }, [earnedCuriosityPoints]);
+
+   async function awardCuriosityPoints(userId: string, amount: number) {
+      if (amount <= 0) {
+         return false;
+      }
+
+      const { data, error } = await supabase
+         .from("user_stats")
+         .select("user_id, curiosity_points")
+         .eq("user_id", userId)
+         .maybeSingle();
+
+      if (error) {
+         console.error("Error loading curiosity points:", error);
+         return false;
+      }
+
+      const currentPoints =
+         data && typeof data.curiosity_points === "number"
+            ? data.curiosity_points
+            : 0;
+      const nextPoints = currentPoints + amount;
+
+      if (data?.user_id) {
+         const { error: updateError } = await supabase
+            .from("user_stats")
+            .update({
+               curiosity_points: nextPoints,
+            })
+            .eq("user_id", userId);
+
+         if (updateError) {
+            console.error("Error awarding curiosity points:", updateError);
+            return false;
+         }
+
+         return true;
+      }
+
+      const { error: insertError } = await supabase.from("user_stats").insert({
+         user_id: userId,
+         streak: 0,
+         last_active_date: null,
+         curiosity_points: nextPoints,
+      });
+
+      if (insertError) {
+         console.error("Error awarding curiosity points:", insertError);
+         return false;
+      }
+
+      return true;
+   }
+
    async function handleSubmit() {
       if (!test || submitting || submitted) return;
       try {
@@ -603,6 +689,14 @@ export default function ReadingMockTestPage() {
             .from("reading_mock_answers")
             .insert(answerRows);
          if (answersError) throw answersError;
+
+         const rewardApplied = await awardCuriosityPoints(
+            userData.user.id,
+            nextSummary.correctCount
+         );
+         if (rewardApplied) {
+            setEarnedCuriosityPoints(nextSummary.correctCount);
+         }
       } catch (requestError) {
          console.error(requestError);
          setError("Your answers were checked, but saving the attempt failed.");
@@ -612,19 +706,85 @@ export default function ReadingMockTestPage() {
    }
 
    function renderSelectQuestion(question: ReadingMockQuestion, optionList: ReadingMockOption[]) {
+      const selectedValue = getQuestionAnswerValue(answers, question.id);
+      const selectedOption =
+         optionList.find((option) => option.label === selectedValue) || null;
+      const isOpen = openSelectQuestionId === question.id;
+
       return (
-         <select
-            value={getQuestionAnswerValue(answers, question.id)}
-            onChange={(event) => updateAnswer(question.id, event.target.value)}
-            disabled={submitted}
-            className={`w-full rounded-xl border px-3 py-2 text-sm outline-none transition disabled:opacity-70 ${optionControlClass}`}>
-            <option value="">Select</option>
-            {optionList.map((option) => (
-               <option key={option.id} value={option.label}>
-                  {option.label}. {option.text}
-               </option>
-            ))}
-         </select>
+         <div
+            className="relative self-start"
+            onPointerDown={(event) => event.stopPropagation()}>
+            <button
+               type="button"
+               disabled={submitted}
+               onClick={() =>
+                  setOpenSelectQuestionId((current) =>
+                     current === question.id ? null : question.id
+                  )
+               }
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left text-sm outline-none transition disabled:opacity-70 ${optionControlClass}`}>
+               <span
+                  className={`min-w-0 truncate ${
+                     selectedOption
+                        ? "font-medium"
+                        : isLightTheme
+                          ? "text-stone-500"
+                          : "text-slate-400"
+                  }`}>
+                  {selectedOption
+                     ? `${selectedOption.label}. ${selectedOption.text}`
+                     : "Select"}
+               </span>
+               <PiCaretDownLight
+                  className={`shrink-0 transition ${isOpen ? "rotate-180" : ""}`}
+               />
+            </button>
+
+            {isOpen && !submitted && (
+               <div
+                  className={[
+                     "absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-2xl border shadow-[0_18px_40px_rgba(15,23,42,0.18)] backdrop-blur-sm",
+                     isLightTheme
+                        ? "border-stone-300 bg-white/98"
+                        : "border-slate-700 bg-slate-950/96",
+                  ].join(" ")}>
+                  <div className="max-h-72 overflow-y-auto p-1.5 [scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.35)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-400/35">
+                     {optionList.map((option) => {
+                        const isSelected = selectedValue === option.label;
+
+                        return (
+                           <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => {
+                                 updateAnswer(question.id, option.label);
+                                 setOpenSelectQuestionId(null);
+                              }}
+                              className={[
+                                 "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition",
+                                 isLightTheme
+                                    ? isSelected
+                                       ? "bg-sky-50 text-sky-800"
+                                       : "text-stone-700 hover:bg-stone-100"
+                                    : isSelected
+                                      ? "bg-emerald-500/12 text-emerald-100"
+                                      : "text-slate-200 hover:bg-slate-900",
+                              ].join(" ")}>
+                              <span className="min-w-0">
+                                 <span className="mr-2 font-semibold">{option.label}.</span>
+                                 <span>{option.text}</span>
+                              </span>
+                              <span className="mt-0.5 shrink-0">
+                                 {isSelected ? <PiCheckLight size={16} /> : null}
+                              </span>
+                           </button>
+                        );
+                     })}
+                  </div>
+               </div>
+            )}
+         </div>
       );
    }
 
@@ -666,7 +826,10 @@ export default function ReadingMockTestPage() {
                                     answers,
                                     submitted,
                                     updateAnswer,
-                                    isLightTheme
+                                    isLightTheme,
+                                    (questionId, node) => {
+                                       questionRefs.current[questionId] = node;
+                                    }
                                  )}
                               </p>
                            ))}
@@ -762,16 +925,25 @@ export default function ReadingMockTestPage() {
                               </span>
                               {question.prompt}
                            </p>
-                           <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                           <div
+                              className="mt-4 grid gap-2 sm:grid-cols-3"
+                              role="radiogroup"
+                              aria-label={`Question ${question.question_number} choices`}>
                               {choices.map((choice) => {
                                  const isSelected =
                                     getQuestionAnswerValue(answers, question.id) === choice;
 
                                  return (
-                                    <label
+                                    <button
                                        key={choice}
+                                       type="button"
+                                       role="radio"
+                                       aria-checked={isSelected}
+                                       disabled={submitted}
+                                       onClick={() => updateAnswer(question.id, choice)}
                                        className={[
                                           "flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition",
+                                          submitted ? "opacity-70" : "",
                                           choiceChipClass,
                                           isSelected
                                              ? isLightTheme
@@ -779,15 +951,6 @@ export default function ReadingMockTestPage() {
                                                 : "border-emerald-400/70 bg-emerald-500/12 text-emerald-100 shadow-[0_10px_24px_rgba(16,185,129,0.14)]"
                                              : "",
                                        ].join(" ")}>
-                                       <input
-                                          type="radio"
-                                          name={question.id}
-                                          value={choice}
-                                          checked={isSelected}
-                                          onChange={(event) => updateAnswer(question.id, event.target.value)}
-                                          disabled={submitted}
-                                          className="sr-only"
-                                       />
                                        <span
                                           className={[
                                              "inline-flex h-5 w-5 items-center justify-center rounded-full border transition",
@@ -809,7 +972,7 @@ export default function ReadingMockTestPage() {
                                           />
                                        </span>
                                        <span className={isSelected ? "font-semibold" : ""}>{choice}</span>
-                                    </label>
+                                    </button>
                                  );
                               })}
                            </div>
@@ -958,6 +1121,40 @@ export default function ReadingMockTestPage() {
    return (
       <main
          className={`min-h-screen border ${theme.shellClass} px-4 py-3 transition-colors xl:h-[100dvh] xl:min-h-0 xl:overflow-hidden`}>
+         {earnedCuriosityPoints > 0 && (
+            <div className="pointer-events-none fixed right-5 top-5 z-50">
+               <div
+                  className={`relative overflow-hidden rounded-2xl border px-4 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.24)] animate-[pulse_1.2s_ease-out_2] ${
+                     isLightTheme
+                        ? "border-amber-300 bg-white/95 text-amber-700"
+                        : "border-emerald-400/40 bg-slate-950/92 text-emerald-200"
+                  }`}>
+                  <div className="absolute inset-0 opacity-30">
+                     <div className="absolute -right-6 -top-6 h-16 w-16 rounded-full bg-amber-300/25 animate-ping" />
+                  </div>
+                  <div className="relative flex items-center gap-3">
+                     <span
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${
+                           isLightTheme
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-emerald-400/15 text-emerald-200"
+                        }`}>
+                        +{earnedCuriosityPoints}
+                     </span>
+                     <div>
+                        <p className="text-sm font-semibold leading-none">
+                           Curiosity earned
+                        </p>
+                        <p className={`mt-1 text-xs ${isLightTheme ? "text-stone-600" : "text-slate-300"}`}>
+                           {earnedCuriosityPoints} point
+                           {earnedCuriosityPoints === 1 ? "" : "s"} added for your
+                           correct answers
+                        </p>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         )}
          {highlightButtonPosition.visible && selectedText && (
             <button
                type="button"

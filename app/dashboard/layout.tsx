@@ -3,7 +3,7 @@
 import Image from "next/image";
 import type { User } from "@supabase/supabase-js";
 import { memo, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import Navbar from "@/components/Navbar";
 import Sidebar from "@/components/Sidebar";
@@ -35,6 +35,7 @@ export default function DashboardLayout({
    const [isLoadingUser, setIsLoadingUser] = useState(true);
    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
    const router = useRouter();
+   const pathname = usePathname();
 
    useEffect(() => {
       let isActive = true;
@@ -120,6 +121,10 @@ export default function DashboardLayout({
       setIsSidebarOpen(false);
    }, []);
 
+   const isImmersiveWritingRoute = /^\/dashboard\/writing\/(1|2)\/[^/]+$/.test(
+      pathname
+   );
+
    if (isLoadingUser || !viewer) {
       return (
          <main className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -139,22 +144,28 @@ export default function DashboardLayout({
 
    return (
       <main className="min-h-screen bg-slate-950 text-white flex flex-col">
-         <Navbar
-            user={viewer.user}
-            username={viewer.username ?? undefined}
-            isPremium={viewer.isPremium}
-            onLogout={handleLogOut}
-            onToggleSidebar={handleOpenSidebar}
-         />
+         {isImmersiveWritingRoute ? (
+            children
+         ) : (
+            <>
+               <Navbar
+                  user={viewer.user}
+                  username={viewer.username ?? undefined}
+                  isPremium={viewer.isPremium}
+                  onLogout={handleLogOut}
+                  onToggleSidebar={handleOpenSidebar}
+               />
 
-         <div className="flex flex-1">
-            <Sidebar
-               isOpenOnMobile={isSidebarOpen}
-               closeMobile={handleCloseSidebar}
-               isPremium={viewer.isPremium}
-            />
-            <DashboardContent>{children}</DashboardContent>
-         </div>
+               <div className="flex flex-1">
+                  <Sidebar
+                     isOpenOnMobile={isSidebarOpen}
+                     closeMobile={handleCloseSidebar}
+                     isPremium={viewer.isPremium}
+                  />
+                  <DashboardContent>{children}</DashboardContent>
+               </div>
+            </>
+         )}
       </main>
    );
 }

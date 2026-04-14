@@ -1,14 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
    PiArrowClockwiseBold,
-   PiArrowLeftLight,
    PiClockCountdownLight,
    PiCrownSimpleFill,
+   PiDoorOpenLight,
    PiFloppyDiskLight,
    PiLampLight,
    PiMoonStarsLight,
@@ -345,6 +344,12 @@ export default function WritingPromptPage() {
    const modeConfig =
       WRITING_DISPLAY_MODES.find((mode) => mode.id === displayMode) ||
       WRITING_DISPLAY_MODES[0];
+   const scrollAreaClass =
+      displayMode === "light"
+         ? "[scrollbar-width:thin] [scrollbar-color:rgba(168,162,158,0.55)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-400/55 [&::-webkit-scrollbar-thumb:hover]:bg-stone-500/65"
+         : displayMode === "yellow_black"
+           ? "[scrollbar-width:thin] [scrollbar-color:rgba(250,204,21,0.45)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-yellow-300/45 [&::-webkit-scrollbar-thumb:hover]:bg-yellow-300/60"
+           : "[scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,0.32)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-500/35 [&::-webkit-scrollbar-thumb:hover]:bg-slate-400/50";
    const statusLabel = getStatusLabel(entry?.submission || null);
    const canOpenFeedback = entry?.submission?.status === "feedback_ready";
 
@@ -472,292 +477,345 @@ export default function WritingPromptPage() {
    }
 
    return (
-      <div className="space-y-6">
-         <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-               <Link
-                  href={`/dashboard/writing/${taskNumber}`}
-                  className="inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-slate-200">
-                  <PiArrowLeftLight />
-                  Back to prompts
-               </Link>
-               <h1 className="mt-3 text-3xl font-semibold">
-                  {loading ? "Loading..." : entry?.prompt.title || "Prompt"}
-               </h1>
-               <p className="mt-2 text-sm text-slate-400">
-                  {taskMeta.instructionHeading}
-               </p>
-            </div>
-         </div>
-
-         {toast && (
-            <p
-               className={`rounded-2xl border px-4 py-3 text-sm ${
-                  toast.kind === "success"
-                     ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                     : "border-red-500/30 bg-red-500/10 text-red-200"
-               }`}>
-               {toast.message}
-            </p>
-         )}
-
-         {loading || !entry ? (
-            <div className="h-96 animate-pulse rounded-3xl border border-slate-800 bg-slate-900/60" />
-         ) : (
-            <div
-               ref={splitContainerRef}
-               className="flex flex-col gap-3 lg:flex-row lg:items-stretch"
-               style={{ cursor: isResizing ? "col-resize" : "default" }}>
-               <section
-                  className={[
-                     "space-y-5 rounded-3xl border p-6",
-                     modeConfig.border,
-                     modeConfig.panel,
-                  ].join(" ")}
-                  style={{ flexBasis: `${leftPaneWidth}%` }}>
-                  <div className="space-y-2">
-                     <p className={`text-sm ${modeConfig.mutedText}`}>
-                        You should spend about {taskMeta.recommendedMinutes} minutes on
-                        this task.
-                     </p>
-                     {taskMeta.promptIntro && (
-                        <p className={`text-sm font-medium ${modeConfig.text}`}>
-                           {taskMeta.promptIntro}
-                        </p>
-                     )}
-                  </div>
-
-                  <div
-                     className={[
-                        "rounded-3xl border p-5",
-                        modeConfig.border,
-                        modeConfig.subtlePanel,
-                     ].join(" ")}>
-                     <p
-                        className={[
-                           "whitespace-pre-wrap text-base leading-7",
-                           modeConfig.text,
-                        ].join(" ")}>
-                        {entry.prompt.promptText}
-                     </p>
-                  </div>
-
-                  {entry.prompt.imageUrl && (
-                     <div
-                        className={[
-                           "overflow-hidden rounded-3xl border",
-                           modeConfig.border,
-                           modeConfig.subtlePanel,
-                        ].join(" ")}>
-                        <Image
-                           src={entry.prompt.imageUrl}
-                           alt={`${entry.prompt.title} visual prompt`}
-                           width={1400}
-                           height={900}
-                           className="h-auto w-full object-cover"
-                           unoptimized
-                        />
-                     </div>
-                  )}
-
-                  <p className={`text-sm leading-6 ${modeConfig.text}`}>
-                     {taskMeta.promptOutro}
-                  </p>
-
-                  <p className={`text-sm font-medium ${modeConfig.text}`}>
-                     Write at least {taskMeta.minimumWords} words.
-                  </p>
-
-               </section>
-
-               <div className="hidden lg:flex items-stretch">
-                  <button
-                     type="button"
-                     aria-label="Resize panels"
-                     onPointerDown={() => setIsResizing(true)}
-                     className="group flex w-2.5 cursor-col-resize items-center justify-center">
-                     <span className="h-20 w-[2px] rounded-full bg-slate-600/80 transition group-hover:bg-emerald-400" />
-                  </button>
-               </div>
-
-               <section
-                  className={[
-                     "space-y-5 rounded-3xl border p-6",
-                     modeConfig.border,
-                     modeConfig.panel,
-                  ].join(" ")}
-                  style={{ flexBasis: `${100 - leftPaneWidth}%` }}>
-                  <div className="grid gap-3 md:grid-cols-4">
-                     <div
-                        className={[
-                           "flex min-h-[74px] flex-col justify-center rounded-2xl border px-4 py-2.5",
-                           modeConfig.border,
-                           modeConfig.subtlePanel,
-                        ].join(" ")}>
-                        <p className={`text-2xl font-semibold leading-none ${modeConfig.text}`}>
-                           {wordCount}
-                        </p>
-                     </div>
-
-                     <div
-                        className={[
-                           "flex min-h-[74px] items-center justify-center rounded-2xl border px-3 py-2.5",
-                           modeConfig.border,
-                           modeConfig.subtlePanel,
-                        ].join(" ")}>
-                        <div className="rounded-full border border-slate-800 bg-slate-950/80 p-1">
-                           <div className="flex items-center gap-1">
-                              {WRITING_DISPLAY_MODES.map((mode) => {
-                                 const isActive = displayMode === mode.id;
-                                 const Icon =
-                                    mode.id === "dark"
-                                       ? PiMoonStarsLight
-                                       : mode.id === "yellow_black"
-                                         ? PiLampLight
-                                         : PiSunDimLight;
-
-                                 return (
-                                    <button
-                                       key={mode.id}
-                                       type="button"
-                                       onClick={() => setDisplayMode(mode.id)}
-                                       aria-label={mode.label}
-                                       title={mode.label}
-                                       className={[
-                                          "inline-flex items-center justify-center rounded-full p-2 transition",
-                                          isActive
-                                             ? "bg-slate-800 text-white shadow-sm"
-                                             : "text-slate-300 hover:bg-slate-900/80 hover:text-white",
-                                       ].join(" ")}>
-                                       <Icon size={15} />
-                                    </button>
-                                 );
-                              })}
-                           </div>
-                        </div>
-                     </div>
-
-                     <div className="group relative">
-                        <button
-                           type="button"
-                           onClick={() => {
-                              setStartedAt(Date.now());
-                              setTimerNow(Date.now());
-                           }}
-                           className={[
-                              "flex min-h-[74px] w-full items-center rounded-3xl border px-4 py-2.5 text-left transition hover:opacity-90",
-                              modeConfig.border,
-                              modeConfig.subtlePanel,
-                           ].join(" ")}>
-                           <div className="flex items-center gap-2 pr-2">
-                              <PiClockCountdownLight className={modeConfig.mutedText} />
-                              <p
-                                 className={`min-w-[5ch] text-3xl font-semibold leading-none tabular-nums ${modeConfig.text}`}>
-                                 {formatTimer(remainingSeconds)}
-                              </p>
-                           </div>
-                        </button>
-                        <div className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 rounded-full border border-slate-700 bg-slate-950/95 px-3 py-1 text-xs text-slate-200 opacity-0 shadow-lg transition group-hover:opacity-100">
-                           Restart timer
-                        </div>
-                     </div>
-
-                     {statusLabel && (
-                        <button
-                           type="button"
-                           onClick={() => {
-                              if (canOpenFeedback) {
-                                 setShowFeedback((current) => !current);
-                              }
-                           }}
-                           className={[
-                              "flex min-h-[74px] flex-col justify-center rounded-2xl border px-4 py-2.5 text-left transition",
-                              modeConfig.border,
-                              modeConfig.subtlePanel,
-                              canOpenFeedback ? "cursor-pointer" : "cursor-default",
-                           ].join(" ")}>
-                           <p className={`text-xs uppercase tracking-[0.18em] ${modeConfig.mutedText}`}>
-                              Status
-                           </p>
-                           <div className={`mt-1 inline-flex items-center gap-2 text-sm font-medium ${modeConfig.text}`}>
-                              {canOpenFeedback && <PiSealCheckFill />}
-                              <span>
-                                 {canOpenFeedback
-                                    ? showFeedback
-                                       ? "Hide feedback"
-                                       : "Feedback ready"
-                                    : statusLabel}
-                              </span>
-                           </div>
-                        </button>
-                     )}
-                  </div>
-
-                  <textarea
-                     value={draftText}
-                     onChange={(event) => setDraftText(event.target.value)}
-                     placeholder="Write your IELTS answer here..."
-                     className={[
-                        "min-h-[28rem] w-full resize-y rounded-3xl border px-5 py-4 text-sm leading-7 outline-none transition",
-                        modeConfig.textarea,
-                     ].join(" ")}
+      <main
+         className={[
+            "min-h-screen px-4 py-4 xl:h-[100dvh] xl:min-h-0 xl:overflow-hidden",
+            modeConfig.shell,
+            modeConfig.text,
+         ].join(" ")}>
+         {loading ? (
+            <div className="flex min-h-[70vh] items-center justify-center px-4">
+               <div className="flex w-fit items-center gap-4 rounded-full border border-slate-800 bg-slate-950/80 px-5 py-4 shadow-[0_30px_80px_rgba(2,6,23,0.45)]">
+                  <Image
+                     src="/logo-text-white.png"
+                     alt=""
+                     aria-hidden="true"
+                     width={180}
+                     height={40}
+                     className="h-8 w-auto opacity-90 animate-pulse"
                   />
+                  <div className="h-8 w-8 rounded-full border-4 border-slate-700 border-t-emerald-400 animate-spin" />
+               </div>
+            </div>
+         ) : !entry ? (
+            <div className="mx-auto max-w-4xl rounded-3xl border border-red-500/30 bg-red-500/10 p-6 text-red-200">
+               {toast?.message || "Writing prompt could not be loaded."}
+            </div>
+         ) : (
+            <div className="flex h-full flex-col gap-4 xl:min-h-0">
+               <header
+                  className={[
+                     "rounded-3xl border p-3",
+                     modeConfig.border,
+                     modeConfig.panel,
+                  ].join(" ")}>
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                     <div>
+                        <h1 className="text-2xl font-semibold xl:text-3xl">
+                           {entry.prompt.title}
+                        </h1>
+                        <p className={`mt-2 text-sm ${modeConfig.mutedText}`}>
+                           {taskMeta.instructionHeading}
+                        </p>
+                     </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                     <p className={`text-sm ${modeConfig.mutedText}`}>
-                        {isAutoSaving
-                           ? "Autosaving..."
-                           : lastSavedAt
-                             ? `Saved ${formatDate(lastSavedAt)}`
-                             : "Saving keeps your current draft under this prompt."}
+                     <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard/writing/${taskNumber}`)}
+                        className={[
+                           "inline-flex items-center gap-2 self-start rounded-full border px-4 py-2 text-sm font-medium transition",
+                           modeConfig.buttonIdle,
+                        ].join(" ")}>
+                        <PiDoorOpenLight />
+                        Exit
+                     </button>
+                  </div>
+               </header>
+
+               {toast && (
+                  <p
+                     className={`rounded-2xl border px-4 py-3 text-sm ${
+                        toast.kind === "success"
+                           ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                           : "border-red-500/30 bg-red-500/10 text-red-200"
+                     }`}>
+                     {toast.message}
+                  </p>
+               )}
+
+               <div
+                  ref={splitContainerRef}
+                  className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-stretch xl:min-h-0"
+                  style={{ cursor: isResizing ? "col-resize" : "default" }}>
+                  <section
+                     className={[
+                        "space-y-5 rounded-3xl border p-6 lg:min-h-0 lg:overflow-y-auto",
+                        scrollAreaClass,
+                        modeConfig.border,
+                        modeConfig.panel,
+                     ].join(" ")}
+                     style={{ flexBasis: `${leftPaneWidth}%` }}>
+                     <div className="space-y-2">
+                        <p className={`text-sm ${modeConfig.mutedText}`}>
+                           You should spend about {taskMeta.recommendedMinutes} minutes on
+                           this task.
+                        </p>
+                        {taskMeta.promptIntro && (
+                           <p className={`text-sm font-medium ${modeConfig.text}`}>
+                              {taskMeta.promptIntro}
+                           </p>
+                        )}
+                     </div>
+
+                     <div
+                        className={[
+                           "rounded-3xl border p-5",
+                           modeConfig.border,
+                           modeConfig.subtlePanel,
+                        ].join(" ")}>
+                        <p
+                           className={[
+                              "whitespace-pre-wrap text-base leading-7",
+                              modeConfig.text,
+                           ].join(" ")}>
+                           {entry.prompt.promptText}
+                        </p>
+                     </div>
+
+                     {entry.prompt.imageUrl && (
+                        <div
+                           className={[
+                              "overflow-hidden rounded-3xl border",
+                              modeConfig.border,
+                              modeConfig.subtlePanel,
+                           ].join(" ")}>
+                           <Image
+                              src={entry.prompt.imageUrl}
+                              alt={`${entry.prompt.title} visual prompt`}
+                              width={1400}
+                              height={900}
+                              className="h-auto w-full object-cover"
+                              unoptimized
+                           />
+                        </div>
+                     )}
+
+                     <p className={`text-sm leading-6 ${modeConfig.text}`}>
+                        {taskMeta.promptOutro}
                      </p>
 
-                     <div className="flex flex-wrap items-center gap-3">
-                        <button
-                           type="button"
-                           onClick={handleSave}
-                           disabled={saving}
-                           className={[
-                              "inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition disabled:opacity-60",
-                              modeConfig.buttonIdle,
-                           ].join(" ")}>
-                           {saving ? (
-                              <PiSpinnerGapLight className="animate-spin" />
-                           ) : (
-                              <PiFloppyDiskLight />
-                           )}
-                           Save
-                        </button>
+                     <p className={`text-sm font-medium ${modeConfig.text}`}>
+                        Write at least {taskMeta.minimumWords} words.
+                     </p>
+                  </section>
 
-                        <button
-                           type="button"
-                           onClick={handleSubmitForFeedback}
-                           disabled={
-                              submitting || entry.submission?.status === "pending_feedback"
-                           }
-                           className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition disabled:opacity-60 ${
-                              isPremium
-                                 ? "bg-amber-400 text-slate-950 hover:bg-amber-300"
-                                 : "border border-amber-400/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15"
-                           }`}>
-                           {submitting ? (
-                              <PiSpinnerGapLight className="animate-spin" />
-                           ) : entry.submission?.status === "feedback_ready" ? (
-                              <PiArrowClockwiseBold />
-                           ) : (
-                              <PiCrownSimpleFill />
-                           )}
-                           {isPremium
-                              ? entry.submission?.status === "pending_feedback"
-                                 ? "Pending feedback"
-                                 : entry.submission?.status === "feedback_ready"
-                                   ? "Resubmit for feedback"
-                                   : "Send for feedback"
-                              : "Go premium for feedback"}
-                        </button>
-                     </div>
+                  <div className="hidden lg:flex items-stretch">
+                     <button
+                        type="button"
+                        aria-label="Resize panels"
+                        onPointerDown={() => setIsResizing(true)}
+                        className="group flex w-2.5 cursor-col-resize items-center justify-center">
+                        <span className="h-20 w-[2px] rounded-full bg-slate-600/80 transition group-hover:bg-emerald-400" />
+                     </button>
                   </div>
-               </section>
+
+                  <section
+                     className={[
+                        "space-y-5 rounded-3xl border p-6 lg:min-h-0 lg:overflow-y-auto",
+                        scrollAreaClass,
+                        modeConfig.border,
+                        modeConfig.panel,
+                     ].join(" ")}
+                     style={{ flexBasis: `${100 - leftPaneWidth}%` }}>
+                     <div className="grid gap-3 md:grid-cols-4">
+                        <div
+                           className={[
+                              "flex min-h-[74px] flex-col justify-center rounded-2xl border px-4 py-2.5",
+                              modeConfig.border,
+                              modeConfig.subtlePanel,
+                           ].join(" ")}>
+                           <p className={`text-2xl font-semibold leading-none ${modeConfig.text}`}>
+                              {wordCount}
+                           </p>
+                        </div>
+
+                        <div
+                           className={[
+                              "flex min-h-[74px] items-center justify-center rounded-2xl border px-3 py-2.5",
+                              modeConfig.border,
+                              modeConfig.subtlePanel,
+                           ].join(" ")}>
+                           <div
+                              className={[
+                                 "rounded-full border p-1",
+                                 displayMode === "light"
+                                    ? "border-stone-300 bg-white"
+                                    : displayMode === "yellow_black"
+                                      ? "border-yellow-400/40 bg-black"
+                                      : "border-slate-800 bg-slate-950/80",
+                              ].join(" ")}>
+                              <div className="flex items-center gap-1">
+                                 {WRITING_DISPLAY_MODES.map((mode) => {
+                                    const isActive = displayMode === mode.id;
+                                    const Icon =
+                                       mode.id === "dark"
+                                          ? PiMoonStarsLight
+                                          : mode.id === "yellow_black"
+                                            ? PiLampLight
+                                            : PiSunDimLight;
+
+                                    return (
+                                       <button
+                                          key={mode.id}
+                                          type="button"
+                                          onClick={() => setDisplayMode(mode.id)}
+                                          aria-label={mode.label}
+                                          title={mode.label}
+                                          className={[
+                                             "inline-flex items-center justify-center rounded-full p-2 transition",
+                                             displayMode === "light"
+                                                ? isActive
+                                                   ? "bg-stone-900 text-white shadow-sm"
+                                                   : "text-stone-700 hover:bg-stone-100 hover:text-stone-950"
+                                                : displayMode === "yellow_black"
+                                                  ? isActive
+                                                     ? "bg-yellow-300 text-black shadow-sm"
+                                                     : "text-yellow-200 hover:bg-yellow-400/10 hover:text-yellow-100"
+                                                  : isActive
+                                                    ? "bg-slate-800 text-white shadow-sm"
+                                                    : "text-slate-300 hover:bg-slate-900/80 hover:text-white",
+                                          ].join(" ")}>
+                                          <Icon size={15} />
+                                       </button>
+                                    );
+                                 })}
+                              </div>
+                           </div>
+                        </div>
+
+                        <div className="group relative">
+                           <button
+                              type="button"
+                              onClick={() => {
+                                 setStartedAt(Date.now());
+                                 setTimerNow(Date.now());
+                              }}
+                              className={[
+                                 "flex min-h-[74px] w-full items-center rounded-3xl border px-4 py-2.5 text-left transition hover:opacity-90",
+                                 modeConfig.border,
+                                 modeConfig.subtlePanel,
+                              ].join(" ")}>
+                              <div className="flex items-center gap-2 pr-2">
+                                 <PiClockCountdownLight className={modeConfig.mutedText} />
+                                 <p
+                                    className={`min-w-[5ch] text-3xl font-semibold leading-none tabular-nums ${modeConfig.text}`}>
+                                    {formatTimer(remainingSeconds)}
+                                 </p>
+                              </div>
+                           </button>
+                           <div className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 rounded-full border border-slate-700 bg-slate-950/95 px-3 py-1 text-xs text-slate-200 opacity-0 shadow-lg transition group-hover:opacity-100">
+                              Restart timer
+                           </div>
+                        </div>
+
+                        {statusLabel && (
+                           <button
+                              type="button"
+                              onClick={() => {
+                                 if (canOpenFeedback) {
+                                    setShowFeedback((current) => !current);
+                                 }
+                              }}
+                              className={[
+                                 "flex min-h-[74px] flex-col justify-center rounded-2xl border px-4 py-2.5 text-left transition",
+                                 modeConfig.border,
+                                 modeConfig.subtlePanel,
+                                 canOpenFeedback ? "cursor-pointer" : "cursor-default",
+                              ].join(" ")}>
+                              <p className={`text-xs uppercase tracking-[0.18em] ${modeConfig.mutedText}`}>
+                                 Status
+                              </p>
+                              <div className={`mt-1 inline-flex items-center gap-2 text-sm font-medium ${modeConfig.text}`}>
+                                 {canOpenFeedback && <PiSealCheckFill />}
+                                 <span>
+                                    {canOpenFeedback
+                                       ? showFeedback
+                                          ? "Hide feedback"
+                                          : "Feedback ready"
+                                       : statusLabel}
+                                 </span>
+                              </div>
+                           </button>
+                        )}
+                     </div>
+
+                     <textarea
+                        value={draftText}
+                        onChange={(event) => setDraftText(event.target.value)}
+                        placeholder="Write your IELTS answer here..."
+                        className={[
+                           "min-h-[28rem] w-full resize-y rounded-3xl border px-5 py-4 text-sm leading-7 outline-none transition lg:min-h-[calc(100vh-22rem)] xl:min-h-[20rem]",
+                           scrollAreaClass,
+                           modeConfig.textarea,
+                        ].join(" ")}
+                     />
+
+                     <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className={`text-sm ${modeConfig.mutedText}`}>
+                           {isAutoSaving
+                              ? "Autosaving..."
+                              : lastSavedAt
+                                ? `Saved ${formatDate(lastSavedAt)}`
+                                : ""}
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                           <button
+                              type="button"
+                              onClick={handleSave}
+                              disabled={saving}
+                              className={[
+                                 "inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition disabled:opacity-60",
+                                 modeConfig.buttonIdle,
+                              ].join(" ")}>
+                              {saving ? (
+                                 <PiSpinnerGapLight className="animate-spin" />
+                              ) : (
+                                 <PiFloppyDiskLight />
+                              )}
+                              Save
+                           </button>
+
+                           <button
+                              type="button"
+                              onClick={handleSubmitForFeedback}
+                              disabled={
+                                 submitting || entry.submission?.status === "pending_feedback"
+                              }
+                              className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition disabled:opacity-60 ${
+                                 isPremium
+                                    ? "bg-amber-400 text-slate-950 hover:bg-amber-300"
+                                    : "border border-amber-400/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15"
+                              }`}>
+                              {submitting ? (
+                                 <PiSpinnerGapLight className="animate-spin" />
+                              ) : entry.submission?.status === "feedback_ready" ? (
+                                 <PiArrowClockwiseBold />
+                              ) : (
+                                 <PiCrownSimpleFill />
+                              )}
+                              {isPremium
+                                 ? entry.submission?.status === "pending_feedback"
+                                    ? "Pending feedback"
+                                    : entry.submission?.status === "feedback_ready"
+                                      ? "Resubmit for feedback"
+                                      : "Send for feedback"
+                                 : "Go premium for feedback"}
+                           </button>
+                        </div>
+                     </div>
+                  </section>
+               </div>
             </div>
          )}
 
@@ -818,6 +876,6 @@ export default function WritingPromptPage() {
                </div>
             </div>
          )}
-      </div>
+      </main>
    );
 }

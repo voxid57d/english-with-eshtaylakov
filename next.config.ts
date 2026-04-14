@@ -13,6 +13,16 @@ const nextConfig: NextConfig = {
          },
       ],
    },
+   async rewrites() {
+      return {
+         beforeFiles: [
+            {
+               source: "/dashboard/reading",
+               destination: "/dashboard/mock/reading",
+            },
+         ],
+      };
+   },
 };
 
 export default nextConfig;

@@ -6,15 +6,14 @@ import { usePathname } from "next/navigation";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import {
    PiBookOpenTextLight,
-   PiReadCvLogoLight,
    PiNotePencilLight,
+   PiReadCvLogoLight,
    PiTrophyLight,
    PiSwordLight,
    PiCrownSimpleLight,
    PiCaretDoubleLeftLight,
    PiCaretDoubleRightLight,
    PiPaperPlaneTiltLight,
-   PiExamLight,
 } from "react-icons/pi";
 
 const links = [
@@ -29,20 +28,14 @@ const links = [
       icon: PiSwordLight,
    },
    {
-      href: "/dashboard/reading",
-      label: "Reading",
-      icon: PiReadCvLogoLight,
-   },
-   {
       href: "/dashboard/writing",
-      label: "Writing",
+      label: "IELTS Writing",
       icon: PiNotePencilLight,
-      badge: "NEW",
    },
    {
-      href: "/dashboard/mock",
-      label: "IELTS Mock",
-      icon: PiExamLight,
+      href: "/dashboard/reading",
+      label: "IELTS Reading",
+      icon: PiReadCvLogoLight,
    },
    {
       href: "/dashboard/leaderboard",
