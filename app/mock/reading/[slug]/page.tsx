@@ -160,7 +160,7 @@ export default function ReadingMockTestPage() {
       visible: false,
    });
 
-   const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+   const questionRefs = useRef<Record<string, HTMLElement | null>>({});
    const passageArticleRef = useRef<HTMLElement | null>(null);
    const splitGridRef = useRef<HTMLDivElement | null>(null);
    const isDraggingDividerRef = useRef(false);
