@@ -16,7 +16,6 @@ import {
    BATTLE_QUESTION_OPTIONS,
    BattleQuestionCount,
    BattleHistoryEntry,
-   BATTLE_TIME_LIMIT_SECONDS,
    normalizeRoomCode,
 } from "@/lib/vocabularyBattle";
 
@@ -53,6 +52,14 @@ const NATURAL_SORT = new Intl.Collator(undefined, {
    sensitivity: "base",
 });
 
+type ActiveBattleRoomSummary = {
+   roomCode: string;
+   deckTitle: string;
+   playerCount: number;
+   currentRoundStatus: "waiting" | "active" | "finished" | null;
+   roundNumber: number | null;
+};
+
 function getCuriosityPointReward(index: number) {
    if (index === 0) return 20;
    if (index === 1) return 10;
@@ -75,6 +82,8 @@ export default function BattleLobbyPage() {
    const [showHistory, setShowHistory] = useState(false);
    const [loadingHistory, setLoadingHistory] = useState(false);
    const [historyLoaded, setHistoryLoaded] = useState(false);
+   const [activeRoom, setActiveRoom] = useState<ActiveBattleRoomSummary | null>(null);
+   const [loadingActiveRoom, setLoadingActiveRoom] = useState(true);
    const [error, setError] = useState<string | null>(null);
 
    useEffect(() => {
@@ -140,6 +149,65 @@ export default function BattleLobbyPage() {
          cancelled = true;
       };
    }, [router]);
+
+   useEffect(() => {
+      let cancelled = false;
+
+      const loadActiveRoom = async () => {
+         try {
+            setLoadingActiveRoom(true);
+            const token = await getSupabaseAccessToken();
+            const response = await fetch("/api/vocabulary-battle/active-room", {
+               headers: {
+                  Authorization: `Bearer ${token}`,
+               },
+               cache: "no-store",
+            });
+
+            const payload = await response.json();
+            if (!response.ok) {
+               throw new Error(payload.error || "Failed to load active room.");
+            }
+
+            if (cancelled) return;
+            setActiveRoom((payload.room || null) as ActiveBattleRoomSummary | null);
+         } catch (requestError) {
+            if (cancelled) return;
+
+            setError(
+               requestError instanceof Error
+                  ? requestError.message
+                  : "Failed to load active room.",
+            );
+         } finally {
+            if (!cancelled) {
+               setLoadingActiveRoom(false);
+            }
+         }
+      };
+
+      void loadActiveRoom();
+
+      return () => {
+         cancelled = true;
+      };
+   }, []);
+
+   const activeRoomStatusLabel = useMemo(() => {
+      if (!activeRoom?.currentRoundStatus) {
+         return "Room available";
+      }
+
+      if (activeRoom.currentRoundStatus === "waiting") {
+         return `Round ${activeRoom.roundNumber ?? "?"} waiting`;
+      }
+
+      if (activeRoom.currentRoundStatus === "active") {
+         return `Round ${activeRoom.roundNumber ?? "?"} in progress`;
+      }
+
+      return `Round ${activeRoom.roundNumber ?? "?"} finished`;
+   }, [activeRoom]);
 
    const loadHistory = async () => {
       if (loadingHistory || historyLoaded) return;
@@ -361,6 +429,43 @@ export default function BattleLobbyPage() {
                      {joinLoading ? "Joining..." : "Join room"}
                   </button>
                </form>
+
+               <div className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-4">
+                  {loadingActiveRoom ? (
+                     <p className="text-sm text-slate-500">
+                        Checking whether you already have an open room...
+                     </p>
+                  ) : activeRoom ? (
+                     <div className="space-y-3">
+                        <div className="space-y-1">
+                           <p className="text-sm font-semibold text-slate-100">
+                              Your current room
+                           </p>
+                           <p className="text-sm text-slate-400">
+                              {activeRoom.deckTitle}
+                           </p>
+                           <p className="text-xs text-slate-500">
+                              Code {activeRoom.roomCode} · {activeRoom.playerCount} player
+                              {activeRoom.playerCount === 1 ? "" : "s"} ·{" "}
+                              {activeRoomStatusLabel}
+                           </p>
+                        </div>
+
+                        <button
+                           type="button"
+                           onClick={() =>
+                              router.push(`/dashboard/battle/${activeRoom.roomCode}`)
+                           }
+                           className="cursor-pointer rounded-full border border-sky-500 px-5 py-3 text-sm font-semibold text-sky-300 transition hover:bg-sky-500/10">
+                           Re-enter room
+                        </button>
+                     </div>
+                  ) : (
+                     <p className="text-sm text-slate-500">
+                        You are not currently in any open battle room.
+                     </p>
+                  )}
+               </div>
             </section>
 
             <section className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">

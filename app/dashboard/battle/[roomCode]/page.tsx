@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PiCaretDownBold, PiCheckCircleFill, PiCrownSimpleFill } from "react-icons/pi";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -59,50 +58,6 @@ type LocalBattleState = {
    submitted: boolean;
    pendingSubmission: boolean;
 };
-
-type JoinAnnouncementPayload = {
-   roomId: string;
-   roomCode: string;
-   viewerUserId: string;
-   viewerIsRoomMember: boolean;
-   username: string;
-   isPremium: boolean;
-   joinedAt: string;
-};
-
-type BattleBroadcastPayload =
-   | {
-        kind: "snapshot-refresh";
-        roomCode: string;
-        sentAt: string;
-     }
-   | {
-        kind: "player-joined";
-        roomCode: string;
-        userId: string;
-        username: string;
-        isPremium: boolean;
-        joinedAt: string;
-     }
-   | {
-        kind: "player-ready";
-        roomCode: string;
-        roundId: string;
-        userId: string;
-        readyAt: string;
-     }
-   | {
-        kind: "player-submitted";
-        roomCode: string;
-        roundId: string;
-        userId: string;
-        submittedAt: string;
-     }
-   | {
-        kind: "next-round-started";
-        roomCode: string;
-        sentAt: string;
-     };
 
 function createInitialLocalState(roundId: string): LocalBattleState {
    return {
@@ -170,92 +125,39 @@ function isSessionExpiredMessage(message: string) {
    );
 }
 
-function applyBattleBroadcastToSnapshot(
-   snapshot: BattleRoomSnapshot,
-   payload: BattleBroadcastPayload,
-): BattleRoomSnapshot {
-   if (payload.roomCode !== snapshot.roomCode) {
-      return snapshot;
+function getBattlePollingInterval(
+   currentRound: BattleRoomSnapshot["currentRound"],
+   isPageVisible: boolean,
+) {
+   if (!isPageVisible) {
+      return 12000;
    }
 
-   if (payload.kind === "player-joined") {
-      const alreadyInRoom = snapshot.players.some(
-         (player) => player.userId === payload.userId,
-      );
+   if (!currentRound) {
+      return 3000;
+   }
 
-      if (alreadyInRoom) {
-         return snapshot;
+   if (currentRound.status === "waiting") {
+      return 2500;
+   }
+
+   if (currentRound.status === "active") {
+      const startAt = currentRound.battleStartsAt
+         ? new Date(currentRound.battleStartsAt).getTime()
+         : 0;
+
+      if (startAt > Date.now()) {
+         return 750;
       }
 
-      return {
-         ...snapshot,
-         players: [
-            ...snapshot.players,
-            {
-               userId: payload.userId,
-               username: payload.username,
-               isPremium: payload.isPremium,
-               joinedAt: payload.joinedAt,
-            },
-         ],
-      };
+      if (currentRound.viewerSubmitted) {
+         return 1000;
+      }
+
+      return 1500;
    }
 
-   if (!snapshot.currentRound) {
-      return snapshot;
-   }
-
-   if (
-      (payload.kind === "player-ready" || payload.kind === "player-submitted") &&
-      payload.roundId !== snapshot.currentRound.roundId
-   ) {
-      return snapshot;
-   }
-
-   if (payload.kind === "player-ready") {
-      return {
-         ...snapshot,
-         currentRound: {
-            ...snapshot.currentRound,
-            viewerReady:
-               snapshot.viewerUserId === payload.userId
-                  ? true
-                  : snapshot.currentRound.viewerReady,
-            players: snapshot.currentRound.players.map((player) =>
-               player.userId === payload.userId
-                  ? {
-                       ...player,
-                       isReady: true,
-                       readyAt: payload.readyAt,
-                    }
-                  : player,
-            ),
-         },
-      };
-   }
-
-   if (payload.kind === "player-submitted") {
-      return {
-         ...snapshot,
-         currentRound: {
-            ...snapshot.currentRound,
-            viewerSubmitted:
-               snapshot.viewerUserId === payload.userId
-                  ? true
-                  : snapshot.currentRound.viewerSubmitted,
-            players: snapshot.currentRound.players.map((player) =>
-               player.userId === payload.userId
-                  ? {
-                       ...player,
-                       submittedAt: payload.submittedAt,
-                    }
-                  : player,
-            ),
-         },
-      };
-   }
-
-   return snapshot;
+   return 5000;
 }
 
 function RoundHistoryCard({ entry }: { entry: BattleHistoryEntry }) {
@@ -361,6 +263,7 @@ export default function BattleRoomPage() {
    const [submitLoading, setSubmitLoading] = useState(false);
    const [nextRoundLoading, setNextRoundLoading] = useState(false);
    const [forceFinishLoading, setForceFinishLoading] = useState(false);
+   const [endRoomLoading, setEndRoomLoading] = useState(false);
    const [removingPlayerId, setRemovingPlayerId] = useState<string | null>(null);
    const [now, setNow] = useState(0);
    const [localBattle, setLocalBattle] = useState<LocalBattleState | null>(null);
@@ -370,14 +273,13 @@ export default function BattleRoomPage() {
    const [openFolderSlug, setOpenFolderSlug] = useState<string | null>(null);
    const [isRoundReviewOpen, setIsRoundReviewOpen] = useState(false);
    const [isRoomRulesOpen, setIsRoomRulesOpen] = useState(false);
+   const [isPageVisible, setIsPageVisible] = useState(true);
    const questionTimerRef = useRef<number | null>(null);
    const syncedDeckSourceRef = useRef<string | null>(null);
    const countdownScrollKeyRef = useRef<string | null>(null);
-   const joinAnnouncementRef = useRef<string | null>(null);
-   const joinAnnouncementPayloadRef = useRef<JoinAnnouncementPayload | null>(null);
    const snapshotRequestIdRef = useRef(0);
-   const realtimeRefreshTimeoutRef = useRef<number | null>(null);
-   const roomChannelRef = useRef<RealtimeChannel | null>(null);
+   const snapshotInFlightRef = useRef(false);
+   const pollingTimeoutRef = useRef<number | null>(null);
 
    const currentRound = snapshot?.currentRound ?? null;
 
@@ -467,36 +369,45 @@ export default function BattleRoomPage() {
       [router],
    );
 
-   const loadSnapshot = useCallback(async () => {
-      const requestId = snapshotRequestIdRef.current + 1;
-      snapshotRequestIdRef.current = requestId;
-      const token = await getSupabaseAccessToken();
-      const response = await fetch(
-         `/api/vocabulary-battle/rooms/${encodeURIComponent(roomCode)}`,
-         {
-            headers: {
-               Authorization: `Bearer ${token}`,
-            },
-            cache: "no-store",
-         },
-      );
-
-      const payload = await response.json();
-      if (!response.ok) {
-         const requestError = new Error(
-            payload.error || "Failed to load battle room.",
-         ) as Error & { status?: number };
-         requestError.status = response.status;
-         throw requestError;
-      }
-
-      if (snapshotRequestIdRef.current !== requestId) {
+   const loadSnapshot = useCallback(async (skipIfInFlight = false) => {
+      if (skipIfInFlight && snapshotInFlightRef.current) {
          return;
       }
 
-      setSnapshot(payload);
-      setError(null);
-      setLoading(false);
+      snapshotInFlightRef.current = true;
+      const requestId = snapshotRequestIdRef.current + 1;
+      snapshotRequestIdRef.current = requestId;
+      try {
+         const token = await getSupabaseAccessToken();
+         const response = await fetch(
+            `/api/vocabulary-battle/rooms/${encodeURIComponent(roomCode)}`,
+            {
+               headers: {
+                  Authorization: `Bearer ${token}`,
+               },
+               cache: "no-store",
+            },
+         );
+
+         const payload = await response.json();
+         if (!response.ok) {
+            const requestError = new Error(
+               payload.error || "Failed to load battle room.",
+            ) as Error & { status?: number };
+            requestError.status = response.status;
+            throw requestError;
+         }
+
+         if (snapshotRequestIdRef.current !== requestId) {
+            return;
+         }
+
+         setSnapshot(payload);
+         setError(null);
+         setLoading(false);
+      } finally {
+         snapshotInFlightRef.current = false;
+      }
    }, [roomCode]);
 
    useEffect(() => {
@@ -519,206 +430,53 @@ export default function BattleRoomPage() {
       }
    }, [handleSnapshotError, loadSnapshot]);
 
-   const scheduleSnapshotRefresh = useCallback(
-      (delayMs = 120) => {
-         if (realtimeRefreshTimeoutRef.current) {
-            window.clearTimeout(realtimeRefreshTimeoutRef.current);
-         }
-
-         realtimeRefreshTimeoutRef.current = window.setTimeout(() => {
-            realtimeRefreshTimeoutRef.current = null;
-            void refreshSnapshot();
-         }, delayMs);
-      },
-      [refreshSnapshot],
+   const pollingIntervalMs = useMemo(
+      () => getBattlePollingInterval(currentRound, isPageVisible),
+      [currentRound, isPageVisible],
    );
 
-   const broadcastRoomUpdate = useCallback(async (payload: BattleBroadcastPayload) => {
-      const channel = roomChannelRef.current;
-      if (!channel) {
-         return;
-      }
-
-      await channel.send({
-         type: "broadcast",
-         event: "room-update",
-         payload,
-      });
-   }, []);
-
    useEffect(() => {
+      pollingTimeoutRef.current = window.setTimeout(() => {
+         void (async () => {
+            try {
+               await loadSnapshot(true);
+            } catch (requestError) {
+               handleSnapshotError(requestError);
+            }
+         })();
+      }, pollingIntervalMs);
+
       return () => {
-         if (realtimeRefreshTimeoutRef.current) {
-            window.clearTimeout(realtimeRefreshTimeoutRef.current);
-            realtimeRefreshTimeoutRef.current = null;
+         if (pollingTimeoutRef.current) {
+            window.clearTimeout(pollingTimeoutRef.current);
+            pollingTimeoutRef.current = null;
          }
       };
-   }, []);
+   }, [handleSnapshotError, loadSnapshot, pollingIntervalMs, snapshot?.roomCode]);
 
    useEffect(() => {
-      if (!snapshot?.roomId || !snapshot.viewerUserId) {
-         joinAnnouncementPayloadRef.current = null;
-         return;
-      }
+      const handlePageActivity = () => {
+         const visible = document.visibilityState === "visible";
+         setIsPageVisible(visible);
 
-      const viewer = snapshot.players.find(
-         (player) => player.userId === snapshot.viewerUserId,
-      );
-
-      if (!viewer) {
-         joinAnnouncementPayloadRef.current = null;
-         return;
-      }
-
-      joinAnnouncementPayloadRef.current = {
-         roomId: snapshot.roomId,
-         roomCode: snapshot.roomCode,
-         viewerUserId: snapshot.viewerUserId,
-         viewerIsRoomMember: snapshot.viewerIsRoomMember,
-         username: viewer.username,
-         isPremium: viewer.isPremium,
-         joinedAt: viewer.joinedAt,
-      };
-   }, [
-      snapshot?.players,
-      snapshot?.roomCode,
-      snapshot?.roomId,
-      snapshot?.viewerIsRoomMember,
-      snapshot?.viewerUserId,
-   ]);
-
-   useEffect(() => {
-      if (!snapshot?.roomId) {
-         return;
-      }
-
-      const roomChannel = supabase.channel(`battle-room:${snapshot.roomId}`);
-      roomChannelRef.current = roomChannel;
-      const handleRoomChange = () => scheduleSnapshotRefresh();
-
-      roomChannel
-         .on("broadcast", { event: "room-update" }, ({ payload }) => {
-            const roomUpdate = payload as BattleBroadcastPayload;
-
-            setSnapshot((current) =>
-               current ? applyBattleBroadcastToSnapshot(current, roomUpdate) : current,
-            );
-            scheduleSnapshotRefresh(0);
-         })
-         .on("postgres_changes", {
-            event: "*",
-            schema: "public",
-            table: "vocab_battle_rooms",
-            filter: `id=eq.${snapshot.roomId}`,
-         }, handleRoomChange)
-         .on("postgres_changes", {
-            event: "*",
-            schema: "public",
-            table: "vocab_battle_room_players",
-            filter: `room_id=eq.${snapshot.roomId}`,
-         }, handleRoomChange)
-         .on("postgres_changes", {
-            event: "*",
-            schema: "public",
-            table: "vocab_battle_rounds",
-            filter: `room_id=eq.${snapshot.roomId}`,
-         }, handleRoomChange)
-         .subscribe((status) => {
-            if (status === "SUBSCRIBED") {
-               void refreshSnapshot();
-
-               const joinPayload = joinAnnouncementPayloadRef.current;
-
-               if (
-                  joinPayload?.viewerIsRoomMember &&
-                  joinPayload.roomId === snapshot.roomId &&
-                  joinAnnouncementRef.current !==
-                     `${joinPayload.roomId}:${joinPayload.viewerUserId}`
-               ) {
-                  joinAnnouncementRef.current =
-                     `${joinPayload.roomId}:${joinPayload.viewerUserId}`;
-                  void broadcastRoomUpdate({
-                     kind: "player-joined",
-                     roomCode: joinPayload.roomCode,
-                     userId: joinPayload.viewerUserId,
-                     username: joinPayload.username,
-                     isPremium: joinPayload.isPremium,
-                     joinedAt: joinPayload.joinedAt,
-                  });
-               }
-            }
-
-            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-               scheduleSnapshotRefresh(0);
-            }
-         });
-
-      return () => {
-         if (roomChannelRef.current === roomChannel) {
-            roomChannelRef.current = null;
-         }
-         void supabase.removeChannel(roomChannel);
-      };
-   }, [
-      broadcastRoomUpdate,
-      refreshSnapshot,
-      scheduleSnapshotRefresh,
-      snapshot?.roomId,
-   ]);
-
-   useEffect(() => {
-      if (!currentRound?.roundId) {
-         return;
-      }
-
-      const roundChannel = supabase.channel(`battle-round:${currentRound.roundId}`);
-      const handleRoundChange = () => scheduleSnapshotRefresh();
-
-      roundChannel
-         .on("postgres_changes", {
-            event: "*",
-            schema: "public",
-            table: "vocab_battle_round_players",
-            filter: `round_id=eq.${currentRound.roundId}`,
-         }, handleRoundChange)
-         .on("postgres_changes", {
-            event: "*",
-            schema: "public",
-            table: "vocab_battle_round_questions",
-            filter: `round_id=eq.${currentRound.roundId}`,
-         }, handleRoundChange)
-         .on("postgres_changes", {
-            event: "*",
-            schema: "public",
-            table: "vocab_battle_round_answers",
-            filter: `round_id=eq.${currentRound.roundId}`,
-         }, handleRoundChange)
-         .subscribe((status) => {
-            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-               scheduleSnapshotRefresh(0);
-            }
-         });
-
-      return () => {
-         void supabase.removeChannel(roundChannel);
-      };
-   }, [currentRound?.roundId, scheduleSnapshotRefresh]);
-
-   useEffect(() => {
-      const handleVisibilityChange = () => {
-         if (document.visibilityState === "visible") {
-            scheduleSnapshotRefresh(0);
+         if (visible) {
+            void refreshSnapshot();
          }
       };
 
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-      window.addEventListener("focus", handleVisibilityChange);
+      const handleFocus = () => {
+         setIsPageVisible(true);
+         void refreshSnapshot();
+      };
+
+      document.addEventListener("visibilitychange", handlePageActivity);
+      window.addEventListener("focus", handleFocus);
 
       return () => {
-         document.removeEventListener("visibilitychange", handleVisibilityChange);
-         window.removeEventListener("focus", handleVisibilityChange);
+         document.removeEventListener("visibilitychange", handlePageActivity);
+         window.removeEventListener("focus", handleFocus);
       };
-   }, [scheduleSnapshotRefresh]);
+   }, [refreshSnapshot]);
 
    useEffect(() => {
       if (!snapshot?.deckIds?.length) {
@@ -867,13 +625,6 @@ export default function BattleRoomPage() {
                };
             });
             setError(null);
-            void broadcastRoomUpdate({
-               kind: "player-submitted",
-               roomCode: snapshot.roomCode,
-               roundId: currentRound.roundId,
-               userId: payload.viewerUserId,
-               submittedAt: new Date().toISOString(),
-            });
          } catch (requestError) {
             if (
                requestError instanceof Error &&
@@ -898,7 +649,6 @@ export default function BattleRoomPage() {
          }
       },
       [
-         broadcastRoomUpdate,
          clearQuestionTimer,
          currentRound,
          router,
@@ -1107,13 +857,6 @@ export default function BattleRoomPage() {
 
          setSnapshot(payload);
          setError(null);
-         void broadcastRoomUpdate({
-            kind: "player-ready",
-            roomCode: snapshot.roomCode,
-            roundId: currentRound.roundId,
-            userId: payload.viewerUserId,
-            readyAt: new Date().toISOString(),
-         });
       } catch (requestError) {
          if (
             requestError instanceof Error &&
@@ -1177,11 +920,6 @@ export default function BattleRoomPage() {
          setSnapshot(payload);
          setLocalBattle(null);
          setError(null);
-         void broadcastRoomUpdate({
-            kind: "next-round-started",
-            roomCode: snapshot.roomCode,
-            sentAt: new Date().toISOString(),
-         });
       } catch (requestError) {
          if (
             requestError instanceof Error &&
@@ -1233,11 +971,6 @@ export default function BattleRoomPage() {
 
          setSnapshot(payload);
          setError(null);
-         void broadcastRoomUpdate({
-            kind: "snapshot-refresh",
-            roomCode: snapshot.roomCode,
-            sentAt: new Date().toISOString(),
-         });
       } catch (requestError) {
          if (
             requestError instanceof Error &&
@@ -1254,6 +987,57 @@ export default function BattleRoomPage() {
          );
       } finally {
          setForceFinishLoading(false);
+      }
+   };
+
+   const handleEndRoom = async () => {
+      if (!snapshot || endRoomLoading || snapshot.roomStatus === "expired") return;
+
+      const shouldContinue = window.confirm(
+         "End this room for everyone? Players will no longer be able to continue using this room code.",
+      );
+
+      if (!shouldContinue) {
+         return;
+      }
+
+      try {
+         setEndRoomLoading(true);
+         const token = await getSupabaseAccessToken();
+         const response = await fetch("/api/vocabulary-battle/end-room", {
+            method: "POST",
+            headers: {
+               "Content-Type": "application/json",
+               Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+               roomCode: snapshot.roomCode,
+            }),
+         });
+
+         const payload = await response.json();
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to end room.");
+         }
+
+         setSnapshot(payload);
+         setError(null);
+      } catch (requestError) {
+         if (
+            requestError instanceof Error &&
+            isSessionExpiredMessage(requestError.message)
+         ) {
+            router.replace("/login");
+            return;
+         }
+
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to end room.",
+         );
+      } finally {
+         setEndRoomLoading(false);
       }
    };
 
@@ -1290,11 +1074,6 @@ export default function BattleRoomPage() {
 
          setSnapshot(payload);
          setError(null);
-         void broadcastRoomUpdate({
-            kind: "snapshot-refresh",
-            roomCode: snapshot.roomCode,
-            sentAt: new Date().toISOString(),
-         });
       } catch (requestError) {
          if (
             requestError instanceof Error &&
@@ -1526,12 +1305,23 @@ export default function BattleRoomPage() {
                         </p>
                      </div>
 
-                     <button
-                        type="button"
-                        onClick={handleCopy}
-                        className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-800">
-                        {copied ? "Copied" : "Copy room code"}
-                     </button>
+                     <div className="flex flex-wrap justify-end gap-3">
+                        {snapshot.viewerIsHost && snapshot.roomStatus !== "expired" && (
+                           <button
+                              type="button"
+                              onClick={handleEndRoom}
+                              disabled={endRoomLoading}
+                              className="rounded-full border border-red-400/40 px-4 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+                              {endRoomLoading ? "Ending room..." : "End room"}
+                           </button>
+                        )}
+                        <button
+                           type="button"
+                           onClick={handleCopy}
+                           className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-800">
+                           {copied ? "Copied" : "Copy room code"}
+                        </button>
+                     </div>
                   </div>
                </div>
 

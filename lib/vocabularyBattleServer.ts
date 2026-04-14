@@ -110,12 +110,23 @@ type FolderBattleAccessRow = {
    is_available_for_battle: boolean | null;
 };
 
+type ActiveBattleRoomSummary = {
+   roomCode: string;
+   deckTitle: string;
+   playerCount: number;
+   currentRoundStatus: "waiting" | "active" | "finished" | null;
+   roundNumber: number | null;
+};
+
 const WAITING_ROUND_TTL_HOURS = 6;
 const ACTIVE_ROUND_TTL_HOURS = 2;
+const ROOM_MAX_AGE_HOURS = 12;
 const EXPIRED_ROOM_TTL_HOURS = 24;
 const CURIOSITY_POINT_REWARDS = [20, 10] as const;
 const NON_PREMIUM_ROOM_EXPIRATION_REASON =
    "This room reached 5 rounds. Premium is required for every player to continue. Upgrade to Premium or create a new room.";
+const ROOM_MAX_AGE_EXPIRATION_REASON =
+   "This room expired after 12 hours. Create a new room to continue playing.";
 const ROOM_SELECT =
    "id, code, host_user_id, deck_id, deck_ids, deck_title, status, question_count, time_limit_seconds, completed_round_count, expires_at, expiration_reason, created_at";
 const ROUND_SELECT =
@@ -549,8 +560,28 @@ async function expireRoom(roomId: string, reason: string) {
    }
 }
 
-async function enforceRoomExpirationAfterPremiumCheck(roomId: string) {
+async function enforceRoomMaxAgeExpiration(roomId: string) {
    const room = await getRoomById(roomId);
+   if (!room || room.status === "expired") {
+      return room;
+   }
+
+   const roomAgeMs = Date.now() - new Date(room.created_at).getTime();
+   if (roomAgeMs < ROOM_MAX_AGE_HOURS * 60 * 60 * 1000) {
+      return room;
+   }
+
+   const currentRound = await getLatestRoundForRoom(room.id);
+   if (currentRound?.status === "active") {
+      await finalizeRound(currentRound.id);
+   }
+
+   await expireRoom(room.id, ROOM_MAX_AGE_EXPIRATION_REASON);
+   return getRoomById(room.id);
+}
+
+async function enforceRoomExpirationAfterPremiumCheck(roomId: string) {
+   const room = await enforceRoomMaxAgeExpiration(roomId);
    if (!room || room.status === "expired") {
       return room;
    }
@@ -656,6 +687,9 @@ export async function cleanupBattleRooms() {
    const expiredCutoff = new Date(
       now - EXPIRED_ROOM_TTL_HOURS * 60 * 60 * 1000,
    ).toISOString();
+   const roomMaxAgeCutoff = new Date(
+      now - ROOM_MAX_AGE_HOURS * 60 * 60 * 1000,
+   ).toISOString();
 
    const { data: staleActiveRounds } = await supabaseAdmin
       .from("vocab_battle_rounds")
@@ -679,6 +713,16 @@ export async function cleanupBattleRooms() {
          round.room_id as string,
          "This room expired because the next round did not start in time.",
       );
+   }
+
+   const { data: staleRooms } = await supabaseAdmin
+      .from("vocab_battle_rooms")
+      .select("id")
+      .eq("status", "open")
+      .lt("created_at", roomMaxAgeCutoff);
+
+   for (const room of staleRooms || []) {
+      await enforceRoomMaxAgeExpiration(room.id as string);
    }
 
    await supabaseAdmin
@@ -1456,6 +1500,53 @@ export async function getBattleHistoryForUser(userId: string) {
       });
 }
 
+export async function getActiveBattleRoomForUser(
+   userId: string,
+): Promise<ActiveBattleRoomSummary | null> {
+   await cleanupBattleRooms();
+
+   const { data: memberships, error: membershipError } = await supabaseAdmin
+      .from("vocab_battle_room_players")
+      .select("room_id, joined_at")
+      .eq("user_id", userId)
+      .order("joined_at", { ascending: false });
+
+   if (membershipError) {
+      throw new Error("Failed to load your active battle room.");
+   }
+
+   const roomIds = Array.from(
+      new Set((memberships || []).map((row) => row.room_id as string).filter(Boolean)),
+   );
+
+   for (const roomId of roomIds) {
+      const room = await getRoomById(roomId);
+      if (!room) {
+         continue;
+      }
+
+      const refreshedRoom = (await enforceRoomExpirationAfterPremiumCheck(room.id)) || room;
+      if (refreshedRoom.status !== "open") {
+         continue;
+      }
+
+      const [members, latestRound] = await Promise.all([
+         getRoomMembers(refreshedRoom.id),
+         getLatestRoundForRoom(refreshedRoom.id),
+      ]);
+
+      return {
+         roomCode: refreshedRoom.code,
+         deckTitle: refreshedRoom.deck_title || "Battle deck",
+         playerCount: members.length,
+         currentRoundStatus: latestRound?.status ?? null,
+         roundNumber: latestRound?.round_number ?? null,
+      };
+   }
+
+   return null;
+}
+
 export async function createBattleRoom(
    deckIds: string[],
    userId: string,
@@ -1662,4 +1753,24 @@ export async function forceFinishBattleRound(roomCode: string, hostUserId: strin
    }
 
    return finalizeRound(currentRound.id);
+}
+
+export async function endBattleRoom(roomCode: string, hostUserId: string) {
+   const room = await loadRoomForParticipant(roomCode, hostUserId);
+
+   if (room.host_user_id !== hostUserId) {
+      throw new Error("Only the room host can end the room.");
+   }
+
+   if (room.status === "expired") {
+      return room;
+   }
+
+   const currentRound = await getLatestRoundForRoom(room.id);
+   if (currentRound?.status === "active") {
+      await finalizeRound(currentRound.id);
+   }
+
+   await expireRoom(room.id, "This room was ended by the host.");
+   return getRoomById(room.id);
 }
