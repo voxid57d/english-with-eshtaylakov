@@ -15,8 +15,17 @@ import {
    PiCaretDoubleRightLight,
    PiPaperPlaneTiltLight,
 } from "react-icons/pi";
+import type { IconType } from "react-icons";
 
-const links = [
+type SidebarLink = {
+   href: string;
+   label: string;
+   icon: IconType;
+   badge?: string;
+   accent?: "premium";
+};
+
+const links: SidebarLink[] = [
    {
       href: "/dashboard/vocabulary",
       label: "Vocabulary",
