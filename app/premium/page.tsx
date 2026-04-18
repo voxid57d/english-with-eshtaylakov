@@ -8,8 +8,8 @@ import { getPremiumStatus } from "@/lib/premium";
 import PageShellWithFooter from "@/components/PageShellWithFooter";
 
 const LIFETIME_MESSAGES = [
-   "Faqat bir marta to‘lang, abadiy foydalaning.",
-   "Заплатите один раз — пользуйтесь вечно.",
+   "Faqat bir marta to‘lang, doimiy foydalaning.",
+   "Заплатите один раз — пользуйтесь всегда.",
    "한 번만 결제하고 영원히 사용하세요.",
    "一度だけ支払って、ずっと使えます。",
    "Payez une seule fois, utilisez pour toujours.",
