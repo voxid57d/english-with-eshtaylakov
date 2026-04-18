@@ -9,6 +9,7 @@ import TestView from "@/components/vocabulary/TestView";
 import { CardWithHealth } from "@/app/hooks/useSRS";
 import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
+import { getPremiumStatus } from "@/lib/premium";
 import {
    FOLDER_THEME_MAP,
    type FolderTheme,
@@ -79,6 +80,7 @@ function getCuriosityPointReward(index: number) {
 export default function BattleLobbyPage() {
    const router = useRouter();
    const [userId, setUserId] = useState<string | null>(null);
+   const [isPremium, setIsPremium] = useState(false);
    const [decks, setDecks] = useState<PublicDeck[]>([]);
    const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
    const [openFolderSlug, setOpenFolderSlug] = useState<string | null>(null);
@@ -113,6 +115,10 @@ export default function BattleLobbyPage() {
             return;
          }
          setUserId(userData.user.id);
+         const premium = await getPremiumStatus(userData.user.id);
+
+         if (cancelled) return;
+         setIsPremium(premium);
 
          const decksResult = await supabase
             .from("vocabulary_decks")
@@ -492,6 +498,11 @@ export default function BattleLobbyPage() {
          return;
       }
 
+      if (!isPremium) {
+         router.push("/premium");
+         return;
+      }
+
       if (!hasEnoughWordsForSelection) {
          setError(
             `Selected decks only have ${availableWordCount ?? 0} usable words. Choose a smaller word count.`,
@@ -861,13 +872,13 @@ export default function BattleLobbyPage() {
                                 selectedDeckIds.length === 0 ||
                                 soloLoading ||
                                 loadingAvailableWordCount ||
-                                availableQuestionOptions.length === 0 ||
+                               availableQuestionOptions.length === 0 ||
                                 !hasEnoughWordsForSelection
                              }
-                            className="cursor-pointer rounded-full border border-sky-500 px-5 py-3 text-sm font-semibold text-sky-300 transition hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+                            className="cursor-pointer rounded-full border border-amber-400/45 bg-amber-500/10 px-5 py-3 text-sm font-semibold text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.08),0_0_28px_rgba(245,158,11,0.12)] transition hover:bg-amber-500/15 hover:shadow-[0_0_0_1px_rgba(251,191,36,0.12),0_0_34px_rgba(245,158,11,0.16)] disabled:cursor-not-allowed disabled:opacity-60">
                             {soloLoading ? "Preparing practice..." : "Practice alone"}
                          </button>
-                      </div>
+                       </div>
                    </>
                 )}
              </section>
