@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useCallback, useState } from "react";
+import { PiSpeakerHighLight, PiQuotesLight } from "react-icons/pi";
 import { CardWithHealth } from "@/app/hooks/useSRS";
 
 type TestQuestion = {
@@ -56,24 +57,41 @@ export default function TestView({
    onStop,
    onCorrectAnswer,
 }: TestViewProps) {
-   const questionQueue = useMemo(() => shuffleArray(cards), [cards]);
+   const [questions] = useState(() => {
+      const questionQueue = shuffleArray(cards);
+
+      return questionQueue
+         .map((card, index) => buildQuestion(cards, questionQueue, index))
+         .filter((question): question is TestQuestion => question !== null);
+   });
    const [questionIndex, setQuestionIndex] = useState(0);
    const [selectedOption, setSelectedOption] = useState<string | null>(null);
    const [isAnswerLocked, setIsAnswerLocked] = useState(false);
    const [showPointBurst, setShowPointBurst] = useState(false);
+   const [showWordDetails, setShowWordDetails] = useState(false);
 
-   const currentQuestion = useMemo(
-      () => buildQuestion(cards, questionQueue, questionIndex),
-      [cards, questionQueue, questionIndex]
-   );
+   const currentQuestion = questions[questionIndex] ?? null;
 
-   const isComplete = questionQueue.length > 0 && !currentQuestion;
+   const isComplete = questions.length > 0 && !currentQuestion;
+
+   const speak = useCallback((text: string) => {
+      if (typeof window === "undefined" || !window.speechSynthesis) {
+         return;
+      }
+
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 0.95;
+      window.speechSynthesis.speak(utterance);
+   }, []);
 
    const advanceToNext = () => {
       setQuestionIndex((value) => value + 1);
       setSelectedOption(null);
       setIsAnswerLocked(false);
       setShowPointBurst(false);
+      setShowWordDetails(false);
    };
 
    const handleSelect = async (option: string) => {
@@ -90,10 +108,6 @@ export default function TestView({
          setShowPointBurst(true);
          await onCorrectAnswer();
       }
-
-      window.setTimeout(() => {
-         advanceToNext();
-      }, isCorrect ? 900 : 1000);
    };
 
    if (cards.length < 4) {
@@ -133,16 +147,13 @@ export default function TestView({
                <p className="text-xs uppercase tracking-[0.2em] text-emerald-300/80">
                   Test mode
                </p>
-               <p className="mt-2 text-sm text-slate-400">
-                  Choose the correct meaning for the word shown below.
-               </p>
             </div>
             <div className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
-               {Math.min(questionIndex + 1, questionQueue.length)} / {questionQueue.length}
+               {Math.min(questionIndex + 1, questions.length)} / {questions.length}
             </div>
          </div>
 
-         <div className="relative mt-6 overflow-hidden rounded-3xl border border-slate-800 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.16),rgba(15,23,42,0.95)_55%)] px-6 py-8 text-center">
+         <div className="relative mt-6 w-full overflow-hidden rounded-3xl border border-slate-800 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.16),rgba(15,23,42,0.95)_55%)] px-6 py-8 text-center">
             {showPointBurst && (
                <div className="pointer-events-none absolute right-5 top-5 flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/15 px-3 py-1 text-sm font-semibold text-amber-100 animate-bounce">
                   <Image
@@ -157,7 +168,6 @@ export default function TestView({
                </div>
             )}
 
-            <p className="text-sm uppercase tracking-[0.18em] text-slate-400">Word</p>
             <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
                {currentQuestion.card.front}
             </h2>
@@ -165,6 +175,34 @@ export default function TestView({
                <p className="mt-3 text-sm text-emerald-200">
                   /{currentQuestion.card.transcription}/
                </p>
+            )}
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+               <button
+                  type="button"
+                  onClick={() => speak(currentQuestion.card.front)}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-700 bg-slate-950/50 px-3 py-2 text-xs font-medium text-slate-200 transition hover:border-emerald-500/40 hover:text-emerald-200">
+                  <PiSpeakerHighLight size={16} />
+                  <span>Listen</span>
+               </button>
+               <button
+                  type="button"
+                  onClick={() => setShowWordDetails((value) => !value)}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-700 bg-slate-950/50 px-3 py-2 text-xs font-medium text-slate-200 transition hover:border-emerald-500/40 hover:text-emerald-200">
+                  <PiQuotesLight size={16} />
+                  <span>Example</span>
+               </button>
+            </div>
+
+            {showWordDetails && (
+               <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4 text-left">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                     Example sentence
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-200">
+                     {currentQuestion.card.example_sentence ||
+                        "No example sentence available for this word yet."}
+                  </p>
+               </div>
             )}
          </div>
 
@@ -182,7 +220,7 @@ export default function TestView({
                         "border-emerald-500/50 bg-emerald-500/10 text-emerald-200";
                   } else if (isSelected) {
                      buttonClass =
-                        "border-red-500/50 bg-red-500/10 text-red-200";
+                        "border-red-500 bg-red-500/10 text-red-200 ring-1 ring-red-500/30";
                   } else {
                      buttonClass =
                         "border-slate-800 bg-slate-950/40 text-slate-500";
@@ -199,6 +237,16 @@ export default function TestView({
                   </button>
                );
             })}
+         </div>
+
+         <div className="mt-6 flex justify-end">
+            <button
+               type="button"
+               onClick={advanceToNext}
+               disabled={!selectedOption}
+               className="cursor-pointer rounded-full border border-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+               {questionIndex === questions.length - 1 ? "Finish test" : "Next word"}
+            </button>
          </div>
       </div>
    );

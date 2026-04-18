@@ -1033,8 +1033,9 @@ export default function BattleRoomPage() {
             throw new Error(payload.error || "Failed to end room.");
          }
 
-         setSnapshot(payload);
          setError(null);
+         router.push("/dashboard/battle");
+         return;
       } catch (requestError) {
          if (
             requestError instanceof Error &&

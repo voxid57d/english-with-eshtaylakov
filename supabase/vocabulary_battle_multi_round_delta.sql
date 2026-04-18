@@ -77,7 +77,7 @@ create table if not exists public.vocab_battle_rounds (
    deck_id uuid not null references public.vocabulary_decks(id) on delete cascade,
    deck_ids uuid[] not null,
    deck_title text not null,
-   question_count integer not null default 10 check (question_count between 1 and 25),
+   question_count integer not null default 10 check (question_count between 1 and 40),
    time_limit_seconds integer not null default 15 check (time_limit_seconds between 3 and 60),
    battle_starts_at timestamptz null,
    winner_user_id uuid null references auth.users(id) on delete set null,

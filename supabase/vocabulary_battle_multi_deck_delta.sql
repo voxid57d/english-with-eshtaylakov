@@ -9,7 +9,7 @@ alter table public.vocab_battle_rooms
 
 alter table public.vocab_battle_rooms
    add constraint vocab_battle_rooms_question_count_check
-   check (question_count between 1 and 25);
+   check (question_count between 1 and 40);
 
 update public.vocab_battle_rooms
 set

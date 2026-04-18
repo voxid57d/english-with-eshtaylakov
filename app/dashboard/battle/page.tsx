@@ -5,6 +5,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PiCaretDownBold, PiSwordLight } from "react-icons/pi";
+import TestView from "@/components/vocabulary/TestView";
+import { CardWithHealth } from "@/app/hooks/useSRS";
 import { supabase } from "@/lib/supabaseClient";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import {
@@ -29,6 +31,14 @@ type PublicDeck = {
       slug: string;
       folder_theme: FolderTheme;
    } | null;
+};
+
+type CardRow = {
+   id: string;
+   front: string;
+   back: string;
+   example_sentence: string | null;
+   transcription: string | null;
 };
 
 type DeckFolderRelation =
@@ -68,6 +78,7 @@ function getCuriosityPointReward(index: number) {
 
 export default function BattleLobbyPage() {
    const router = useRouter();
+   const [userId, setUserId] = useState<string | null>(null);
    const [decks, setDecks] = useState<PublicDeck[]>([]);
    const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
    const [openFolderSlug, setOpenFolderSlug] = useState<string | null>(null);
@@ -84,6 +95,12 @@ export default function BattleLobbyPage() {
    const [historyLoaded, setHistoryLoaded] = useState(false);
    const [activeRoom, setActiveRoom] = useState<ActiveBattleRoomSummary | null>(null);
    const [loadingActiveRoom, setLoadingActiveRoom] = useState(true);
+   const [soloCards, setSoloCards] = useState<CardWithHealth[]>([]);
+   const [soloLoading, setSoloLoading] = useState(false);
+   const [soloModeActive, setSoloModeActive] = useState(false);
+   const [earnedCuriosityPoints, setEarnedCuriosityPoints] = useState(0);
+   const [availableWordCount, setAvailableWordCount] = useState<number | null>(null);
+   const [loadingAvailableWordCount, setLoadingAvailableWordCount] = useState(false);
    const [error, setError] = useState<string | null>(null);
 
    useEffect(() => {
@@ -95,6 +112,7 @@ export default function BattleLobbyPage() {
             router.replace("/login");
             return;
          }
+         setUserId(userData.user.id);
 
          const decksResult = await supabase
             .from("vocabulary_decks")
@@ -292,6 +310,77 @@ export default function BattleLobbyPage() {
       () => decks.filter((deck) => selectedDeckIds.includes(deck.id)),
       [decks, selectedDeckIds],
    );
+   const selectedDeckNames = selectedDecks.map((deck) => deck.title).join(", ");
+   const availableQuestionOptions = useMemo(() => {
+      if (selectedDeckIds.length === 0 || availableWordCount === null) {
+         return [] as BattleQuestionCount[];
+      }
+
+      return BATTLE_QUESTION_OPTIONS.filter(
+         (option) => option <= availableWordCount,
+      );
+   }, [availableWordCount, selectedDeckIds.length]);
+   const hasEnoughWordsForSelection =
+      availableWordCount === null || availableWordCount >= questionCount;
+
+   useEffect(() => {
+      let cancelled = false;
+
+      const loadAvailableWordCount = async () => {
+         if (selectedDeckIds.length === 0) {
+            setAvailableWordCount(null);
+            setLoadingAvailableWordCount(false);
+            return;
+         }
+
+         try {
+            setLoadingAvailableWordCount(true);
+
+            const { data, error: cardsError } = await supabase
+               .from("vocabulary_cards")
+               .select("id, front, back")
+               .in("deck_id", selectedDeckIds);
+
+            if (cardsError) {
+               throw cardsError;
+            }
+
+            if (cancelled) return;
+
+            const usableCardCount = ((data || []) as { front: string; back: string }[])
+               .filter((card) => card.front?.trim() && card.back?.trim()).length;
+
+            setAvailableWordCount(usableCardCount);
+         } catch (loadError) {
+            if (cancelled) return;
+
+            console.error("Error loading available card count:", loadError);
+            setAvailableWordCount(null);
+         } finally {
+            if (!cancelled) {
+               setLoadingAvailableWordCount(false);
+            }
+         }
+      };
+
+      void loadAvailableWordCount();
+
+      return () => {
+         cancelled = true;
+      };
+   }, [selectedDeckIds]);
+
+   useEffect(() => {
+      if (availableQuestionOptions.length === 0) {
+         return;
+      }
+
+      if (availableQuestionOptions.includes(questionCount)) {
+         return;
+      }
+
+      setQuestionCount(availableQuestionOptions[availableQuestionOptions.length - 1]);
+   }, [availableQuestionOptions, questionCount]);
 
    const toggleDeck = (deckId: string) => {
       setSelectedDeckIds((current) =>
@@ -308,6 +397,13 @@ export default function BattleLobbyPage() {
    };
 
    const handleCreate = async () => {
+      if (!hasEnoughWordsForSelection) {
+         setError(
+            `Selected decks only have ${availableWordCount ?? 0} usable words. Choose a smaller word count.`,
+         );
+         return;
+      }
+
       try {
          setCreateLoading(true);
          setError(null);
@@ -340,6 +436,121 @@ export default function BattleLobbyPage() {
       } finally {
          setCreateLoading(false);
       }
+   };
+
+   const awardCuriosityPoint = async () => {
+      if (!userId) {
+         return;
+      }
+
+      setEarnedCuriosityPoints((value) => value + 1);
+
+      const { data, error: statsError } = await supabase
+         .from("user_stats")
+         .select("user_id, curiosity_points")
+         .eq("user_id", userId)
+         .maybeSingle();
+
+      if (statsError) {
+         console.error("Error loading curiosity points:", statsError);
+         return;
+      }
+
+      const currentPoints =
+         data && typeof data.curiosity_points === "number"
+            ? data.curiosity_points
+            : 0;
+      const nextPoints = currentPoints + 1;
+
+      if (data?.user_id) {
+         const { error: updateError } = await supabase
+            .from("user_stats")
+            .update({ curiosity_points: nextPoints })
+            .eq("user_id", userId);
+
+         if (updateError) {
+            console.error("Error awarding curiosity point:", updateError);
+         }
+
+         return;
+      }
+
+      const { error: insertError } = await supabase.from("user_stats").insert({
+         user_id: userId,
+         streak: 0,
+         last_active_date: null,
+         curiosity_points: nextPoints,
+      });
+
+      if (insertError) {
+         console.error("Error awarding curiosity point:", insertError);
+      }
+   };
+
+   const handlePracticeAlone = async () => {
+      if (selectedDeckIds.length === 0) {
+         return;
+      }
+
+      if (!hasEnoughWordsForSelection) {
+         setError(
+            `Selected decks only have ${availableWordCount ?? 0} usable words. Choose a smaller word count.`,
+         );
+         return;
+      }
+
+      try {
+         setSoloLoading(true);
+         setError(null);
+         setEarnedCuriosityPoints(0);
+
+         const { data: cardsData, error: cardsError } = await supabase
+            .from("vocabulary_cards")
+            .select("id, front, back, example_sentence, transcription")
+            .in("deck_id", selectedDeckIds);
+
+         if (cardsError) {
+            throw new Error("Failed to load cards for practice.");
+         }
+
+         const shuffledCards = [...((cardsData || []) as CardRow[])]
+            .sort(() => Math.random() - 0.5)
+            .slice(0, questionCount)
+            .map(
+               (card): CardWithHealth => ({
+                  id: card.id,
+                  front: card.front,
+                  back: card.back,
+                  example_sentence: card.example_sentence,
+                  transcription: card.transcription,
+                  health: 1,
+                  cooldownUntil: null,
+               }),
+            );
+
+         if (shuffledCards.length < 4) {
+            throw new Error(
+               "Practice alone needs at least 4 words across the selected decks.",
+            );
+         }
+
+         setSoloCards(shuffledCards);
+         setSoloModeActive(true);
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to start solo practice.",
+         );
+      } finally {
+         setSoloLoading(false);
+      }
+   };
+
+   const handleStopSoloMode = () => {
+      setSoloModeActive(false);
+      setSoloCards([]);
+      setEarnedCuriosityPoints(0);
    };
 
    const handleJoin = async (event: FormEvent) => {
@@ -377,7 +588,7 @@ export default function BattleLobbyPage() {
    };
 
    return (
-      <div className="space-y-8">
+      <div className="relative space-y-8">
          <div className="space-y-2">
             <div className="flex items-center gap-3">
                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300">
@@ -584,45 +795,83 @@ export default function BattleLobbyPage() {
                         </div>
                      </div>
 
-                     <div className="space-y-3">
-                        <span className="text-sm text-slate-300">
-                           Number of words
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                           {BATTLE_QUESTION_OPTIONS.map((option) => (
-                              <button
-                                 key={option}
-                                 type="button"
-                                 onClick={() => setQuestionCount(option)}
-                                 className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition ${
-                                    questionCount === option
-                                       ? "border-emerald-500 bg-emerald-500 text-slate-950"
-                                       : "border-slate-700 bg-slate-950 text-slate-300 hover:border-emerald-500/40"
-                                 }`}>
-                                 {option}
-                              </button>
-                           ))}
-                        </div>
-                     </div>
+                     {selectedDeckIds.length > 0 && (
+                        <div className="space-y-3">
+                           <span className="text-sm text-slate-300">
+                              Number of words
+                           </span>
+                           <p className="text-xs text-slate-500">
+                              {loadingAvailableWordCount
+                                 ? "Checking how many usable words are available..."
+                                 : `${availableWordCount ?? 0} usable words available across the selected decks.`}
+                           </p>
 
-                     {selectedDecks.length > 0 && (
-                        <p className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-400">
-                           The room will use {questionCount} words from{" "}
-                           {selectedDecks.map((deck) => deck.title).join(", ")}.
-                        </p>
+                           {availableQuestionOptions.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                 {availableQuestionOptions.map((option) => (
+                                    <button
+                                       key={option}
+                                       type="button"
+                                       onClick={() => setQuestionCount(option)}
+                                       disabled={loadingAvailableWordCount}
+                                       className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition ${
+                                          questionCount === option
+                                             ? "border-emerald-500 bg-emerald-500 text-slate-950"
+                                             : "border-slate-700 bg-slate-950 text-slate-300 hover:border-emerald-500/40"
+                                       }`}>
+                                       {option}
+                                    </button>
+                                 ))}
+                              </div>
+                           ) : (
+                              !loadingAvailableWordCount && (
+                                 <p className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-400">
+                                    These decks do not have enough usable words for the current battle lengths yet.
+                                 </p>
+                              )
+                           )}
+                        </div>
                      )}
 
-                     <button
-                        type="button"
-                        onClick={handleCreate}
-                        disabled={selectedDeckIds.length === 0 || createLoading}
-                        className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
-                        {createLoading ? "Creating room..." : "Create room"}
-                     </button>
-                  </>
-               )}
-            </section>
-         </div>
+                     {selectedDecks.length > 0 && availableQuestionOptions.length > 0 && (
+                          <p className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-400">
+                             The room will use {questionCount} words from{" "}
+                             {selectedDeckNames}.
+                          </p>
+                       )}
+
+                      <div className="flex flex-wrap gap-3">
+                         <button
+                            type="button"
+                            onClick={handleCreate}
+                            disabled={
+                                selectedDeckIds.length === 0 ||
+                                createLoading ||
+                                loadingAvailableWordCount ||
+                                availableQuestionOptions.length === 0 ||
+                                !hasEnoughWordsForSelection
+                             }
+                            className="cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
+                            {createLoading ? "Creating room..." : "Create room"}
+                         </button>
+                         <button
+                            type="button"
+                            onClick={handlePracticeAlone}
+                            disabled={
+                                selectedDeckIds.length === 0 ||
+                                soloLoading ||
+                                loadingAvailableWordCount ||
+                                availableQuestionOptions.length === 0 ||
+                                !hasEnoughWordsForSelection
+                             }
+                            className="cursor-pointer rounded-full border border-sky-500 px-5 py-3 text-sm font-semibold text-sky-300 transition hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+                            {soloLoading ? "Preparing practice..." : "Practice alone"}
+                         </button>
+                      </div>
+                   </>
+                )}
+             </section>
+          </div>
 
          <section className="rounded-3xl border border-slate-800 bg-slate-900/50 p-6 space-y-5">
             <div className="space-y-1">
@@ -758,6 +1007,48 @@ export default function BattleLobbyPage() {
                </div>
             )}
          </section>
+
+         {soloModeActive && (
+            <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/80 px-4 py-6 backdrop-blur-sm sm:px-6 sm:py-10">
+               <div className="w-full max-w-5xl rounded-3xl border border-slate-700 bg-slate-950 shadow-2xl shadow-black/40">
+                  <section className="space-y-5 p-6 sm:p-8">
+                     <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-2">
+                           <p className="text-xs uppercase tracking-[0.2em] text-sky-300/80">
+                              Practice alone
+                           </p>
+                           {earnedCuriosityPoints > 0 && (
+                              <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-100">
+                                 <Image
+                                    src="/cp-icon.svg"
+                                    alt=""
+                                    aria-hidden="true"
+                                    width={14}
+                                    height={14}
+                                    className="h-3.5 w-3.5"
+                                 />
+                                 <span>+{earnedCuriosityPoints} Curiosity</span>
+                              </div>
+                           )}
+                        </div>
+
+                        <button
+                           type="button"
+                           onClick={handleStopSoloMode}
+                           className="cursor-pointer rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-800">
+                           Close
+                        </button>
+                     </div>
+
+                     <TestView
+                        cards={soloCards}
+                        onStop={handleStopSoloMode}
+                        onCorrectAnswer={awardCuriosityPoint}
+                     />
+                  </section>
+               </div>
+            </div>
+         )}
       </div>
    );
 }
