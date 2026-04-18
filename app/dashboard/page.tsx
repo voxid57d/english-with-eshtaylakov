@@ -4,7 +4,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PiFireLight } from "react-icons/pi";
+import {
+   PiBookOpenTextLight,
+   PiCrownSimpleLight,
+   PiFireLight,
+   PiNotePencilLight,
+   PiReadCvLogoLight,
+   PiSwordLight,
+   PiTrophyLight,
+} from "react-icons/pi";
+import type { IconType } from "react-icons";
 import { supabase } from "@/lib/supabaseClient";
 import { syncDailyStreak } from "@/lib/userStats";
 
@@ -23,6 +32,47 @@ type LeaderboardPreviewEntry = {
 };
 
 const STREAK_CURIOSITY_POINTS_PER_DAY = 50;
+
+type DashboardMenuLink = {
+   href: string;
+   label: string;
+   icon: IconType;
+   accent?: "premium";
+};
+
+const DASHBOARD_MENU_LINKS: DashboardMenuLink[] = [
+   {
+      href: "/dashboard/vocabulary",
+      label: "Vocabulary",
+      icon: PiBookOpenTextLight,
+   },
+   {
+      href: "/dashboard/battle",
+      label: "Battle",
+      icon: PiSwordLight,
+   },
+   {
+      href: "/dashboard/writing",
+      label: "IELTS Writing",
+      icon: PiNotePencilLight,
+   },
+   {
+      href: "/dashboard/reading",
+      label: "IELTS Reading",
+      icon: PiReadCvLogoLight,
+   },
+   {
+      href: "/dashboard/leaderboard",
+      label: "Leaderboard",
+      icon: PiTrophyLight,
+   },
+   {
+      href: "/premium",
+      label: "Premium",
+      icon: PiCrownSimpleLight,
+      accent: "premium",
+   },
+];
 
 const QUOTES: Quote[] = [
    {
@@ -288,6 +338,38 @@ export default function DashboardPage() {
          </div>
 
          <div className="rounded-xl border border-slate-800 p-4">
+            <p className="text-sm text-slate-400">Menu</p>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+               {DASHBOARD_MENU_LINKS.map((link) => {
+                  const Icon = link.icon;
+                  const isPremiumLink = link.accent === "premium";
+
+                  return (
+                     <Link
+                        key={link.href}
+                        href={link.href}
+                        className={[
+                           "group flex items-center gap-3 rounded-xl px-4 py-4 transition-all duration-200 hover:-translate-y-[1px]",
+                           isPremiumLink
+                              ? "border border-amber-400/45 bg-amber-500/10 text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.08),0_0_28px_rgba(245,158,11,0.14)] hover:bg-amber-500/15 hover:text-white hover:shadow-[0_0_0_1px_rgba(251,191,36,0.12),0_0_34px_rgba(245,158,11,0.18)]"
+                              : "bg-slate-900/60 text-slate-300 hover:bg-slate-800 hover:text-white hover:shadow-md hover:shadow-slate-900/40",
+                        ].join(" ")}
+                     >
+                        <Icon
+                           size={22}
+                           className={[
+                              "shrink-0 transition-colors duration-200 group-hover:text-white",
+                              isPremiumLink ? "text-amber-300" : "text-slate-400",
+                           ].join(" ")}
+                        />
+                        <span className="font-medium">{link.label}</span>
+                     </Link>
+                  );
+               })}
+            </div>
+         </div>
+
+         <div className="rounded-xl border border-slate-800 p-4">
             <p className="text-sm text-slate-400">Quote of the day</p>
             <p className="mt-2 text-lg">
                &quot;{quote.text}&quot;
@@ -298,8 +380,7 @@ export default function DashboardPage() {
          <div className="rounded-xl border border-slate-800 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                <div>
-                  <p className="text-sm text-slate-400">Leaderboard preview</p>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="text-sm text-slate-500">
                      Top 5 users by Curiosity
                   </p>
                </div>
