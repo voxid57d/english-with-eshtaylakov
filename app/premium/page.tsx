@@ -7,9 +7,23 @@ import { supabase } from "@/lib/supabaseClient";
 import { getPremiumStatus } from "@/lib/premium";
 import PageShellWithFooter from "@/components/PageShellWithFooter";
 
+const LIFETIME_MESSAGES = [
+   "Faqat bir marta to‘lang, abadiy foydalaning.",
+   "Заплатите один раз — пользуйтесь вечно.",
+   "한 번만 결제하고 영원히 사용하세요.",
+   "一度だけ支払って、ずっと使えます。",
+   "Payez une seule fois, utilisez pour toujours.",
+   "ادفع مرة واحدة، واستخدمه إلى الأبد.",
+   "Pay only once, use forever.",
+] as const;
 const PRICE_TEXT = "40 000 sum";
 const CARD_NUMBER = "5614682119563460";
 const CARD_HOLDER = "Voxid Eshtaylakov";
+const PREMIUM_FEATURES = [
+   "Vocabulary practice",
+   "IELTS Mock exams",
+   "New content first",
+] as const;
 
 export default function PremiumPage() {
    const router = useRouter();
@@ -21,7 +35,25 @@ export default function PremiumPage() {
 
    const telegramLink = process.env.NEXT_PUBLIC_TELEGRAM_PAYMENT_URL;
 
+   const [messageIndex, setMessageIndex] = useState(0);
+   const [isMessageVisible, setIsMessageVisible] = useState(true);
+
    useEffect(() => {
+      const interval = window.setInterval(() => {
+         setIsMessageVisible(false);
+
+         window.setTimeout(() => {
+            setMessageIndex((prev) => (prev + 1) % LIFETIME_MESSAGES.length);
+            setIsMessageVisible(true);
+         }, 450);
+      }, 2600);
+
+      return () => window.clearInterval(interval);
+   }, []);
+
+   useEffect(() => {
+      let cancelled = false;
+
       async function load() {
          const { data } = await supabase.auth.getUser();
 
@@ -30,21 +62,28 @@ export default function PremiumPage() {
             return;
          }
 
+         if (cancelled) return;
          setUser(data.user);
 
          const premium = await getPremiumStatus(data.user.id);
+
+         if (cancelled) return;
          setIsPremium(premium);
          setLoading(false);
       }
 
       void load();
+
+      return () => {
+         cancelled = true;
+      };
    }, [router]);
 
    const handleCopyCard = async () => {
       try {
          await navigator.clipboard.writeText(CARD_NUMBER);
          setCopied(true);
-         setTimeout(() => setCopied(false), 2000);
+         window.setTimeout(() => setCopied(false), 2000);
       } catch (err) {
          console.error("Failed to copy", err);
       }
@@ -53,23 +92,15 @@ export default function PremiumPage() {
    if (loading) {
       return (
          <PageShellWithFooter>
-            <main className="min-h-screen bg-slate-950 px-4 text-slate-100">
+            <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
                <div className="mx-auto flex min-h-screen max-w-md items-center justify-center">
-                  <div className="w-full rounded-[2rem] border border-slate-800/80 bg-slate-900/45 px-8 py-10 text-center shadow-[0_24px_80px_rgba(2,6,23,0.38)] backdrop-blur-sm">
-                     <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center">
-                        <div className="premium-check-orbit relative h-16 w-16">
-                           <span className="absolute inset-0 rounded-full border border-emerald-400/20" />
-                           <span className="absolute inset-[10px] rounded-full border border-emerald-300/25" />
-                           <span className="premium-check-dot absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.75)]" />
-                        </div>
-                     </div>
-
-                     <p className="text-lg font-semibold text-slate-50">
-                        Checking premium status
+                  <div className="w-full rounded-[2rem] border border-slate-800 bg-slate-900/70 p-8">
+                     <p className="text-center text-sm text-slate-400">
+                        Checking premium status...
                      </p>
-                     <p className="mt-2 text-sm leading-6 text-slate-400">
-                        Just a moment while we confirm your access.
-                     </p>
+                     <div className="mt-5 h-11 rounded-full bg-slate-800 skeleton-shimmer" />
+                     <div className="mt-3 h-28 rounded-3xl bg-slate-900 skeleton-shimmer" />
+                     <div className="mt-6 h-36 rounded-3xl bg-slate-900 skeleton-shimmer" />
                   </div>
                </div>
             </main>
@@ -80,25 +111,22 @@ export default function PremiumPage() {
    if (isPremium) {
       return (
          <PageShellWithFooter>
-            <main className="min-h-screen bg-slate-950 px-4 text-slate-100">
-               <div className="mx-auto flex min-h-screen max-w-2xl items-center justify-center">
-                  <div className="w-full text-center">
-                     <div className="mx-auto mb-6 flex h-18 w-18 items-center justify-center rounded-full border border-emerald-400/25 bg-emerald-500/10 shadow-[0_0_60px_rgba(16,185,129,0.14)]">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-400/15 text-2xl">
-                           🎉
-                        </div>
-                     </div>
-
-                     <h1 className="text-3xl font-semibold tracking-tight md:text-5xl">
-                        You are already a Premium member
+            <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
+               <div className="mx-auto flex min-h-screen max-w-xl items-center justify-center">
+                  <div className="w-full rounded-[2rem] border border-slate-800 bg-slate-900/70 p-8 text-center">
+                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
+                        Premium active
+                     </p>
+                     <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-50 md:text-4xl">
+                        You already have Premium access.
                      </h1>
-                     <p className="mx-auto mt-4 max-w-xl text-base leading-8 text-slate-400 md:text-lg">
-                        Thank you for supporting the project. You have full access to
-                        all premium decks and future updates.
+                     <p className="mt-4 text-base leading-7 text-slate-400">
+                        All premium decks and future premium content are
+                        unlocked on your account.
                      </p>
                      <button
                         onClick={() => router.push("/dashboard")}
-                        className="mt-8 cursor-pointer rounded-full bg-emerald-500 px-6 py-3 font-medium text-slate-950 transition hover:bg-emerald-400">
+                        className="mt-8 cursor-pointer rounded-full border border-emerald-400/30 bg-emerald-500/90 px-6 py-3 font-medium text-slate-950 transition hover:bg-emerald-400">
                         Go to dashboard
                      </button>
                   </div>
@@ -110,102 +138,97 @@ export default function PremiumPage() {
 
    return (
       <PageShellWithFooter>
-         <main className="w-full px-4 py-8">
-            <div className="mx-auto max-w-4xl space-y-8 py-8">
-               <div className="flex items-center justify-between gap-4">
-                  <button
-                     onClick={() => {
-                        if (window.history.length > 1) {
-                           router.back();
-                        } else {
-                           router.push("/dashboard");
-                        }
-                     }}
-                     className="cursor-pointer text-sm text-slate-400 hover:text-slate-200">
-                     ← Back
-                  </button>
-
-                  {user && (
+         <main className="bg-slate-950 px-4 py-4">
+            <div className="mx-auto flex justify-center">
+               <div className="mx-auto w-full max-w-md space-y-6">
+                  <div className="flex items-center justify-between gap-4">
                      <button
-                        onClick={() => router.push("/dashboard")}
-                        className="cursor-pointer rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800">
-                        Dashboard
+                        onClick={() => {
+                           if (window.history.length > 1) {
+                              router.back();
+                           } else {
+                              router.push("/dashboard");
+                           }
+                        }}
+                        className="cursor-pointer text-sm text-slate-400 transition hover:text-slate-200">
+                        ← Back
                      </button>
-                  )}
-               </div>
 
-               <section className="space-y-4">
-                  <p className="text-xs font-semibold tracking-wide text-amber-400">
-                     PREMIUM ACCESS
-                  </p>
-                  <h1 className="text-3xl font-bold md:text-4xl">
-                     Get access to all IELTS CDI Mock exams, Vocabulary decks
-                     and more!
-                  </h1>
-
-                  <div className="mt-4 space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 md:p-5">
-                     <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
-                        Premium features include
-                     </h2>
-                     <ul className="space-y-2 text-sm text-slate-200">
-                        <li className="flex gap-2">
-                           <span className="mt-0.5 text-emerald-400">✔</span>
-                           <div>
-                              <p className="font-medium">
-                                 Advanced decks unlocked
-                              </p>
-                              <p className="text-xs text-slate-400">
-                                 All premium vocabulary decks open immediately
-                                 for unlimited practice.
-                              </p>
-                           </div>
-                        </li>
-                        <li className="flex gap-2">
-                           <span className="mt-0.5 text-emerald-400">✔</span>
-                           <div>
-                              <p className="font-medium">New content first</p>
-                              <p className="text-xs text-slate-400">
-                                 Future reading, listening, and mock practice
-                                 sets are released to Premium members first.
-                              </p>
-                           </div>
-                        </li>
-                        <li className="flex gap-2">
-                           <span className="mt-0.5 text-emerald-400">✔</span>
-                           <div>
-                              <p className="font-medium">Reading Articles</p>
-                              <p className="text-xs text-slate-400">
-                                 Access to extra challenges and marathons is
-                                 included at no extra cost.
-                              </p>
-                           </div>
-                        </li>
-                     </ul>
+                     {user && (
+                        <button
+                           onClick={() => router.push("/dashboard")}
+                           className="cursor-pointer rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-200 transition hover:bg-slate-800">
+                           Dashboard
+                        </button>
+                     )}
                   </div>
-               </section>
 
-               <section className="flex flex-col gap-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:flex-row md:items-center md:justify-between md:p-6">
-                  <div className="space-y-2">
-                     <p className="text-xs font-semibold uppercase text-slate-400">
-                        Pricing
+                  <section className="space-y-4">
+                     <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-amber-400">
+                        Premium access
                      </p>
 
-                     <div className="flex items-baseline gap-2">
-                        <p className="text-3xl font-bold">{PRICE_TEXT}</p>
-                        <span className="text-xs text-slate-500">
-                           Lifetime Subscription!
-                        </span>
+                     <div className="space-y-4 rounded-[2rem] border border-slate-800 bg-slate-900/70 p-5">
+                        <h2 className="text-lg font-semibold text-emerald-300">
+                           Premium features include
+                        </h2>
+                        <ul className="space-y-3 text-sm text-slate-100">
+                           {PREMIUM_FEATURES.map((feature) => (
+                              <li
+                                 key={feature}
+                                 className="flex items-center gap-3">
+                                 <span className="text-base font-semibold text-emerald-400">
+                                    ✓
+                                 </span>
+                                 <span className="font-medium">{feature}</span>
+                              </li>
+                           ))}
+                        </ul>
                      </div>
-                  </div>
+                  </section>
 
-                  <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row">
+                  <section className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-5">
+                     <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                           Pricing
+                        </p>
+
+                        <div className="flex flex-wrap items-baseline gap-2">
+                           <p className="text-3xl font-bold text-slate-50">
+                              {PRICE_TEXT}
+                           </p>
+                           <span className="text-sm text-slate-500">
+                              Lifetime Subscription!
+                           </span>
+                        </div>
+                     </div>
+
                      <button
                         onClick={() => setIsPaymentModalOpen(true)}
-                        className="flex-1 cursor-pointer rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-emerald-400 md:flex-none">
+                        className="mt-6 w-full cursor-pointer rounded-full bg-emerald-500 px-5 py-3 text-base font-semibold text-slate-950 transition hover:bg-emerald-400">
                         Get Premium Access
                      </button>
-                  </div>
-               </section>
+                  </section>
+
+                  <section className="relative flex min-h-[150px] items-center justify-center overflow-hidden px-4 text-center">
+                     <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="h-20 w-20 rounded-full bg-emerald-500/10 blur-2xl" />
+                     </div>
+
+                     <div
+                        className={`relative max-w-sm transition-all duration-500 ease-out ${
+                           isMessageVisible
+                              ? "translate-y-0 scale-100 opacity-100"
+                              : "translate-y-2 scale-95 opacity-0"
+                        }`}>
+                        <p
+                           className="text-lg font-semibold leading-relaxed tracking-[0.02em] text-slate-100 md:text-xl"
+                           dir={messageIndex === 5 ? "rtl" : "ltr"}>
+                           {LIFETIME_MESSAGES[messageIndex]}
+                        </p>
+                     </div>
+                  </section>
+               </div>
             </div>
 
             {isPaymentModalOpen && (
@@ -215,7 +238,7 @@ export default function PremiumPage() {
                         onClick={() => setIsPaymentModalOpen(false)}
                         className="absolute right-4 top-4 cursor-pointer text-sm text-slate-500 hover:text-slate-200"
                         aria-label="Close payment modal">
-                        ✕
+                        ×
                      </button>
 
                      <h2 className="text-lg font-semibold">
