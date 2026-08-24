@@ -47,11 +47,21 @@ function isDate(value: string) {
    return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function getBranchForAssignee(
+   visibleMembers: Awaited<ReturnType<typeof getVisibleMembers>>,
+   assigneeId: string,
+) {
+   return (
+      visibleMembers.find((member) => member.user_id === assigneeId)?.primary_branch_id ||
+      null
+   );
+}
+
 async function loadTask(taskId: string) {
    const { data, error } = await supabaseAdmin
       .from("task_templates")
       .select(
-         "id, title, description, created_by, assigned_to, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
+         "id, title, description, created_by, assigned_to, branch_id, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
       )
       .eq("id", taskId)
       .maybeSingle();
@@ -124,6 +134,7 @@ export async function PATCH(req: Request, context: RouteContext) {
             title,
             description: description || null,
             assigned_to: assignedTo,
+            branch_id: getBranchForAssignee(visibleMembers, assignedTo),
             frequency_type: frequencyType,
             weekdays: frequencyType === "weekly" ? weekdays : null,
             month_days: frequencyType === "monthly" ? monthDays : null,
@@ -133,7 +144,7 @@ export async function PATCH(req: Request, context: RouteContext) {
          })
          .eq("id", taskId)
          .select(
-            "id, title, description, created_by, assigned_to, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
+            "id, title, description, created_by, assigned_to, branch_id, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
          )
          .single();
 

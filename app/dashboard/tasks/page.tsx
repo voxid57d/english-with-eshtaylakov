@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import TaskTrackerPage from "@/components/tasks/TaskTrackerPage";
 
-export default function DashboardTasksRedirectPage() {
-   redirect("/tasks");
+export default function DashboardTasksPage() {
+   return <TaskTrackerPage />;
 }

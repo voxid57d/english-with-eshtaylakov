@@ -5,11 +5,12 @@ import { memo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { LuLogOut } from "react-icons/lu";
+import BrandLogo from "@/components/BrandLogo";
 
 type NavbarProps = {
    user: Pick<User, "email" | "user_metadata">;
    username?: string;
-   isPremium: boolean;
+   roleLabel?: string;
    onLogout: () => void;
    onToggleSidebar: () => void;
 };
@@ -17,7 +18,7 @@ type NavbarProps = {
 function Navbar({
    user,
    username,
-   isPremium,
+   roleLabel,
    onLogout,
    onToggleSidebar,
 }: NavbarProps) {
@@ -46,13 +47,8 @@ function Navbar({
             <Link
                href="/dashboard"
                className="hover:opacity-90 transition cursor-pointer">
-               <Image
-                  src="/logo-text-white.png"
-                  alt="TalkTime logo"
-                  width={120}
-                  height={32}
-                  className="h-5 w-auto md:h-7"
-               />
+               <BrandLogo compact className="md:hidden" />
+               <BrandLogo className="hidden md:flex" />
             </Link>
          </div>
 
@@ -87,20 +83,14 @@ function Navbar({
 
             <Link
                href="/username"
-               className="hidden sm:inline-flex text-[11px] md:text-xs px-2.5 py-1 rounded-full border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition whitespace-nowrap">
-               Edit username
+               className="hidden sm:inline-flex text-[11px] md:text-xs px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition whitespace-nowrap">
+               Profile
             </Link>
 
-            {isPremium ? (
-               <span className="text-[11px] px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
-                  Premium
+            {roleLabel && (
+               <span className="hidden md:inline-flex text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-200 border border-emerald-500/25 whitespace-nowrap">
+                  {roleLabel}
                </span>
-            ) : (
-               <Link
-                  href="/premium"
-                  className="text-[11px] md:text-xs px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-500 text-slate-950 transition whitespace-nowrap">
-                  Go Premium
-               </Link>
             )}
 
             <button

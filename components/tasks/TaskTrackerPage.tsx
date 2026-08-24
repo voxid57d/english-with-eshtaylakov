@@ -14,13 +14,21 @@ import {
 } from "react-icons/pi";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 
-type TaskRole = "manager" | "report" | "coordinator";
+type TaskRole =
+   | "admin"
+   | "branch_manager"
+   | "sales_manager"
+   | "salesman"
+   | "assistant"
+   | "cashier";
 
 type TaskMember = {
    user_id: string;
    role: TaskRole;
    manager_id: string | null;
    display_name: string | null;
+   primary_branch_id: string | null;
+   branch_name: string | null;
    active: boolean;
 };
 
@@ -30,6 +38,7 @@ type TaskTemplate = {
    description: string | null;
    created_by: string;
    assigned_to: string;
+   branch_id: string | null;
    frequency_type: "daily" | "weekly" | "monthly" | "once";
    weekdays: number[] | null;
    month_days: number[] | null;
@@ -155,10 +164,27 @@ function getMemberName(members: TaskMember[], userId: string | null) {
    return member?.display_name?.trim() || member?.user_id.slice(0, 8) || "Unknown";
 }
 
+function getMemberBranchName(members: TaskMember[], userId: string | null) {
+   if (!userId) return null;
+   const member = members.find((entry) => entry.user_id === userId);
+   return member?.branch_name || null;
+}
+
 function roleLabel(role: TaskRole) {
-   if (role === "manager") return "manager";
-   if (role === "coordinator") return "coordinator";
-   return "report";
+   if (role === "admin") return "Admin";
+   if (role === "branch_manager") return "Branch Manager";
+   if (role === "sales_manager") return "Sales Manager";
+   if (role === "salesman") return "Salesman";
+   if (role === "assistant") return "Assistant";
+   return "Cashier";
+}
+
+function canManageTasks(role: TaskRole | undefined) {
+   return role === "admin" || role === "branch_manager" || role === "sales_manager";
+}
+
+function isStaffRole(role: TaskRole) {
+   return role !== "admin" && role !== "branch_manager" && role !== "sales_manager";
 }
 
 function emptyForm(date: string, assignedTo: string): TaskFormState {
@@ -331,6 +357,7 @@ export default function TasksPage() {
    const [saving, setSaving] = useState(false);
    const [error, setError] = useState<string | null>(null);
    const [success, setSuccess] = useState<string | null>(null);
+   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
    const [isEndCalendarOpen, setIsEndCalendarOpen] = useState(false);
    const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
    const [form, setForm] = useState<TaskFormState>(() => emptyForm(todayString(), ""));
@@ -367,8 +394,8 @@ export default function TasksPage() {
          setForm((current) => {
             if (current.id || current.title || current.description) return current;
             const defaultAssignee =
-               nextData.viewer.role === "manager"
-                  ? nextData.members.find((member) => member.role !== "manager")?.user_id ||
+               canManageTasks(nextData.viewer.role)
+                  ? nextData.members.find((member) => isStaffRole(member.role))?.user_id ||
                     nextData.viewer.user_id
                   : nextData.viewer.user_id;
 
@@ -398,15 +425,29 @@ export default function TasksPage() {
       return Array.from(groups.entries());
    }, [data?.occurrences]);
 
-   const canManageTeam = data?.viewer.role === "manager";
+   const canManageTeam = canManageTasks(data?.viewer.role);
 
-   const resetForm = () => {
-      const defaultAssignee =
-         data?.viewer.role === "manager"
-            ? data.members.find((member) => member.role !== "manager")?.user_id ||
+   const getDefaultAssignee = () =>
+         canManageTasks(data?.viewer.role)
+            ? data.members.find((member) => isStaffRole(member.role))?.user_id ||
               data.viewer.user_id
             : data?.viewer.user_id || "";
-      setForm(emptyForm(date, defaultAssignee));
+
+   const resetForm = () => {
+      setForm(emptyForm(date, getDefaultAssignee()));
+      setIsEndCalendarOpen(false);
+   };
+
+   const openNewTaskForm = () => {
+      resetForm();
+      setSuccess(null);
+      setError(null);
+      setIsTaskFormOpen(true);
+   };
+
+   const closeTaskForm = () => {
+      resetForm();
+      setIsTaskFormOpen(false);
    };
 
    const handleSubmitTask = async () => {
@@ -441,6 +482,7 @@ export default function TasksPage() {
 
          setSuccess(form.id ? "Task updated." : "Task created.");
          resetForm();
+         setIsTaskFormOpen(false);
          await loadTasks();
       } catch (requestError) {
          setError(requestError instanceof Error ? requestError.message : "Failed to save task.");
@@ -461,6 +503,7 @@ export default function TasksPage() {
          startDate: task.start_date,
          endDate: task.end_date || "",
       });
+      setIsTaskFormOpen(true);
       setSuccess(null);
       setError(null);
    };
@@ -572,28 +615,47 @@ export default function TasksPage() {
                </p>
             </div>
 
-            <div className="min-w-[240px] rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-               <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-slate-400">
-                     {view === "monthly" ? "Monthly" : "Daily"} progress
-                  </span>
-                  <span className="text-2xl font-semibold text-white">
-                     {data?.progress.percentage ?? 0}%
-                  </span>
+            <div className="flex flex-wrap items-stretch gap-3">
+               <button
+                  type="button"
+                  onClick={isTaskFormOpen ? closeTaskForm : openNewTaskForm}
+                  className={[
+                     "flex min-h-12 items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition",
+                     isTaskFormOpen
+                        ? "border border-slate-700 text-slate-200 hover:bg-slate-800"
+                        : "bg-emerald-500 text-slate-950 hover:bg-emerald-400",
+                  ].join(" ")}>
+                  {isTaskFormOpen ? <PiXLight size={18} /> : <PiPlusLight size={18} />}
+                  {isTaskFormOpen ? "Hide form" : "New task"}
+               </button>
+
+               <div className="min-w-[240px] rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                     <span className="text-sm text-slate-400">
+                        {view === "monthly" ? "Monthly" : "Daily"} progress
+                     </span>
+                     <span className="text-2xl font-semibold text-white">
+                        {data?.progress.percentage ?? 0}%
+                     </span>
+                  </div>
+                  <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-800">
+                     <div
+                        className="h-full rounded-full bg-emerald-400 transition-all"
+                        style={{ width: `${data?.progress.percentage ?? 0}%` }}
+                     />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                     {data?.progress.completed ?? 0} of {data?.progress.total ?? 0} done
+                  </p>
                </div>
-               <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-800">
-                  <div
-                     className="h-full rounded-full bg-emerald-400 transition-all"
-                     style={{ width: `${data?.progress.percentage ?? 0}%` }}
-                  />
-               </div>
-               <p className="mt-2 text-xs text-slate-500">
-                  {data?.progress.completed ?? 0} of {data?.progress.total ?? 0} done
-               </p>
             </div>
          </div>
 
-         <section className="grid gap-4 xl:grid-cols-[360px_1fr]">
+         <section
+            className={
+               isTaskFormOpen ? "grid gap-4 xl:grid-cols-[360px_1fr]" : "space-y-4"
+            }>
+            {isTaskFormOpen && (
             <div className="space-y-4">
                <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
                   <div className="flex items-center gap-2">
@@ -643,6 +705,7 @@ export default function TasksPage() {
                               {getMemberName(data?.members || [], member.user_id)}
                               {" "}
                               ({roleLabel(member.role)})
+                              {member.branch_name ? ` - ${member.branch_name}` : ""}
                            </option>
                         ))}
                      </select>
@@ -758,7 +821,7 @@ export default function TasksPage() {
                         {form.id && (
                            <button
                               type="button"
-                              onClick={resetForm}
+                              onClick={closeTaskForm}
                               className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-700 text-slate-300 transition hover:bg-slate-800"
                               aria-label="Cancel editing">
                               <PiXLight size={18} />
@@ -768,6 +831,7 @@ export default function TasksPage() {
                   </div>
                </div>
             </div>
+            )}
 
             <div className="space-y-4">
                <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
@@ -886,7 +950,7 @@ export default function TasksPage() {
                                  {occurrences.map((occurrence) => {
                                     const key = `${occurrence.task.id}:${occurrence.date}`;
                                     const canEdit =
-                                       data?.viewer.role === "manager" ||
+                                       canManageTasks(data?.viewer.role) ||
                                        occurrence.task.created_by === data?.viewer.user_id;
 
                                     return (
@@ -922,6 +986,15 @@ export default function TasksPage() {
                                                          occurrence.task.assigned_to,
                                                       )}{" "}
                                                       · {recurrenceLabel(occurrence.task)}
+                                                      {getMemberBranchName(
+                                                         data?.members || [],
+                                                         occurrence.task.assigned_to,
+                                                      )
+                                                         ? ` · ${getMemberBranchName(
+                                                              data?.members || [],
+                                                              occurrence.task.assigned_to,
+                                                           )}`
+                                                         : ""}
                                                    </span>
                                                 </span>
                                              </label>

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import "./globals.css";
 
 const geistSans = Geist({
    variable: "--font-geist-sans",
@@ -15,47 +15,29 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-   // Base URL of your site, used to build absolute links
    metadataBase: new URL("https://eshtaylakov.uz"),
-
-   // Normal title + description (also shown in search results)
-   title: "Talk Time",
+   title: "IELTS ZONE Amir Temur",
    description:
-      "Talk Time is an interactive English-learning platform offering vocabulary practice, reading and listening exercises, personalized decks, progress tracking, and IELTS CDI mock tests to help you prepare with confidence.",
-
+      "IELTS ZONE Amir Temur is an internal administration workspace for branch operations, staff tasks, KPI, shifts, and daily metrics.",
    icons: {
       icon: "/favicon.ico",
       shortcut: "/favicon.ico",
-      apple: "/apple-touch-icon.png", // optional, add if you upload it later
+      apple: "/apple-touch-icon.png",
    },
-
-   // 👇 Open Graph = what Telegram / Facebook use for link previews
    openGraph: {
-      title: "Talk Time",
+      title: "IELTS ZONE Amir Temur",
       description:
-         "Improve your English with interactive vocabulary, reading, listening, and IELTS CDI mock tests.",
+         "Internal administration workspace for IELTS ZONE learning centers.",
       url: "/",
-      siteName: "Talk Time",
-      images: [
-         {
-            // Path to the image in the /public folder
-            url: "/talktime-og.png",
-            width: 1200,
-            height: 630,
-            alt: "Talk Time - English learning platform",
-         },
-      ],
+      siteName: "IELTS ZONE",
       locale: "en_US",
       type: "website",
    },
-
-   // 👇 Extra info for Twitter/X previews (also used by some other apps)
    twitter: {
-      card: "summary_large_image",
-      title: "Talk Time",
+      card: "summary",
+      title: "IELTS ZONE Amir Temur",
       description:
-         "Interactive English-learning platform with vocabulary, reading, listening, and IELTS CDI mock tests.",
-      images: ["/talktime-og.png"],
+         "Internal administration workspace for IELTS ZONE learning centers.",
    },
 };
 

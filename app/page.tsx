@@ -1,16 +1,21 @@
 "use client";
 
 import type { User } from "@supabase/supabase-js";
-import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PiArrowRightLight, PiBriefcaseLight, PiChartLineUpLight, PiTargetLight } from "react-icons/pi";
 import { supabase } from "@/lib/supabaseClient";
+import BrandLogo from "@/components/BrandLogo";
 import PageShellWithFooter from "@/components/PageShellWithFooter";
 
+const highlights = [
+   { label: "Tasks", icon: PiBriefcaseLight },
+   { label: "KPI", icon: PiTargetLight },
+   { label: "Metrics", icon: PiChartLineUpLight },
+];
+
 export default function HomePage() {
-   const fullText = "Learn English with Eshtaylakov";
-   const [typedText, setTypedText] = useState("");
    const [user, setUser] = useState<User | null>(null);
    const [checkingAuth, setCheckingAuth] = useState(true);
    const router = useRouter();
@@ -24,7 +29,7 @@ export default function HomePage() {
          setUser(data.user);
          setCheckingAuth(false);
       };
-      load();
+      void load();
 
       const {
          data: { subscription },
@@ -34,20 +39,9 @@ export default function HomePage() {
          setCheckingAuth(false);
       });
 
-      const interval = setInterval(() => {
-         setTypedText((prev) => {
-            if (prev.length >= fullText.length) {
-               clearInterval(interval);
-               return prev;
-            }
-            return fullText.slice(0, prev.length + 1);
-         });
-      }, 40);
-
       return () => {
          cancelled = true;
          subscription.unsubscribe();
-         clearInterval(interval);
       };
    }, []);
 
@@ -59,16 +53,10 @@ export default function HomePage() {
 
    if (checkingAuth || user) {
       return (
-         <main className="min-h-screen bg-slate-950 flex items-center justify-center">
+         <main className="flex min-h-screen items-center justify-center bg-slate-950">
             <div className="flex flex-col items-center gap-4">
-               <Image
-                  src="/logo-text-white.png"
-                  alt="TalkTime logo"
-                  width={140}
-                  height={46}
-                  className="w-auto h-10 opacity-90 animate-pulse"
-               />
-               <div className="w-8 h-8 border-4 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
+               <BrandLogo className="animate-pulse" />
+               <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-700 border-t-emerald-400" />
             </div>
          </main>
       );
@@ -76,42 +64,45 @@ export default function HomePage() {
 
    return (
       <PageShellWithFooter>
-         <div className="w-full flex items-center px-4 py-10">
-            <section className="max-w-6xl mx-auto w-full flex flex-col md:flex-row items-center justify-between gap-12">
+         <main className="flex w-full items-center px-4 py-12">
+            <section className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
                <div className="space-y-6">
-                  <Image
-                     src="/logo-text-white.png"
-                     alt="TalkTime logo"
-                     width={200}
-                     height={60}
-                     className="w-auto h-12"
-                  />
+                  <BrandLogo />
 
-                  <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
-                     {typedText || fullText}
-                     <span className="border-r-2 border-emerald-400 ml-1 animate-pulse" />
-                  </h1>
-
-                  <p className="text-lg text-slate-300 max-w-md">
-                     Personalized exercises, vocabulary practice, and daily
-                     progress—all in one place.
-                  </p>
-
-                  <div className="mt-8 flex flex-wrap gap-4">
-                     <Link
-                        href="/login"
-                        className="inline-flex items-center gap-2 rounded-full px-7 py-3
-      bg-emerald-400 text-slate-900 font-semibold text-sm md:text-base
-      hover:bg-emerald-300 transition">
-                        Continue
-                        <span aria-hidden className="text-lg leading-none">
-                           →
-                        </span>
-                     </Link>
+                  <div>
+                     <p className="text-sm font-medium uppercase tracking-[0.22em] text-emerald-300">
+                        Internal administration
+                     </p>
                   </div>
+
+                  <Link
+                     href="/login"
+                     className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
+                     Staff login
+                     <PiArrowRightLight size={18} />
+                  </Link>
+               </div>
+
+               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                  {highlights.map((item) => {
+                     const Icon = item.icon;
+
+                     return (
+                        <div key={item.label} className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+                           <div className="flex items-center gap-3">
+                              <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-200">
+                                 <Icon size={23} />
+                              </span>
+                              <div>
+                                 <p className="font-semibold text-white">{item.label}</p>
+                              </div>
+                           </div>
+                        </div>
+                     );
+                  })}
                </div>
             </section>
-         </div>
+         </main>
       </PageShellWithFooter>
    );
 }

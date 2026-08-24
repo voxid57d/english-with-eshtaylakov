@@ -1,21 +1,19 @@
 "use client";
 
-import Image from "next/image";
 import type { User } from "@supabase/supabase-js";
 import { memo, useCallback, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
+import BrandLogo from "@/components/BrandLogo";
 import Navbar from "@/components/Navbar";
 import Sidebar from "@/components/Sidebar";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
-import { getPremiumStatus } from "@/lib/premium";
 import { supabase } from "@/lib/supabaseClient";
-import { syncDailyStreak } from "@/lib/userStats";
 
 type DashboardViewer = {
    user: User;
-   isPremium: boolean;
-   username: string | null;
+   fullName: string | null;
+   roleLabel: string | null;
 };
 
 const DashboardContent = memo(function DashboardContent({
@@ -35,7 +33,6 @@ export default function DashboardLayout({
    const [isLoadingUser, setIsLoadingUser] = useState(true);
    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
    const router = useRouter();
-   const pathname = usePathname();
 
    useEffect(() => {
       let isActive = true;
@@ -70,35 +67,35 @@ export default function DashboardLayout({
          }
 
          const authUser = data.user;
-         const [premium, profileResult] = await Promise.all([
-            getPremiumStatus(authUser.id),
-            supabase
-               .from("profiles")
-               .select("username")
-               .eq("id", authUser.id)
-               .maybeSingle(),
-         ]);
+         let fullName: string | null = null;
+         let roleLabel: string | null = null;
+
+         try {
+            const token = await getSupabaseAccessToken();
+            const response = await fetch("/api/erp/me", {
+               headers: { Authorization: `Bearer ${token}` },
+               cache: "no-store",
+            });
+            const payload = await response.json();
+
+            if (response.ok) {
+               fullName = payload.staff?.fullName ?? null;
+               roleLabel = payload.staff?.roleLabel ?? null;
+            } else {
+               console.error("Error loading staff profile:", payload.error);
+            }
+         } catch (profileError) {
+            console.error("Error loading staff profile:", profileError);
+         }
 
          if (!isActive) return;
 
-         if (profileResult.error) {
-            console.error("Error loading profile:", profileResult.error);
-         }
-
-         if (!profileResult.data?.username) {
-            console.log("No username found in profiles for user:", authUser.id);
-         }
-
          setViewer({
             user: authUser,
-            isPremium: premium,
-            username: profileResult.data?.username ?? null,
+            fullName,
+            roleLabel,
          });
          setIsLoadingUser(false);
-
-         void syncDailyStreak(authUser.id).catch((error) => {
-            console.error("Background streak sync failed:", error);
-         });
       }
 
       checkUser();
@@ -121,21 +118,11 @@ export default function DashboardLayout({
       setIsSidebarOpen(false);
    }, []);
 
-   const isImmersiveWritingRoute = /^\/dashboard\/writing\/(1|2)\/[^/]+$/.test(
-      pathname
-   );
-
    if (isLoadingUser || !viewer) {
       return (
          <main className="min-h-screen bg-slate-950 flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
-               <Image
-                  src="/logo-text-white.png"
-                  alt="TalkTime logo"
-                  width={120}
-                  height={40}
-                  className="w-auto h-10 opacity-90 animate-pulse"
-               />
+               <BrandLogo className="animate-pulse" />
                <div className="w-8 h-8 border-4 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
             </div>
          </main>
@@ -144,28 +131,21 @@ export default function DashboardLayout({
 
    return (
       <main className="min-h-screen bg-slate-950 text-white flex flex-col">
-         {isImmersiveWritingRoute ? (
-            children
-         ) : (
-            <>
-               <Navbar
-                  user={viewer.user}
-                  username={viewer.username ?? undefined}
-                  isPremium={viewer.isPremium}
-                  onLogout={handleLogOut}
-                  onToggleSidebar={handleOpenSidebar}
-               />
+         <Navbar
+            user={viewer.user}
+            username={viewer.fullName ?? undefined}
+            roleLabel={viewer.roleLabel ?? undefined}
+            onLogout={handleLogOut}
+            onToggleSidebar={handleOpenSidebar}
+         />
 
-               <div className="flex flex-1">
-                  <Sidebar
-                     isOpenOnMobile={isSidebarOpen}
-                     closeMobile={handleCloseSidebar}
-                     isPremium={viewer.isPremium}
-                  />
-                  <DashboardContent>{children}</DashboardContent>
-               </div>
-            </>
-         )}
+         <div className="flex flex-1">
+            <Sidebar
+               isOpenOnMobile={isSidebarOpen}
+               closeMobile={handleCloseSidebar}
+            />
+            <DashboardContent>{children}</DashboardContent>
+         </div>
       </main>
    );
 }

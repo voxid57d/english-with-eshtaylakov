@@ -13,7 +13,6 @@ function isPublicPath(pathname: string) {
       pathname.startsWith("/_next") ||
       pathname.startsWith("/favicon") ||
       pathname.startsWith("/public") ||
-      pathname.startsWith("/api/auth") ||
       pathname.startsWith("/auth/callback") ||
       pathname.startsWith("/signup") ||
       pathname.startsWith("/login") ||

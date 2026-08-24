@@ -1,13 +1,16 @@
 import type { User } from "@supabase/supabase-js";
+import { ERP_ROLE_LABELS, type ErpStaffRole } from "@/lib/erp";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-export type TaskRole = "manager" | "report" | "coordinator";
+export type TaskRole = ErpStaffRole;
 
 export type TaskMember = {
    user_id: string;
    role: TaskRole;
    manager_id: string | null;
    display_name: string | null;
+   primary_branch_id: string | null;
+   branch_name: string | null;
    active: boolean;
 };
 
@@ -17,6 +20,7 @@ export type TaskTemplate = {
    description: string | null;
    created_by: string;
    assigned_to: string;
+   branch_id: string | null;
    frequency_type: "daily" | "weekly" | "monthly" | "once";
    weekdays: number[] | null;
    month_days: number[] | null;
@@ -64,6 +68,43 @@ function getManagerUserIds() {
          .map((value) => value.trim())
          .filter(Boolean),
    );
+}
+
+function getDisplayName(user: User) {
+   const metadataName =
+      typeof user.user_metadata?.full_name === "string"
+         ? user.user_metadata.full_name
+         : typeof user.user_metadata?.name === "string"
+           ? user.user_metadata.name
+           : typeof user.user_metadata?.username === "string"
+             ? user.user_metadata.username
+             : "";
+
+   return metadataName.trim() || user.email || "New staff member";
+}
+
+function isTaskManagerRole(role: TaskRole) {
+   return role === "admin" || role === "branch_manager" || role === "sales_manager";
+}
+
+function toTaskMember(row: {
+   user_id: string;
+   role: TaskRole;
+   full_name?: string | null;
+   display_name?: string | null;
+   primary_branch_id?: string | null;
+   active: boolean;
+   branches?: { name?: string | null } | null;
+}): TaskMember {
+   return {
+      user_id: row.user_id,
+      role: row.role,
+      manager_id: null,
+      display_name: row.full_name || row.display_name || ERP_ROLE_LABELS[row.role],
+      primary_branch_id: row.primary_branch_id ?? null,
+      branch_name: row.branches?.name ?? null,
+      active: row.active,
+   };
 }
 
 function parseLocalDate(value: string) {
@@ -182,91 +223,126 @@ export async function ensureTaskMember(user: User) {
    const isConfiguredManager = managerUserIds.has(user.id);
 
    const { data: existing, error: existingError } = await supabaseAdmin
-      .from("task_members")
-      .select("user_id, role, manager_id, display_name, active")
+      .from("staff_profiles")
+      .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
       .eq("user_id", user.id)
       .maybeSingle();
 
    if (existingError) {
-      throw new Error("Failed to load task member.");
+      throw new Error("Failed to load Amir Temur staff profile. Apply supabase/erp_core_schema.sql first.");
    }
 
    if (existing) {
       if (existing.active !== true) {
-         throw new Error("Task access is disabled for this account.");
+         throw new Error("Amir Temur access is disabled for this account.");
       }
 
-      if (isConfiguredManager && existing.role !== "manager") {
+      if (isConfiguredManager && existing.role !== "admin") {
          const { data, error } = await supabaseAdmin
-            .from("task_members")
+            .from("staff_profiles")
             .update({
-               role: "manager",
-               manager_id: null,
+               role: "admin",
             })
             .eq("user_id", user.id)
-            .select("user_id, role, manager_id, display_name, active")
+            .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
             .single();
 
          if (error || !data) {
-            throw new Error("Failed to update task member.");
+            throw new Error("Failed to update Amir Temur staff profile.");
          }
 
-         return data as TaskMember;
+         return toTaskMember(data as unknown as Parameters<typeof toTaskMember>[0]);
       }
 
-      return existing as TaskMember;
+      return toTaskMember(existing as unknown as Parameters<typeof toTaskMember>[0]);
    }
 
    if (!isConfiguredManager) {
-      throw new Error("Task access is not enabled for this account.");
+      throw new Error("Amir Temur staff access is not enabled for this account.");
    }
 
-   const displayName =
-      typeof user.user_metadata?.username === "string"
-         ? user.user_metadata.username
-         : user.email ?? "New user";
-
    const { data, error } = await supabaseAdmin
-      .from("task_members")
+      .from("staff_profiles")
       .insert({
          user_id: user.id,
-         role: "manager",
-         manager_id: null,
-         display_name: displayName,
+         role: "admin",
+         full_name: getDisplayName(user),
+         primary_branch_id: null,
       })
-      .select("user_id, role, manager_id, display_name, active")
+      .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
       .single();
 
    if (error || !data) {
-      throw new Error("Failed to create task member.");
+      throw new Error("Failed to create Amir Temur staff profile.");
    }
 
-   return data as TaskMember;
+   return toTaskMember(data as unknown as Parameters<typeof toTaskMember>[0]);
 }
 
 export async function getVisibleMembers(member: TaskMember) {
-   if (member.role === "manager") {
-      const { data, error } = await supabaseAdmin
-         .from("task_members")
-         .select("user_id, role, manager_id, display_name, active")
-         .eq("active", true)
-         .order("role", { ascending: true })
-         .order("display_name", { ascending: true });
-
-      if (error) {
-         throw new Error("Failed to load team members.");
-      }
-
-      return (data || []) as TaskMember[];
+   if (!isTaskManagerRole(member.role)) {
+      return [member];
    }
 
-   return [member];
+   let query = supabaseAdmin
+      .from("staff_profiles")
+      .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
+      .eq("active", true)
+      .order("role", { ascending: true })
+      .order("full_name", { ascending: true });
+
+   if (member.role === "branch_manager" && member.primary_branch_id) {
+      query = query.eq("primary_branch_id", member.primary_branch_id);
+   }
+
+   const { data, error } = await query;
+
+   if (error) {
+      throw new Error("Failed to load Amir Temur staff.");
+   }
+
+   const visibleMembers = ((data || []) as unknown as Parameters<typeof toTaskMember>[0][])
+      .map(toTaskMember);
+
+   if (!visibleMembers.some((entry) => entry.user_id === member.user_id)) {
+      visibleMembers.push(member);
+   }
+
+   return visibleMembers;
 }
 
 export function canAccessAssignee(member: TaskMember, assigneeId: string) {
-   return member.user_id === assigneeId || member.role === "manager";
+   return member.user_id === assigneeId || isTaskManagerRole(member.role);
+}
+
+export function canAccessTask(member: TaskMember, task: TaskTemplate) {
+   if (member.user_id === task.assigned_to || member.user_id === task.created_by) {
+      return true;
+   }
+
+   if (member.role === "admin" || member.role === "sales_manager") {
+      return true;
+   }
+
+   if (member.role === "branch_manager") {
+      return !task.branch_id || task.branch_id === member.primary_branch_id;
+   }
+
+   return false;
 }
 
 export function canEditTask(member: TaskMember, task: TaskTemplate) {
-   return member.role === "manager" || task.created_by === member.user_id;
+   if (task.created_by === member.user_id) {
+      return true;
+   }
+
+   if (member.role === "admin" || member.role === "sales_manager") {
+      return true;
+   }
+
+   if (member.role === "branch_manager") {
+      return !task.branch_id || task.branch_id === member.primary_branch_id;
+   }
+
+   return false;
 }

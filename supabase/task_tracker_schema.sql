@@ -57,6 +57,12 @@ create index if not exists task_templates_assigned_to_idx
 create index if not exists task_templates_created_by_idx
    on public.task_templates(created_by);
 
+alter table public.task_templates
+   add column if not exists branch_id uuid;
+
+create index if not exists task_templates_branch_id_idx
+   on public.task_templates(branch_id, active, start_date, end_date);
+
 create table if not exists public.task_completions (
    id uuid primary key default gen_random_uuid(),
    task_id uuid not null references public.task_templates(id) on delete cascade,
@@ -115,7 +121,7 @@ alter table public.task_comments enable row level security;
 -- automatically; they must exist in task_members, except configured managers
 -- in TASK_MANAGER_USER_IDS / ADMIN_USER_IDS who are created by the API.
 
--- Example setup after Telegram users have logged in at least once:
+-- Example setup after staff users have logged in at least once:
 -- insert into public.task_members (user_id, role, display_name)
 -- values ('MANAGER_AUTH_USER_ID', 'manager', 'Manager name')
 -- on conflict (user_id) do update

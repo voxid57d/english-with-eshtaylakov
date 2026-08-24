@@ -45,6 +45,16 @@ function isDate(value: string) {
    return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function getBranchForAssignee(
+   visibleMembers: Awaited<ReturnType<typeof getVisibleMembers>>,
+   assigneeId: string,
+) {
+   return (
+      visibleMembers.find((member) => member.user_id === assigneeId)?.primary_branch_id ||
+      null
+   );
+}
+
 export async function GET(req: Request) {
    try {
       const user = await requireAuthenticatedUser(req);
@@ -80,7 +90,7 @@ export async function GET(req: Request) {
       const { data: tasks, error: tasksError } = await supabaseAdmin
          .from("task_templates")
          .select(
-            "id, title, description, created_by, assigned_to, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
+            "id, title, description, created_by, assigned_to, branch_id, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
          )
          .in("assigned_to", assigneeIds)
          .lte("start_date", range.endDate)
@@ -198,6 +208,7 @@ export async function POST(req: Request) {
             title,
             description: description || null,
             assigned_to: assignedTo,
+            branch_id: getBranchForAssignee(visibleMembers, assignedTo),
             created_by: member.user_id,
             frequency_type: frequencyType,
             weekdays: frequencyType === "weekly" ? weekdays : null,
@@ -206,7 +217,7 @@ export async function POST(req: Request) {
             end_date: endDate || null,
          })
          .select(
-            "id, title, description, created_by, assigned_to, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
+            "id, title, description, created_by, assigned_to, branch_id, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
          )
          .single();
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuthenticatedUser } from "@/lib/serverAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { canAccessAssignee, ensureTaskMember, type TaskTemplate } from "@/lib/taskTracker";
+import { canAccessTask, ensureTaskMember, type TaskTemplate } from "@/lib/taskTracker";
 
 function jsonError(error: unknown, fallback: string) {
    const message = error instanceof Error ? error.message : fallback;
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       const { data: task, error: taskError } = await supabaseAdmin
          .from("task_templates")
          .select(
-            "id, title, description, created_by, assigned_to, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
+            "id, title, description, created_by, assigned_to, branch_id, frequency_type, weekdays, month_days, start_date, end_date, active, created_at, updated_at",
          )
          .eq("id", taskId)
          .maybeSingle();
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       }
 
       const taskRow = task as TaskTemplate;
-      if (!canAccessAssignee(member, taskRow.assigned_to)) {
+      if (!canAccessTask(member, taskRow)) {
          throw new Error("Forbidden.");
       }
 
