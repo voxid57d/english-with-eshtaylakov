@@ -55,20 +55,119 @@ const EMPTY_FORM: StaffForm = {
    active: true,
 };
 
+type StaffTreeGroup = {
+   id: string;
+   name: string;
+   leaders: StaffView[];
+   salesManagers: StaffView[];
+   roleGroups: {
+      role: ErpStaffRole;
+      members: StaffView[];
+   }[];
+};
+
+const HIERARCHY_ROLE_ORDER: ErpStaffRole[] = ["salesman", "assistant", "cashier"];
+
+function StaffNode({
+   member,
+   tone = "default",
+   onClick,
+}: {
+   member: StaffView;
+   tone?: "leader" | "manager" | "default";
+   onClick?: (member: StaffView) => void;
+}) {
+   const toneClass =
+      tone === "leader"
+         ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-100"
+         : tone === "manager"
+           ? "border-sky-500/30 bg-sky-500/10 text-sky-100"
+           : "border-slate-700 bg-slate-950/70 text-slate-100";
+
+   return (
+      <button
+         type="button"
+         disabled={!onClick}
+         onClick={() => onClick?.(member)}
+         className={[
+            "flex min-h-[72px] w-full flex-col items-center justify-center rounded-lg border px-3 py-2 text-center transition disabled:cursor-default",
+            onClick
+               ? "hover:-translate-y-0.5 hover:border-emerald-400/50 hover:bg-slate-900"
+               : "",
+            toneClass,
+         ].join(" ")}>
+         <p className="truncate text-sm font-semibold">{member.fullName}</p>
+         <p className="mt-1 truncate text-xs opacity-75">{member.roleLabel}</p>
+         {!member.active && (
+            <span className="mt-2 inline-flex rounded-md border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-200">
+               Inactive
+            </span>
+         )}
+      </button>
+   );
+}
+
+function EmptyTreeSlot({ label }: { label: string }) {
+   return (
+      <div className="flex min-h-[72px] items-center justify-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 px-3 py-2 text-center text-sm text-slate-500">
+         {label}
+      </div>
+   );
+}
+
 export default function StaffManager() {
    const [staff, setStaff] = useState<StaffView[]>([]);
    const [branches, setBranches] = useState<BranchOption[]>([]);
    const [authUsers, setAuthUsers] = useState<AuthUserOption[]>([]);
    const [form, setForm] = useState<StaffForm>(EMPTY_FORM);
+   const [viewMode, setViewMode] = useState<"hierarchy" | "manage">("hierarchy");
+   const [canManageStaff, setCanManageStaff] = useState(false);
    const [loading, setLoading] = useState(true);
    const [saving, setSaving] = useState(false);
    const [error, setError] = useState<string | null>(null);
    const [success, setSuccess] = useState<string | null>(null);
 
-   const activeCount = useMemo(
-      () => staff.filter((member) => member.active).length,
-      [staff],
-   );
+   const hierarchyGroups = useMemo<StaffTreeGroup[]>(() => {
+      const activeStaff = staff.filter((member) => member.active);
+      const knownBranchIds = new Set(branches.map((branch) => branch.id));
+      const branchGroups = branches.map((branch) => ({
+         id: branch.id,
+         name: branch.name,
+         members: activeStaff.filter((member) => member.primaryBranchId === branch.id),
+      }));
+      const unassignedMembers = activeStaff.filter(
+         (member) => !member.primaryBranchId || !knownBranchIds.has(member.primaryBranchId),
+      );
+
+      if (unassignedMembers.length > 0) {
+         branchGroups.push({
+            id: "unassigned",
+            name: "Unassigned staff",
+            members: unassignedMembers,
+         });
+      }
+
+      return branchGroups.map((group) => {
+         const leaders = group.members.filter(
+            (member) => member.role === "branch_manager" || member.role === "admin",
+         );
+         const salesManagers = group.members.filter(
+            (member) => member.role === "sales_manager",
+         );
+         const roleGroups = HIERARCHY_ROLE_ORDER.map((role) => ({
+            role,
+            members: group.members.filter((member) => member.role === role),
+         }));
+
+         return {
+            id: group.id,
+            name: group.name,
+            leaders,
+            salesManagers,
+            roleGroups,
+         };
+      });
+   }, [branches, staff]);
 
    const loadStaff = useCallback(async () => {
       try {
@@ -88,6 +187,11 @@ export default function StaffManager() {
          setStaff(payload.staff || []);
          setBranches(payload.branches || []);
          setAuthUsers(payload.authUsers || []);
+         setCanManageStaff(payload.canManage === true);
+         if (payload.canManage !== true) {
+            setViewMode("hierarchy");
+            setForm(EMPTY_FORM);
+         }
       } catch (requestError) {
          setError(
             requestError instanceof Error
@@ -110,6 +214,8 @@ export default function StaffManager() {
    };
 
    const editStaff = (member: StaffView) => {
+      if (!canManageStaff) return;
+
       setForm({
          userId: member.userId,
          fullName: member.fullName,
@@ -120,6 +226,7 @@ export default function StaffManager() {
          notes: member.notes || "",
          active: member.active,
       });
+      setViewMode("manage");
       setSuccess(null);
       setError(null);
    };
@@ -173,26 +280,6 @@ export default function StaffManager() {
 
    return (
       <div className="space-y-5">
-         <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-               <div>
-                  <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-300">
-                     Team
-                  </p>
-                  <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-                     Staff
-                  </h1>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                     Connect logged-in users to Amir Temur roles and branches before assigning work, shifts, and KPI.
-                  </p>
-               </div>
-               <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3">
-                  <p className="text-xs text-slate-500">Active staff</p>
-                  <p className="mt-1 text-2xl font-semibold text-white">{activeCount}</p>
-               </div>
-            </div>
-         </section>
-
          {(error || success) && (
             <div
                className={[
@@ -205,7 +292,152 @@ export default function StaffManager() {
             </div>
          )}
 
-         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[420px_1fr]">
+         <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950/60 p-1">
+            <button
+               type="button"
+               onClick={() => setViewMode("hierarchy")}
+               className={[
+                  "rounded-md px-4 py-2 text-sm font-medium transition",
+                  viewMode === "hierarchy"
+                     ? "bg-emerald-500 text-slate-950"
+                     : "text-slate-400 hover:bg-slate-900 hover:text-slate-100",
+               ].join(" ")}>
+               Hierarchy
+            </button>
+            {canManageStaff && (
+               <button
+                  type="button"
+                  onClick={() => setViewMode("manage")}
+                  className={[
+                     "rounded-md px-4 py-2 text-sm font-medium transition",
+                     viewMode === "manage"
+                        ? "bg-emerald-500 text-slate-950"
+                        : "text-slate-400 hover:bg-slate-900 hover:text-slate-100",
+                  ].join(" ")}>
+                  Manage staff
+               </button>
+            )}
+         </div>
+
+         {viewMode === "hierarchy" && (
+            <section className="space-y-4">
+               {loading ? (
+                  <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+                     <p className="text-sm text-slate-500">Loading hierarchy...</p>
+                  </div>
+               ) : hierarchyGroups.length === 0 ? (
+                  <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-8 text-center">
+                     <PiUsersThreeLight className="mx-auto text-slate-500" size={34} />
+                     <p className="mt-3 text-sm text-slate-400">No active staff profiles yet.</p>
+                  </div>
+               ) : (
+                  hierarchyGroups.map((group) => (
+                     <div
+                        key={group.id}
+                        className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900/40">
+                        <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/50 px-5 py-4">
+                           <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                                 Branch
+                              </p>
+                              <h2 className="mt-1 text-lg font-semibold text-white">
+                                 {group.name}
+                              </h2>
+                           </div>
+                           <span className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-300">
+                              {[
+                                 ...group.leaders,
+                                 ...group.salesManagers,
+                                 ...group.roleGroups.flatMap((roleGroup) => roleGroup.members),
+                              ].length} active
+                           </span>
+                        </div>
+
+                        <div className="p-5 md:p-7">
+                           <div className="mx-auto max-w-6xl">
+                              <div className="flex flex-wrap justify-center gap-3">
+                                 {group.leaders.length > 0 ? (
+                                    group.leaders.map((member) => (
+                                       <div key={member.userId} className="w-full max-w-[360px]">
+                                          <StaffNode
+                                             member={member}
+                                             tone="leader"
+                                             onClick={canManageStaff ? editStaff : undefined}
+                                          />
+                                       </div>
+                                    ))
+                                 ) : (
+                                    <div className="w-full max-w-[360px]">
+                                       <EmptyTreeSlot label="No branch manager or admin assigned" />
+                                    </div>
+                                 )}
+                              </div>
+
+                              <div className="mx-auto h-8 w-px bg-slate-700" />
+
+                              <div className="flex flex-wrap justify-center gap-3">
+                                 {group.salesManagers.length > 0 ? (
+                                    group.salesManagers.map((member) => (
+                                       <div key={member.userId} className="w-full max-w-[320px]">
+                                          <StaffNode
+                                             member={member}
+                                             tone="manager"
+                                             onClick={canManageStaff ? editStaff : undefined}
+                                          />
+                                       </div>
+                                    ))
+                                 ) : (
+                                    <div className="w-full max-w-[320px]">
+                                       <EmptyTreeSlot label="No sales manager assigned" />
+                                    </div>
+                                 )}
+                              </div>
+
+                              <div className="mx-auto h-7 w-px bg-slate-700" />
+                              <div className="relative mx-auto hidden h-7 max-w-[calc(100%-18rem)] md:block">
+                                 <div className="absolute left-0 right-0 top-0 h-px bg-slate-700" />
+                                 <div className="absolute left-0 top-0 h-7 w-px bg-slate-700" />
+                                 <div className="absolute left-1/2 top-0 h-7 w-px -translate-x-1/2 bg-slate-700" />
+                                 <div className="absolute right-0 top-0 h-7 w-px bg-slate-700" />
+                              </div>
+
+                              <div className="grid grid-cols-1 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/30 md:grid-cols-3">
+                                 {group.roleGroups.map((roleGroup, index) => (
+                                    <div
+                                       key={roleGroup.role}
+                                       className={[
+                                          "p-4",
+                                          index === 0 ? "" : "border-t border-slate-800 md:border-l md:border-t-0",
+                                       ].join(" ")}>
+                                       <p className="mb-3 text-xs uppercase tracking-[0.16em] text-slate-500">
+                                          {ERP_ROLE_LABELS[roleGroup.role]}
+                                       </p>
+                                       <div className="space-y-3">
+                                          {roleGroup.members.length > 0 ? (
+                                             roleGroup.members.map((member) => (
+                                                <StaffNode
+                                                   key={member.userId}
+                                                   member={member}
+                                                   onClick={canManageStaff ? editStaff : undefined}
+                                                />
+                                             ))
+                                          ) : (
+                                             <EmptyTreeSlot label="No staff assigned" />
+                                          )}
+                                       </div>
+                                    </div>
+                                 ))}
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+                  ))
+               )}
+            </section>
+         )}
+
+         {viewMode === "manage" && canManageStaff && (
+            <section className="grid grid-cols-1 gap-4 xl:grid-cols-[420px_1fr]">
             <form
                onSubmit={submitStaff}
                className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
@@ -390,7 +622,8 @@ export default function StaffManager() {
                   </div>
                )}
             </div>
-         </section>
+            </section>
+         )}
       </div>
    );
 }

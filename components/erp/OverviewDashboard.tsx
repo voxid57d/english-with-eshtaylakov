@@ -1,14 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-   PiArrowRightLight,
-   PiBriefcaseLight,
    PiCalendarCheckLight,
    PiChartLineUpLight,
    PiClockLight,
-   PiMapPinLineLight,
    PiTargetLight,
    PiUsersThreeLight,
 } from "react-icons/pi";
@@ -30,6 +26,8 @@ type OverviewSummary = {
    revenueAmount: number;
    debtAmount: number;
    attendanceCount: number;
+   workedHoursMonth: number;
+   payrollAmount: number;
 };
 
 type OverviewPayload = {
@@ -47,38 +45,12 @@ type SummaryCard = {
    icon: IconType;
 };
 
-const modules = [
-   {
-      href: "/dashboard/tasks",
-      title: "Tasks",
-      description: "Assign recurring work, track completions, and keep comments attached to each occurrence.",
-   },
-   {
-      href: "/dashboard/kpi",
-      title: "KPI",
-      description: "Define role-based targets for sales, collection, attendance, retention, and branch operations.",
-   },
-   {
-      href: "/dashboard/shifts",
-      title: "Shifts",
-      description: "Plan schedules for branch managers, sales teams, assistants, and cashiers.",
-   },
-   {
-      href: "/dashboard/metrics",
-      title: "Metrics",
-      description: "Monitor leads, trials, payments, debts, attendance, and conversion movement.",
-   },
-];
-
-const setupItems = [
-   { href: "/dashboard/branches", label: "Branches", icon: PiMapPinLineLight },
-   { href: "/dashboard/staff", label: "Staff", icon: PiUsersThreeLight },
-   { href: "/dashboard/kpi", label: "KPI definitions", icon: PiTargetLight },
-   { href: "/dashboard/metrics", label: "Daily metrics", icon: PiChartLineUpLight },
-];
-
 function formatNumber(value: number) {
    return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatHours(value: number) {
+   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
 }
 
 function getSummaryCards(payload: OverviewPayload | null): SummaryCard[] {
@@ -86,27 +58,27 @@ function getSummaryCards(payload: OverviewPayload | null): SummaryCard[] {
 
    return [
       {
-         label: "Active tasks",
+         label: "My active tasks",
          value: formatNumber(summary?.activeTasks ?? 0),
-         helper: "Currently active task templates",
+         helper: "Assigned active task templates",
          icon: PiCalendarCheckLight,
       },
       {
-         label: "KPI progress",
+         label: "My KPI progress",
          value: `${summary?.kpiAverage ?? 0}%`,
-         helper: `${summary?.kpiTargets ?? 0} current-month targets`,
+         helper: `${summary?.kpiTargets ?? 0} personal current-month targets`,
          icon: PiTargetLight,
       },
       {
-         label: "Weekly shifts",
+         label: "My weekly shifts",
          value: formatNumber(summary?.weeklyShifts ?? 0),
          helper: `${summary?.shiftIssues ?? 0} late or absent`,
          icon: PiClockLight,
       },
       {
-         label: "Active staff",
+         label: "My profile",
          value: formatNumber(summary?.activeStaff ?? 0),
-         helper: `${summary?.activeBranches ?? 0} active branches`,
+         helper: `${summary?.activeBranches ?? 0} assigned branch`,
          icon: PiUsersThreeLight,
       },
    ];
@@ -162,9 +134,6 @@ export default function OverviewDashboard() {
                   <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
                      Administration workspace
                   </h1>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                     Live overview for branches, staff, tasks, KPI, shifts, and monthly operating metrics.
-                  </p>
                </div>
 
                <button
@@ -202,14 +171,14 @@ export default function OverviewDashboard() {
             })}
          </section>
 
-         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+         <section>
             <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
                <div className="flex items-center gap-2">
                   <PiChartLineUpLight className="text-emerald-300" size={22} />
                   <h2 className="text-lg font-semibold text-white">Current month</h2>
                </div>
 
-               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
                   <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
                      <p className="text-sm text-slate-400">Leads</p>
                      <p className="mt-2 text-2xl font-semibold text-white">
@@ -237,57 +206,24 @@ export default function OverviewDashboard() {
                         {formatNumber(summary?.debtAmount ?? 0)} debt
                      </p>
                   </div>
-               </div>
-            </div>
-
-            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-               <div className="flex items-center gap-2">
-                  <PiBriefcaseLight className="text-emerald-300" size={22} />
-                  <h2 className="text-lg font-semibold text-white">Setup shortcuts</h2>
-               </div>
-
-               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {setupItems.map((item) => {
-                     const Icon = item.icon;
-
-                     return (
-                        <Link
-                           key={item.href}
-                           href={item.href}
-                           className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-4 transition hover:border-emerald-500/30 hover:bg-slate-900">
-                           <div className="flex items-center gap-3">
-                              <Icon className="text-slate-400" size={21} />
-                              <span className="text-sm font-medium text-slate-200">{item.label}</span>
-                           </div>
-                           <PiArrowRightLight className="text-slate-500" size={18} />
-                        </Link>
-                     );
-                  })}
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+                     <p className="text-sm text-slate-400">My worked hours</p>
+                     <p className="mt-2 text-2xl font-semibold text-white">
+                        {formatHours(summary?.workedHoursMonth ?? 0)}
+                     </p>
+                     <p className="mt-1 text-xs text-slate-500">Completed and late shifts</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+                     <p className="text-sm text-slate-400">My estimated payout</p>
+                     <p className="mt-2 text-2xl font-semibold text-white">
+                        {formatNumber(summary?.payrollAmount ?? 0)}
+                     </p>
+                     <p className="mt-1 text-xs text-slate-500">Based on your role hourly rate</p>
+                  </div>
                </div>
             </div>
          </section>
 
-         <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-            <div className="flex items-center gap-2">
-               <PiChartLineUpLight className="text-emerald-300" size={22} />
-               <h2 className="text-lg font-semibold text-white">Core modules</h2>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-               {modules.map((module) => (
-                  <Link
-                     key={module.href}
-                     href={module.href}
-                     className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 transition hover:border-emerald-500/30 hover:bg-slate-900">
-                     <div className="flex items-center justify-between gap-3">
-                        <h3 className="font-semibold text-slate-100">{module.title}</h3>
-                        <PiArrowRightLight className="text-slate-500" size={18} />
-                     </div>
-                     <p className="mt-2 text-sm leading-6 text-slate-400">{module.description}</p>
-                  </Link>
-               ))}
-            </div>
-         </section>
       </div>
    );
 }

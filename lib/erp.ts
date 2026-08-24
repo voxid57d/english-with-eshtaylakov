@@ -9,6 +9,13 @@ export const ERP_STAFF_ROLES = [
 
 export type ErpStaffRole = (typeof ERP_STAFF_ROLES)[number];
 
+export const ERP_SHIFT_WORKER_ROLES = [
+   "sales_manager",
+   "salesman",
+   "assistant",
+   "cashier",
+] as const satisfies readonly ErpStaffRole[];
+
 export const ERP_SHIFT_STATUSES = [
    "scheduled",
    "completed",
@@ -110,8 +117,12 @@ export type Shift = {
    shift_date: string;
    starts_at: string;
    ends_at: string;
+   break_minutes: number;
    status: ErpShiftStatus;
    approved_by: string | null;
+   hourly_rate_override: number | null;
+   extra_hourly_rate_override: number | null;
+   extra_hours_enabled_override: boolean | null;
    note: string | null;
    created_at: string;
    updated_at: string;
@@ -143,6 +154,30 @@ export type ErpRolePermission = {
    updated_at: string;
 };
 
+export type ErpRoleCompensationSetting = {
+   role: ErpStaffRole;
+   hourly_rate: number;
+   extra_hours_enabled: boolean;
+   extra_hourly_rate: number;
+   extra_hours_threshold: number;
+   updated_at: string;
+};
+
+export type StaffWorkingHour = {
+   id: string;
+   staff_user_id: string;
+   branch_id: string | null;
+   weekday: number;
+   starts_at: string;
+   ends_at: string;
+   break_minutes: number;
+   active: boolean;
+   note: string | null;
+   created_by: string | null;
+   created_at: string;
+   updated_at: string;
+};
+
 export const ERP_ROLE_LABELS: Record<ErpStaffRole, string> = {
    admin: "Admin",
    branch_manager: "Branch Manager",
@@ -161,6 +196,16 @@ export const ERP_SHIFT_STATUS_LABELS: Record<ErpShiftStatus, string> = {
    sick_leave: "Sick leave",
    approved_leave: "Approved leave",
 };
+
+export const ERP_WEEKDAYS = [
+   { value: 1, label: "Monday" },
+   { value: 2, label: "Tuesday" },
+   { value: 3, label: "Wednesday" },
+   { value: 4, label: "Thursday" },
+   { value: 5, label: "Friday" },
+   { value: 6, label: "Saturday" },
+   { value: 7, label: "Sunday" },
+] as const;
 
 export function isErpStaffRole(value: unknown): value is ErpStaffRole {
    return (

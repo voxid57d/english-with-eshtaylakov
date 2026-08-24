@@ -237,11 +237,11 @@ export async function ensureTaskMember(user: User) {
          throw new Error("Amir Temur access is disabled for this account.");
       }
 
-      if (isConfiguredManager && existing.role !== "admin") {
+      if (isConfiguredManager && existing.role !== "branch_manager") {
          const { data, error } = await supabaseAdmin
             .from("staff_profiles")
             .update({
-               role: "admin",
+               role: "branch_manager",
             })
             .eq("user_id", user.id)
             .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
@@ -265,7 +265,7 @@ export async function ensureTaskMember(user: User) {
       .from("staff_profiles")
       .insert({
          user_id: user.id,
-         role: "admin",
+         role: "branch_manager",
          full_name: getDisplayName(user),
          primary_branch_id: null,
       })

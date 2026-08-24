@@ -6,6 +6,7 @@ import {
    PiFloppyDiskLight,
    PiPlusLight,
    PiTargetLight,
+   PiTrashLight,
 } from "react-icons/pi";
 import {
    ERP_ROLE_LABELS,
@@ -106,6 +107,7 @@ export default function KpiManager() {
    const [definitionForm, setDefinitionForm] = useState(EMPTY_DEFINITION_FORM);
    const [targetForm, setTargetForm] = useState(EMPTY_TARGET_FORM);
    const [progressForm, setProgressForm] = useState(EMPTY_PROGRESS_FORM);
+   const [canManage, setCanManage] = useState(false);
    const [loading, setLoading] = useState(true);
    const [saving, setSaving] = useState(false);
    const [error, setError] = useState<string | null>(null);
@@ -115,6 +117,19 @@ export default function KpiManager() {
       () => definitions.filter((definition) => definition.active),
       [definitions],
    );
+
+   const selectedTargetDefinition = useMemo(
+      () =>
+         activeDefinitions.find(
+            (definition) => definition.id === targetForm.definitionId,
+         ) || null,
+      [activeDefinitions, targetForm.definitionId],
+   );
+
+   const targetStaffOptions = useMemo(() => {
+      if (!selectedTargetDefinition) return staff;
+      return staff.filter((member) => member.role === selectedTargetDefinition.role);
+   }, [selectedTargetDefinition, staff]);
 
    const averageProgress = useMemo(() => {
       if (targets.length === 0) return 0;
@@ -144,6 +159,7 @@ export default function KpiManager() {
          setTargets(payload.targets || []);
          setStaff(payload.staff || []);
          setBranches(payload.branches || []);
+         setCanManage(Boolean(payload.canManage));
       } catch (requestError) {
          setError(
             requestError instanceof Error
@@ -184,11 +200,15 @@ export default function KpiManager() {
 
    const submitProgress = async (event: React.FormEvent) => {
       event.preventDefault();
-      await saveKpi("POST", { action: "progress", ...progressForm }, "KPI progress added.");
+      await saveKpi("POST", { action: "progress", ...progressForm }, "KPI progress saved.");
       setProgressForm(EMPTY_PROGRESS_FORM);
    };
 
-   const saveKpi = async (method: "POST" | "PATCH", body: unknown, message: string) => {
+   const saveKpi = async (
+      method: "POST" | "PATCH" | "DELETE",
+      body: unknown,
+      message: string,
+   ) => {
       try {
          setSaving(true);
          setError(null);
@@ -234,6 +254,35 @@ export default function KpiManager() {
       setSuccess(null);
    };
 
+   const deleteDefinition = async (definition: KpiDefinitionView) => {
+      if (!window.confirm(`Delete KPI definition "${definition.name}"?`)) return;
+
+      await saveKpi(
+         "DELETE",
+         { action: "definition", id: definition.id },
+         "KPI definition deleted.",
+      );
+
+      if (definitionForm.id === definition.id) {
+         setDefinitionForm(EMPTY_DEFINITION_FORM);
+      }
+   };
+
+   const deleteTarget = async (target: KpiTargetView) => {
+      const ownerName = target.staffName || target.branchName || "this target";
+      if (!window.confirm(`Delete KPI target for ${ownerName}?`)) return;
+
+      await saveKpi(
+         "DELETE",
+         { action: "target", id: target.id },
+         "KPI target deleted.",
+      );
+
+      if (progressForm.targetId === target.id) {
+         setProgressForm(EMPTY_PROGRESS_FORM);
+      }
+   };
+
    return (
       <div className="space-y-5">
          <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
@@ -274,238 +323,252 @@ export default function KpiManager() {
             </div>
          )}
 
-         <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <form
-               onSubmit={submitDefinition}
-               className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-               <div className="flex items-center gap-2">
-                  <PiTargetLight className="text-emerald-300" size={22} />
-                  <h2 className="text-lg font-semibold text-white">Definition</h2>
-               </div>
+         <section
+            className={[
+               "grid grid-cols-1 gap-4",
+               canManage ? "xl:grid-cols-3" : "xl:max-w-xl",
+            ].join(" ")}>
+            {canManage && (
+               <form
+                  onSubmit={submitDefinition}
+                  className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+                  <div className="flex items-center gap-2">
+                     <PiTargetLight className="text-emerald-300" size={22} />
+                     <h2 className="text-lg font-semibold text-white">Definition</h2>
+                  </div>
 
-               <div className="mt-4 space-y-3">
-                  <input
-                     value={definitionForm.name}
-                     onChange={(event) =>
-                        setDefinitionForm((current) => ({
-                           ...current,
-                           name: event.target.value,
-                        }))
-                     }
-                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                     placeholder="Trial lessons booked"
-                     required
-                  />
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                     <select
-                        value={definitionForm.role}
+                  <div className="mt-4 space-y-3">
+                     <input
+                        value={definitionForm.name}
                         onChange={(event) =>
                            setDefinitionForm((current) => ({
                               ...current,
-                              role: event.target.value as ErpStaffRole,
+                              name: event.target.value,
                            }))
                         }
-                        className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400">
-                        {ERP_STAFF_ROLES.map((role) => (
-                           <option key={role} value={role}>
-                              {ERP_ROLE_LABELS[role]}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                        placeholder="Trial lessons booked"
+                        required
+                     />
+                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <select
+                           value={definitionForm.role}
+                           onChange={(event) =>
+                              setDefinitionForm((current) => ({
+                                 ...current,
+                                 role: event.target.value as ErpStaffRole,
+                              }))
+                           }
+                           className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400">
+                           {ERP_STAFF_ROLES.map((role) => (
+                              <option key={role} value={role}>
+                                 {ERP_ROLE_LABELS[role]}
+                              </option>
+                           ))}
+                        </select>
+                        <input
+                           value={definitionForm.unit}
+                           onChange={(event) =>
+                              setDefinitionForm((current) => ({
+                                 ...current,
+                                 unit: event.target.value,
+                              }))
+                           }
+                           className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                           placeholder="count, UZS, %"
+                        />
+                     </div>
+                     <textarea
+                        value={definitionForm.description}
+                        onChange={(event) =>
+                           setDefinitionForm((current) => ({
+                              ...current,
+                              description: event.target.value,
+                           }))
+                        }
+                        rows={3}
+                        className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                        placeholder="How this KPI is measured"
+                     />
+                     <label className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                        <input
+                           type="checkbox"
+                           checked={definitionForm.active}
+                           onChange={(event) =>
+                              setDefinitionForm((current) => ({
+                                 ...current,
+                                 active: event.target.checked,
+                              }))
+                           }
+                           className="h-4 w-4 accent-emerald-500"
+                        />
+                        <span className="text-sm text-slate-300">Active definition</span>
+                     </label>
+                  </div>
+
+                  <div className="mt-5 flex gap-2">
+                     <button
+                        type="submit"
+                        disabled={saving}
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
+                        <PiFloppyDiskLight size={18} />
+                        Save
+                     </button>
+                     {definitionForm.id && (
+                        <button
+                           type="button"
+                           onClick={() => setDefinitionForm(EMPTY_DEFINITION_FORM)}
+                           className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800">
+                           Cancel
+                        </button>
+                     )}
+                  </div>
+               </form>
+            )}
+
+            {canManage && (
+               <form
+                  onSubmit={submitTarget}
+                  className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+                  <div className="flex items-center gap-2">
+                     <PiPlusLight className="text-emerald-300" size={22} />
+                     <h2 className="text-lg font-semibold text-white">Target</h2>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                     <select
+                        value={targetForm.definitionId}
+                        onChange={(event) =>
+                           setTargetForm((current) => ({
+                              ...current,
+                              definitionId: event.target.value,
+                              staffUserId: "",
+                           }))
+                        }
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                        required>
+                        <option value="">Choose KPI definition</option>
+                        {activeDefinitions.map((definition) => (
+                           <option key={definition.id} value={definition.id}>
+                              {definition.name} ({definition.roleLabel})
                            </option>
                         ))}
                      </select>
+
+                     <div className="grid grid-cols-2 gap-2">
+                        {["staff", "branch"].map((ownerType) => (
+                           <button
+                              key={ownerType}
+                              type="button"
+                              onClick={() =>
+                                 setTargetForm((current) => ({ ...current, ownerType }))
+                              }
+                              className={[
+                                 "rounded-lg border px-3 py-2 text-sm capitalize transition",
+                                 targetForm.ownerType === ownerType
+                                    ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                                    : "border-slate-700 text-slate-300 hover:bg-slate-800",
+                              ].join(" ")}>
+                              {ownerType}
+                           </button>
+                        ))}
+                     </div>
+
+                     {targetForm.ownerType === "staff" ? (
+                        <select
+                           value={targetForm.staffUserId}
+                           onChange={(event) =>
+                              setTargetForm((current) => ({
+                                 ...current,
+                                 staffUserId: event.target.value,
+                              }))
+                           }
+                           className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                           required>
+                           <option value="">Choose staff member</option>
+                           {targetStaffOptions.map((member) => (
+                              <option key={member.userId} value={member.userId}>
+                                 {member.fullName} ({member.roleLabel})
+                              </option>
+                           ))}
+                           {selectedTargetDefinition && targetStaffOptions.length === 0 && (
+                              <option value="" disabled>
+                                 No {selectedTargetDefinition.roleLabel} staff found
+                              </option>
+                           )}
+                        </select>
+                     ) : (
+                        <select
+                           value={targetForm.branchId}
+                           onChange={(event) =>
+                              setTargetForm((current) => ({
+                                 ...current,
+                                 branchId: event.target.value,
+                              }))
+                           }
+                           className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                           required>
+                           <option value="">Choose branch</option>
+                           {branches.map((branch) => (
+                              <option key={branch.id} value={branch.id}>
+                                 {branch.name}
+                              </option>
+                           ))}
+                        </select>
+                     )}
+
+                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <input
+                           type="date"
+                           value={targetForm.periodStart}
+                           onChange={(event) =>
+                              setTargetForm((current) => ({
+                                 ...current,
+                                 periodStart: event.target.value,
+                              }))
+                           }
+                           className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                           required
+                        />
+                        <input
+                           type="date"
+                           value={targetForm.periodEnd}
+                           onChange={(event) =>
+                              setTargetForm((current) => ({
+                                 ...current,
+                                 periodEnd: event.target.value,
+                              }))
+                           }
+                           className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                           required
+                        />
+                     </div>
                      <input
-                        value={definitionForm.unit}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={targetForm.targetValue}
                         onChange={(event) =>
-                           setDefinitionForm((current) => ({
+                           setTargetForm((current) => ({
                               ...current,
-                              unit: event.target.value,
+                              targetValue: event.target.value,
                            }))
                         }
-                        className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                        placeholder="count, UZS, %"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                        placeholder="Target value"
+                        required
                      />
                   </div>
-                  <textarea
-                     value={definitionForm.description}
-                     onChange={(event) =>
-                        setDefinitionForm((current) => ({
-                           ...current,
-                           description: event.target.value,
-                        }))
-                     }
-                     rows={3}
-                     className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                     placeholder="How this KPI is measured"
-                  />
-                  <label className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
-                     <input
-                        type="checkbox"
-                        checked={definitionForm.active}
-                        onChange={(event) =>
-                           setDefinitionForm((current) => ({
-                              ...current,
-                              active: event.target.checked,
-                           }))
-                        }
-                        className="h-4 w-4 accent-emerald-500"
-                     />
-                     <span className="text-sm text-slate-300">Active definition</span>
-                  </label>
-               </div>
 
-               <div className="mt-5 flex gap-2">
                   <button
                      type="submit"
                      disabled={saving}
-                     className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
+                     className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
                      <PiFloppyDiskLight size={18} />
-                     Save
+                     Create target
                   </button>
-                  {definitionForm.id && (
-                     <button
-                        type="button"
-                        onClick={() => setDefinitionForm(EMPTY_DEFINITION_FORM)}
-                        className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800">
-                        Cancel
-                     </button>
-                  )}
-               </div>
-            </form>
-
-            <form
-               onSubmit={submitTarget}
-               className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-               <div className="flex items-center gap-2">
-                  <PiPlusLight className="text-emerald-300" size={22} />
-                  <h2 className="text-lg font-semibold text-white">Target</h2>
-               </div>
-
-               <div className="mt-4 space-y-3">
-                  <select
-                     value={targetForm.definitionId}
-                     onChange={(event) =>
-                        setTargetForm((current) => ({
-                           ...current,
-                           definitionId: event.target.value,
-                        }))
-                     }
-                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                     required>
-                     <option value="">Choose KPI definition</option>
-                     {activeDefinitions.map((definition) => (
-                        <option key={definition.id} value={definition.id}>
-                           {definition.name} ({definition.roleLabel})
-                        </option>
-                     ))}
-                  </select>
-
-                  <div className="grid grid-cols-2 gap-2">
-                     {["staff", "branch"].map((ownerType) => (
-                        <button
-                           key={ownerType}
-                           type="button"
-                           onClick={() =>
-                              setTargetForm((current) => ({ ...current, ownerType }))
-                           }
-                           className={[
-                              "rounded-lg border px-3 py-2 text-sm capitalize transition",
-                              targetForm.ownerType === ownerType
-                                 ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                                 : "border-slate-700 text-slate-300 hover:bg-slate-800",
-                           ].join(" ")}>
-                           {ownerType}
-                        </button>
-                     ))}
-                  </div>
-
-                  {targetForm.ownerType === "staff" ? (
-                     <select
-                        value={targetForm.staffUserId}
-                        onChange={(event) =>
-                           setTargetForm((current) => ({
-                              ...current,
-                              staffUserId: event.target.value,
-                           }))
-                        }
-                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                        required>
-                        <option value="">Choose staff member</option>
-                        {staff.map((member) => (
-                           <option key={member.userId} value={member.userId}>
-                              {member.fullName} ({member.roleLabel})
-                           </option>
-                        ))}
-                     </select>
-                  ) : (
-                     <select
-                        value={targetForm.branchId}
-                        onChange={(event) =>
-                           setTargetForm((current) => ({
-                              ...current,
-                              branchId: event.target.value,
-                           }))
-                        }
-                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                        required>
-                        <option value="">Choose branch</option>
-                        {branches.map((branch) => (
-                           <option key={branch.id} value={branch.id}>
-                              {branch.name}
-                           </option>
-                        ))}
-                     </select>
-                  )}
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                     <input
-                        type="date"
-                        value={targetForm.periodStart}
-                        onChange={(event) =>
-                           setTargetForm((current) => ({
-                              ...current,
-                              periodStart: event.target.value,
-                           }))
-                        }
-                        className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                        required
-                     />
-                     <input
-                        type="date"
-                        value={targetForm.periodEnd}
-                        onChange={(event) =>
-                           setTargetForm((current) => ({
-                              ...current,
-                              periodEnd: event.target.value,
-                           }))
-                        }
-                        className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                        required
-                     />
-                  </div>
-                  <input
-                     type="number"
-                     min="0"
-                     step="0.01"
-                     value={targetForm.targetValue}
-                     onChange={(event) =>
-                        setTargetForm((current) => ({
-                           ...current,
-                           targetValue: event.target.value,
-                        }))
-                     }
-                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                     placeholder="Target value"
-                     required
-                  />
-               </div>
-
-               <button
-                  type="submit"
-                  disabled={saving}
-                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
-                  <PiFloppyDiskLight size={18} />
-                  Create target
-               </button>
-            </form>
+               </form>
+            )}
 
             <form
                onSubmit={submitProgress}
@@ -581,40 +644,65 @@ export default function KpiManager() {
                   disabled={saving}
                   className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
                   <PiFloppyDiskLight size={18} />
-                  Add progress
+                  Save progress
                </button>
             </form>
          </section>
 
-         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[0.8fr_1.2fr]">
-            <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-               <h2 className="text-lg font-semibold text-white">Definitions</h2>
-               {loading ? (
-                  <p className="mt-4 text-sm text-slate-500">Loading KPI definitions...</p>
-               ) : definitions.length === 0 ? (
-                  <p className="mt-4 text-sm text-slate-500">No KPI definitions yet.</p>
-               ) : (
-                  <div className="mt-4 divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-800">
-                     {definitions.map((definition) => (
-                        <button
-                           key={definition.id}
-                           type="button"
-                           onClick={() => editDefinition(definition)}
-                           className="flex w-full flex-col gap-1 bg-slate-950/30 px-4 py-3 text-left transition hover:bg-slate-900">
-                           <div className="flex flex-wrap items-center gap-2">
-                              <p className="font-medium text-white">{definition.name}</p>
-                              <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200">
-                                 {definition.roleLabel}
-                              </span>
+         <section
+            className={[
+               "grid grid-cols-1 gap-4",
+               canManage ? "xl:grid-cols-[0.8fr_1.2fr]" : "",
+            ].join(" ")}>
+            {canManage && (
+               <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+                  <h2 className="text-lg font-semibold text-white">Definitions</h2>
+                  {loading ? (
+                     <p className="mt-4 text-sm text-slate-500">Loading KPI definitions...</p>
+                  ) : definitions.length === 0 ? (
+                     <p className="mt-4 text-sm text-slate-500">No KPI definitions yet.</p>
+                  ) : (
+                     <div className="mt-4 divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-800">
+                        {definitions.map((definition) => (
+                           <div
+                              key={definition.id}
+                              className="flex flex-col gap-3 bg-slate-950/30 px-4 py-3 transition hover:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+                              <button
+                                 type="button"
+                                 onClick={() => editDefinition(definition)}
+                                 className="flex min-w-0 flex-1 flex-col gap-1 text-left">
+                                 <div className="flex flex-wrap items-center gap-2">
+                                    <p className="font-medium text-white">{definition.name}</p>
+                                    <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200">
+                                       {definition.roleLabel}
+                                    </span>
+                                 </div>
+                                 <p className="text-sm text-slate-500">
+                                    {definition.unit} {definition.active ? "" : "| inactive"}
+                                 </p>
+                              </button>
+                              <div className="flex items-center gap-2">
+                                 <button
+                                    type="button"
+                                    onClick={() => editDefinition(definition)}
+                                    className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-slate-800">
+                                    Edit
+                                 </button>
+                                 <button
+                                    type="button"
+                                    onClick={() => deleteDefinition(definition)}
+                                    disabled={saving}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-3 py-2 text-xs font-medium text-red-200 transition hover:bg-red-500/10 disabled:opacity-60">
+                                    <PiTrashLight size={15} />
+                                    Delete
+                                 </button>
+                              </div>
                            </div>
-                           <p className="text-sm text-slate-500">
-                              {definition.unit} {definition.active ? "" : "| inactive"}
-                           </p>
-                        </button>
-                     ))}
-                  </div>
-               )}
-            </div>
+                        ))}
+                     </div>
+                  )}
+               </div>
+            )}
 
             <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
                <h2 className="text-lg font-semibold text-white">Targets</h2>
@@ -653,6 +741,16 @@ export default function KpiManager() {
                                  <p className="mt-1 text-2xl font-semibold text-white">
                                     {target.percentage}%
                                  </p>
+                                 {canManage && (
+                                    <button
+                                       type="button"
+                                       onClick={() => deleteTarget(target)}
+                                       disabled={saving}
+                                       className="mt-3 inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-3 py-2 text-xs font-medium text-red-200 transition hover:bg-red-500/10 disabled:opacity-60">
+                                       <PiTrashLight size={15} />
+                                       Delete
+                                    </button>
+                                 )}
                               </div>
                            </div>
                            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">

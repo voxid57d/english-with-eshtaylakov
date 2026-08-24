@@ -35,13 +35,13 @@ const FALLBACK_PERMISSIONS: Record<ErpStaffRole, ErpPermissions> = {
    },
    branch_manager: {
       overview: ["view"],
-      branches: ["view"],
-      staff: [],
+      branches: ["view", "manage"],
+      staff: ["view", "manage"],
       tasks: ["view", "manage"],
       kpi: ["view", "manage"],
       shifts: ["view", "manage"],
       metrics: ["view", "manage"],
-      settings: [],
+      settings: ["view", "manage"],
    },
    sales_manager: {
       overview: ["view"],
@@ -212,10 +212,10 @@ export async function requireErpStaff(req: Request) {
          throw new Error("Amir Temur access is disabled for this account.");
       }
 
-      if (configuredAdmin && existing.role !== "admin") {
+      if (configuredAdmin && existing.role !== "branch_manager") {
          const { data, error } = await supabaseAdmin
             .from("staff_profiles")
-            .update({ role: "admin" })
+            .update({ role: "branch_manager" })
             .eq("user_id", user.id)
             .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
             .single();
@@ -242,7 +242,7 @@ export async function requireErpStaff(req: Request) {
       .insert({
          user_id: user.id,
          full_name: getDisplayName(user),
-         role: "admin",
+         role: "branch_manager",
          primary_branch_id: null,
       })
       .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")

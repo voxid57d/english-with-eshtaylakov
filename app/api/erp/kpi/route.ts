@@ -14,7 +14,7 @@ import {
    type KpiTarget,
    type StaffProfile,
 } from "@/lib/erp";
-import { requireErpPermission } from "@/lib/erpAuth";
+import { canErp, requireErpPermission, type ErpStaffContext } from "@/lib/erpAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type KpiTargetRow = KpiTarget & {
@@ -46,11 +46,20 @@ function getStatus(percentage: number) {
    return "behind";
 }
 
+function getLatestProgressValue(progressEntries: KpiProgressEntry[]) {
+   const latestEntry = [...progressEntries].sort((left, right) => {
+      if (left.entry_date !== right.entry_date) {
+         return right.entry_date.localeCompare(left.entry_date);
+      }
+
+      return right.created_at.localeCompare(left.created_at);
+   })[0];
+
+   return Number(latestEntry?.value || 0);
+}
+
 function toTarget(row: KpiTargetRow, progressEntries: KpiProgressEntry[]) {
-   const progressValue = progressEntries.reduce(
-      (sum, entry) => sum + Number(entry.value || 0),
-      0,
-   );
+   const progressValue = getLatestProgressValue(progressEntries);
    const targetValue = Number(row.target_value || 0);
    const percentage =
       targetValue <= 0 ? 0 : Math.min(999, Math.round((progressValue / targetValue) * 100));
@@ -85,9 +94,66 @@ function parseNumber(value: unknown, label: string) {
    return numberValue;
 }
 
+async function assertStaffMatchesDefinitionRole(
+   definitionId: string,
+   staffUserId: string | null,
+) {
+   if (!staffUserId) return;
+
+   const [definitionResult, staffResult] = await Promise.all([
+      supabaseAdmin
+         .from("kpi_definitions")
+         .select("role")
+         .eq("id", definitionId)
+         .single(),
+      supabaseAdmin
+         .from("staff_profiles")
+         .select("role")
+         .eq("user_id", staffUserId)
+         .single(),
+   ]);
+
+   if (definitionResult.error || !definitionResult.data) {
+      throw new Error("Choose a valid KPI definition.");
+   }
+
+   if (staffResult.error || !staffResult.data) {
+      throw new Error("Choose a valid staff member.");
+   }
+
+   if (definitionResult.data.role !== staffResult.data.role) {
+      throw new Error(
+         `This KPI is for ${ERP_ROLE_LABELS[definitionResult.data.role as ErpStaffRole]} only.`,
+      );
+   }
+}
+
+async function assertCanSaveProgress(
+   targetId: string,
+   currentStaff: ErpStaffContext,
+   canManage: boolean,
+) {
+   if (canManage) return;
+
+   const { data, error } = await supabaseAdmin
+      .from("kpi_targets")
+      .select("staff_user_id")
+      .eq("id", targetId)
+      .single();
+
+   if (error || !data) {
+      throw new Error("Choose a valid KPI target.");
+   }
+
+   if (data.staff_user_id !== currentStaff.userId) {
+      throw new Error("Forbidden.");
+   }
+}
+
 export async function GET(req: Request) {
    try {
-      await requireErpPermission(req, "kpi", "view");
+      const { staff: currentStaff } = await requireErpPermission(req, "kpi", "view");
+      const canManage = await canErp(currentStaff.role, "kpi", "manage");
 
       const url = new URL(req.url);
       const fallbackPeriod = getMonthBounds();
@@ -98,32 +164,52 @@ export async function GET(req: Request) {
          throw new Error("Valid KPI period dates are required.");
       }
 
+      let definitionQuery = supabaseAdmin
+         .from("kpi_definitions")
+         .select("id, name, description, role, unit, active, created_at, updated_at")
+         .order("active", { ascending: false })
+         .order("role", { ascending: true })
+         .order("name", { ascending: true });
+
+      let targetQuery = supabaseAdmin
+         .from("kpi_targets")
+         .select(
+            "id, kpi_definition_id, staff_user_id, branch_id, period_start, period_end, target_value, created_by, created_at, updated_at, kpi_definitions(id, name, unit, role), staff_profiles(user_id, full_name, role), branches(id, name)",
+         )
+         .lte("period_start", periodEnd)
+         .gte("period_end", periodStart)
+         .order("period_start", { ascending: false });
+
+      let staffQuery = supabaseAdmin
+         .from("staff_profiles")
+         .select("user_id, full_name, role, primary_branch_id, telegram_username, phone, notes, active, created_at, updated_at")
+         .eq("active", true)
+         .order("full_name", { ascending: true });
+
+      let branchQuery = supabaseAdmin
+         .from("branches")
+         .select("id, name, address, phone, active, created_at, updated_at")
+         .eq("active", true)
+         .order("name", { ascending: true });
+
+      if (!canManage) {
+         definitionQuery = definitionQuery.eq("role", currentStaff.role);
+         targetQuery = targetQuery.eq("staff_user_id", currentStaff.userId);
+         staffQuery = staffQuery.eq("user_id", currentStaff.userId);
+
+         if (currentStaff.primaryBranchId) {
+            branchQuery = branchQuery.eq("id", currentStaff.primaryBranchId);
+         } else {
+            branchQuery = branchQuery.eq("id", "00000000-0000-0000-0000-000000000000");
+         }
+      }
+
       const [definitionResult, targetResult, staffResult, branchResult] =
          await Promise.all([
-            supabaseAdmin
-               .from("kpi_definitions")
-               .select("id, name, description, role, unit, active, created_at, updated_at")
-               .order("active", { ascending: false })
-               .order("role", { ascending: true })
-               .order("name", { ascending: true }),
-            supabaseAdmin
-               .from("kpi_targets")
-               .select(
-                  "id, kpi_definition_id, staff_user_id, branch_id, period_start, period_end, target_value, created_by, created_at, updated_at, kpi_definitions(id, name, unit, role), staff_profiles(user_id, full_name, role), branches(id, name)",
-               )
-               .lte("period_start", periodEnd)
-               .gte("period_end", periodStart)
-               .order("period_start", { ascending: false }),
-            supabaseAdmin
-               .from("staff_profiles")
-               .select("user_id, full_name, role, primary_branch_id, telegram_username, phone, notes, active, created_at, updated_at")
-               .eq("active", true)
-               .order("full_name", { ascending: true }),
-            supabaseAdmin
-               .from("branches")
-               .select("id, name, address, phone, active, created_at, updated_at")
-               .eq("active", true)
-               .order("name", { ascending: true }),
+            definitionQuery,
+            targetQuery,
+            staffQuery,
+            branchQuery,
          ]);
 
       if (
@@ -163,6 +249,7 @@ export async function GET(req: Request) {
       }
 
       return NextResponse.json({
+         canManage,
          period: { periodStart, periodEnd },
          definitions: ((definitionResult.data || []) as KpiDefinition[]).map(toDefinition),
          targets: targets.map((target) =>
@@ -193,11 +280,14 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
    try {
-      const { user } = await requireErpPermission(req, "kpi", "manage");
+      const { user, staff: currentStaff } = await requireErpPermission(req, "kpi", "view");
+      const canManage = await canErp(currentStaff.role, "kpi", "manage");
       const body = await req.json();
       const action = cleanString(body?.action);
 
       if (action === "definition") {
+         if (!canManage) throw new Error("Forbidden.");
+
          const name = cleanString(body?.name);
          const role = cleanString(body?.role);
 
@@ -229,6 +319,8 @@ export async function POST(req: Request) {
       }
 
       if (action === "target") {
+         if (!canManage) throw new Error("Forbidden.");
+
          const definitionId = cleanString(body?.definitionId);
          const ownerType = cleanString(body?.ownerType);
          const staffUserId = ownerType === "staff" ? nullableString(body?.staffUserId) : null;
@@ -241,6 +333,8 @@ export async function POST(req: Request) {
          if (!isDateString(periodStart) || !isDateString(periodEnd)) {
             throw new Error("Valid target period dates are required.");
          }
+
+         await assertStaffMatchesDefinitionRole(definitionId, staffUserId);
 
          const { data, error } = await supabaseAdmin
             .from("kpi_targets")
@@ -266,19 +360,45 @@ export async function POST(req: Request) {
       if (action === "progress") {
          const targetId = cleanString(body?.targetId);
          const entryDate = cleanString(body?.entryDate);
+         const value = parseNumber(body?.value, "Progress value");
+         const note = nullableString(body?.note);
 
          if (!targetId) throw new Error("Choose a KPI target.");
          if (!isDateString(entryDate)) throw new Error("Valid progress date is required.");
 
-         const { data, error } = await supabaseAdmin
+         await assertCanSaveProgress(targetId, currentStaff, canManage);
+
+         const { data: existingEntry, error: existingError } = await supabaseAdmin
             .from("kpi_progress_entries")
-            .insert({
+            .select("id, created_at")
+            .eq("kpi_target_id", targetId)
+            .eq("entry_date", entryDate)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+         if (existingError) {
+            throw new Error("Failed to load existing KPI progress.");
+         }
+
+         const progressQuery = existingEntry
+            ? supabaseAdmin
+                 .from("kpi_progress_entries")
+                 .update({
+                    value,
+                    note,
+                    created_by: user.id,
+                 })
+                 .eq("id", existingEntry.id)
+            : supabaseAdmin.from("kpi_progress_entries").insert({
                kpi_target_id: targetId,
                entry_date: entryDate,
-               value: parseNumber(body?.value, "Progress value"),
-               note: nullableString(body?.note),
+               value,
+               note,
                created_by: user.id,
-            })
+            });
+
+         const { data, error } = await progressQuery
             .select("id")
             .single();
 
@@ -333,5 +453,48 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ definition: toDefinition(data as KpiDefinition) });
    } catch (error) {
       return jsonError(error, "Failed to update KPI data.");
+   }
+}
+
+export async function DELETE(req: Request) {
+   try {
+      await requireErpPermission(req, "kpi", "manage");
+      const body = await req.json();
+      const action = cleanString(body?.action);
+      const id = cleanString(body?.id);
+
+      if (!id) {
+         throw new Error("KPI ID is required.");
+      }
+
+      if (action === "definition") {
+         const { error } = await supabaseAdmin
+            .from("kpi_definitions")
+            .delete()
+            .eq("id", id);
+
+         if (error) {
+            throw new Error("Failed to delete KPI definition.");
+         }
+
+         return NextResponse.json({ ok: true });
+      }
+
+      if (action === "target") {
+         const { error } = await supabaseAdmin
+            .from("kpi_targets")
+            .delete()
+            .eq("id", id);
+
+         if (error) {
+            throw new Error("Failed to delete KPI target.");
+         }
+
+         return NextResponse.json({ ok: true });
+      }
+
+      throw new Error("Choose a valid KPI delete action.");
+   } catch (error) {
+      return jsonError(error, "Failed to delete KPI data.");
    }
 }

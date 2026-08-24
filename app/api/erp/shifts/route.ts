@@ -4,6 +4,7 @@ import {
    erpJsonError,
    ERP_ROLE_LABELS,
    ERP_SHIFT_STATUS_LABELS,
+   ERP_SHIFT_WORKER_ROLES,
    getWeekBounds,
    isDateString,
    isErpShiftStatus,
@@ -12,7 +13,7 @@ import {
    type Shift,
    type StaffProfile,
 } from "@/lib/erp";
-import { requireErpPermission } from "@/lib/erpAuth";
+import { canErp, requireErpPermission } from "@/lib/erpAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type ShiftRow = Shift & {
@@ -29,6 +30,16 @@ function isTimeString(value: string) {
    return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
+function toNonNegativeInteger(value: unknown, fieldName: string) {
+   const numberValue = Number(value);
+
+   if (!Number.isInteger(numberValue) || numberValue < 0) {
+      throw new Error(`${fieldName} must be zero or higher.`);
+   }
+
+   return numberValue;
+}
+
 function toShift(row: ShiftRow) {
    return {
       id: row.id,
@@ -43,6 +54,7 @@ function toShift(row: ShiftRow) {
       shiftDate: row.shift_date,
       startsAt: row.starts_at.slice(0, 5),
       endsAt: row.ends_at.slice(0, 5),
+      breakMinutes: Number(row.break_minutes || 0),
       status: row.status,
       statusLabel: ERP_SHIFT_STATUS_LABELS[row.status],
       note: row.note,
@@ -58,6 +70,7 @@ function validateShiftBody(body: Record<string, unknown>) {
    const startsAt = cleanString(body?.startsAt);
    const endsAt = cleanString(body?.endsAt);
    const status = cleanString(body?.status) || "scheduled";
+   const breakMinutes = toNonNegativeInteger(body?.breakMinutes ?? 0, "Break minutes");
 
    if (!staffUserId) throw new Error("Choose a staff member.");
    if (!branchId) throw new Error("Choose a branch.");
@@ -73,14 +86,32 @@ function validateShiftBody(body: Record<string, unknown>) {
       shiftDate,
       startsAt,
       endsAt,
+      breakMinutes,
       status,
       note: nullableString(body?.note),
    };
 }
 
+async function assertShiftWorker(staffUserId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("staff_profiles")
+      .select("role")
+      .eq("user_id", staffUserId)
+      .single();
+
+   if (error || !data) {
+      throw new Error("Choose a valid staff member.");
+   }
+
+   if (!(ERP_SHIFT_WORKER_ROLES as readonly string[]).includes(data.role)) {
+      throw new Error("Branch managers do not use shifts.");
+   }
+}
+
 export async function GET(req: Request) {
    try {
-      await requireErpPermission(req, "shifts", "view");
+      const { staff: currentStaff } = await requireErpPermission(req, "shifts", "view");
+      const canManage = await canErp(currentStaff.role, "shifts", "manage");
 
       const url = new URL(req.url);
       const fallbackWeek = getWeekBounds();
@@ -95,7 +126,7 @@ export async function GET(req: Request) {
       let shiftQuery = supabaseAdmin
          .from("shifts")
          .select(
-            "id, staff_user_id, branch_id, shift_date, starts_at, ends_at, status, approved_by, note, created_at, updated_at, staff_profiles(user_id, full_name, role), branches(id, name)",
+            "id, staff_user_id, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, note, created_at, updated_at, staff_profiles(user_id, full_name, role), branches(id, name)",
          )
          .gte("shift_date", weekStart)
          .lte("shift_date", weekEnd)
@@ -106,13 +137,25 @@ export async function GET(req: Request) {
          shiftQuery = shiftQuery.eq("branch_id", branchId);
       }
 
+      if (!canManage) {
+         shiftQuery = shiftQuery.eq("staff_user_id", currentStaff.userId);
+      }
+
+      let staffQuery = supabaseAdmin
+         .from("staff_profiles")
+         .select("user_id, full_name, role, primary_branch_id, telegram_username, phone, notes, active, created_at, updated_at")
+         .eq("active", true)
+         .order("full_name", { ascending: true });
+
+      if (!canManage) {
+         staffQuery = staffQuery.eq("user_id", currentStaff.userId);
+      } else {
+         staffQuery = staffQuery.in("role", [...ERP_SHIFT_WORKER_ROLES]);
+      }
+
       const [shiftResult, staffResult, branchResult] = await Promise.all([
          shiftQuery,
-         supabaseAdmin
-            .from("staff_profiles")
-            .select("user_id, full_name, role, primary_branch_id, telegram_username, phone, notes, active, created_at, updated_at")
-            .eq("active", true)
-            .order("full_name", { ascending: true }),
+         staffQuery,
          supabaseAdmin
             .from("branches")
             .select("id, name, address, phone, active, created_at, updated_at")
@@ -126,7 +169,14 @@ export async function GET(req: Request) {
 
       return NextResponse.json({
          week: { weekStart, weekEnd },
-         shifts: ((shiftResult.data || []) as unknown as ShiftRow[]).map(toShift),
+         canManage,
+         shifts: ((shiftResult.data || []) as unknown as ShiftRow[])
+            .map(toShift)
+            .filter(
+               (shift) =>
+                  !!shift.staffRole &&
+                  (ERP_SHIFT_WORKER_ROLES as readonly string[]).includes(shift.staffRole),
+            ),
          staff: ((staffResult.data || []) as StaffProfile[]).map((member) => ({
             userId: member.user_id,
             fullName: member.full_name,
@@ -149,6 +199,7 @@ export async function POST(req: Request) {
       const { user } = await requireErpPermission(req, "shifts", "manage");
       const body = await req.json();
       const shift = validateShiftBody(body);
+      await assertShiftWorker(shift.staffUserId);
 
       const { data, error } = await supabaseAdmin
          .from("shifts")
@@ -158,12 +209,13 @@ export async function POST(req: Request) {
             shift_date: shift.shiftDate,
             starts_at: shift.startsAt,
             ends_at: shift.endsAt,
+            break_minutes: shift.breakMinutes,
             status: shift.status,
             approved_by: user.id,
             note: shift.note,
          })
          .select(
-            "id, staff_user_id, branch_id, shift_date, starts_at, ends_at, status, approved_by, note, created_at, updated_at, staff_profiles(user_id, full_name, role), branches(id, name)",
+            "id, staff_user_id, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, note, created_at, updated_at, staff_profiles(user_id, full_name, role), branches(id, name)",
          )
          .single();
 
@@ -186,6 +238,7 @@ export async function PATCH(req: Request) {
       if (!id) throw new Error("Shift ID is required.");
 
       const shift = validateShiftBody(body);
+      await assertShiftWorker(shift.staffUserId);
 
       const { data, error } = await supabaseAdmin
          .from("shifts")
@@ -195,13 +248,14 @@ export async function PATCH(req: Request) {
             shift_date: shift.shiftDate,
             starts_at: shift.startsAt,
             ends_at: shift.endsAt,
+            break_minutes: shift.breakMinutes,
             status: shift.status,
             approved_by: user.id,
             note: shift.note,
          })
          .eq("id", id)
          .select(
-            "id, staff_user_id, branch_id, shift_date, starts_at, ends_at, status, approved_by, note, created_at, updated_at, staff_profiles(user_id, full_name, role), branches(id, name)",
+            "id, staff_user_id, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, note, created_at, updated_at, staff_profiles(user_id, full_name, role), branches(id, name)",
          )
          .single();
 

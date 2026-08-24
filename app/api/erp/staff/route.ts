@@ -9,7 +9,7 @@ import {
    type Branch,
    type StaffProfile,
 } from "@/lib/erp";
-import { requireErpPermission } from "@/lib/erpAuth";
+import { canErp, requireErpPermission } from "@/lib/erpAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type StaffProfileWithBranch = StaffProfile & {
@@ -53,7 +53,8 @@ function getAuthDisplayName(user: {
 
 export async function GET(req: Request) {
    try {
-      await requireErpPermission(req, "staff", "view");
+      const { staff } = await requireErpPermission(req, "staff", "view");
+      const canManage = await canErp(staff.role, "staff", "manage");
 
       const [staffResult, branchResult, authResult] = await Promise.all([
          supabaseAdmin
@@ -68,7 +69,9 @@ export async function GET(req: Request) {
             .select("id, name, address, phone, active, created_at, updated_at")
             .eq("active", true)
             .order("name", { ascending: true }),
-         supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+         canManage
+            ? supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+            : Promise.resolve({ data: { users: [] }, error: null }),
       ]);
 
       if (staffResult.error || branchResult.error) {
@@ -96,6 +99,7 @@ export async function GET(req: Request) {
             name: branch.name,
          })),
          authUsers,
+         canManage,
       });
    } catch (error) {
       return jsonError(error, "Failed to load staff.");
