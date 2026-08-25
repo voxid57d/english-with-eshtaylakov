@@ -143,17 +143,6 @@ export default function DashboardLayout({
       setIsSidebarOpen(false);
    }, []);
 
-   if (isLoadingUser || !viewer) {
-      return (
-         <main className="min-h-screen bg-slate-950 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-4">
-               <BrandLogo className="animate-pulse" />
-               <div className="w-8 h-8 border-4 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
-            </div>
-         </main>
-      );
-   }
-
    if (pendingViewer) {
       return (
          <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
@@ -180,6 +169,17 @@ export default function DashboardLayout({
                   Log out
                </button>
             </section>
+         </main>
+      );
+   }
+
+   if (isLoadingUser || !viewer) {
+      return (
+         <main className="min-h-screen bg-slate-950 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4">
+               <BrandLogo className="animate-pulse" />
+               <div className="w-8 h-8 border-4 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
+            </div>
          </main>
       );
    }
