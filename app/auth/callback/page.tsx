@@ -5,6 +5,24 @@ import { useRouter } from "next/navigation";
 import BrandLogo from "@/components/BrandLogo";
 import { supabase } from "@/lib/supabaseClient";
 
+function getCallbackError(url: URL) {
+   const searchError =
+      url.searchParams.get("error_description") ||
+      url.searchParams.get("error") ||
+      url.searchParams.get("error_code");
+
+   if (searchError) {
+      return searchError;
+   }
+
+   const hashParams = new URLSearchParams(url.hash.replace(/^#/, ""));
+   return (
+      hashParams.get("error_description") ||
+      hashParams.get("error") ||
+      hashParams.get("error_code")
+   );
+}
+
 export default function AuthCallbackPage() {
    const router = useRouter();
    const [error, setError] = useState<string | null>(null);
@@ -15,6 +33,12 @@ export default function AuthCallbackPage() {
       async function finishSignIn() {
          try {
             const url = new URL(window.location.href);
+            const callbackError = getCallbackError(url);
+
+            if (callbackError) {
+               throw new Error(callbackError);
+            }
+
             const code = url.searchParams.get("code");
 
             if (code) {
@@ -42,7 +66,11 @@ export default function AuthCallbackPage() {
          } catch (callbackError) {
             console.error(callbackError);
             if (isActive) {
-               setError("Google sign-in could not be completed. Please try again.");
+               const message =
+                  callbackError instanceof Error
+                     ? callbackError.message
+                     : "Please try again.";
+               setError(`Google sign-in could not be completed. ${message}`);
             }
          }
       }
