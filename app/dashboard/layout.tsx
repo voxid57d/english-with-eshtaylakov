@@ -16,6 +16,11 @@ type DashboardViewer = {
    roleLabel: string | null;
 };
 
+type PendingViewer = {
+   user: User;
+   message: string;
+};
+
 const DashboardContent = memo(function DashboardContent({
    children,
 }: {
@@ -30,6 +35,7 @@ export default function DashboardLayout({
    children: React.ReactNode;
 }) {
    const [viewer, setViewer] = useState<DashboardViewer | null>(null);
+   const [pendingViewer, setPendingViewer] = useState<PendingViewer | null>(null);
    const [isLoadingUser, setIsLoadingUser] = useState(true);
    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
    const router = useRouter();
@@ -69,6 +75,7 @@ export default function DashboardLayout({
          const authUser = data.user;
          let fullName: string | null = null;
          let roleLabel: string | null = null;
+         let pendingMessage: string | null = null;
 
          try {
             const token = await getSupabaseAccessToken();
@@ -83,18 +90,36 @@ export default function DashboardLayout({
                roleLabel = payload.staff?.roleLabel ?? null;
             } else {
                console.error("Error loading staff profile:", payload.error);
+               pendingMessage =
+                  typeof payload.error === "string" &&
+                  payload.error.includes("staff access is not enabled")
+                     ? "If you are IELTS ZONE staff member, please wait for verification."
+                     : "Your staff profile is not ready yet. Please wait for verification.";
             }
          } catch (profileError) {
             console.error("Error loading staff profile:", profileError);
+            pendingMessage =
+               "Your staff profile is not ready yet. Please wait for verification.";
          }
 
          if (!isActive) return;
+
+         if (pendingMessage) {
+            setPendingViewer({
+               user: authUser,
+               message: pendingMessage,
+            });
+            setViewer(null);
+            setIsLoadingUser(false);
+            return;
+         }
 
          setViewer({
             user: authUser,
             fullName,
             roleLabel,
          });
+         setPendingViewer(null);
          setIsLoadingUser(false);
       }
 
@@ -125,6 +150,36 @@ export default function DashboardLayout({
                <BrandLogo className="animate-pulse" />
                <div className="w-8 h-8 border-4 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
             </div>
+         </main>
+      );
+   }
+
+   if (pendingViewer) {
+      return (
+         <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
+            <section className="w-full max-w-md rounded-lg border border-slate-800 bg-slate-900 p-8 text-center shadow-xl">
+               <BrandLogo className="justify-center" />
+               <div className="mt-8 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-5 py-6">
+                  <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-300">
+                     Verification
+                  </p>
+                  <h1 className="mt-3 text-2xl font-semibold text-white">
+                     Please wait
+                  </h1>
+                  <p className="mt-3 text-sm leading-6 text-slate-300">
+                     {pendingViewer.message}
+                  </p>
+                  <p className="mt-3 text-xs text-slate-500">
+                     Signed in as {pendingViewer.user.email}
+                  </p>
+               </div>
+               <button
+                  type="button"
+                  onClick={handleLogOut}
+                  className="mt-6 w-full rounded-lg border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-slate-800">
+                  Log out
+               </button>
+            </section>
          </main>
       );
    }
