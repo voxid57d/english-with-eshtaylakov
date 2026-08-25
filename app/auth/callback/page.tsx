@@ -39,25 +39,16 @@ export default function AuthCallbackPage() {
                throw new Error(callbackError);
             }
 
-            const code = url.searchParams.get("code");
+            await new Promise((resolve) => setTimeout(resolve, 300));
 
-            if (code) {
-               const { error: exchangeError } =
-                  await supabase.auth.exchangeCodeForSession(code);
+            const { data, error: sessionError } = await supabase.auth.getSession();
 
-               if (exchangeError) {
-                  throw exchangeError;
-               }
-            } else {
-               const { data, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError) {
+               throw sessionError;
+            }
 
-               if (sessionError) {
-                  throw sessionError;
-               }
-
-               if (!data.session) {
-                  throw new Error("No Google session was returned.");
-               }
+            if (!data.session) {
+               throw new Error("No Google session was returned.");
             }
 
             if (isActive) {

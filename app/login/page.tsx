@@ -15,6 +15,7 @@ export default function Login() {
       try {
          setError(null);
          setLoadingGoogle(true);
+         await supabase.auth.signOut();
 
          const { error: signInError } = await supabase.auth.signInWithOAuth({
             provider: "google",
