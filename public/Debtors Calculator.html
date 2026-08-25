@@ -1,0 +1,1782 @@
+<!doctype html>
+<html lang="uz" data-theme="dark">
+   <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>LC — Qarzdorlar Nazorati</title>
+      <link
+         href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap"
+         rel="stylesheet" />
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+      <style>
+         [data-theme="dark"] {
+            --bg: #1a0030;
+            --bg2: #230040;
+            --bg3: #2e0055;
+            --bg4: #3a006a;
+            --border: rgba(220, 160, 255, 0.12);
+            --border2: rgba(220, 160, 255, 0.24);
+            --text: #f0e6ff;
+            --muted: #a070c8;
+            --accent: #cc88ff;
+            --accent2: #9933dd;
+            --good: #22c88a;
+            --warn: #f5a623;
+            --bad: #ef4949;
+            --good-bg: rgba(34, 200, 138, 0.13);
+            --warn-bg: rgba(245, 166, 35, 0.13);
+            --bad-bg: rgba(239, 73, 73, 0.13);
+            --rise-bg: rgba(239, 73, 73, 0.1);
+            --fall-bg: rgba(34, 200, 138, 0.1);
+            --flat-bg: rgba(160, 112, 200, 0.1);
+            --tooltip-bg: #2e0055;
+            --tooltip-bd: rgba(220, 160, 255, 0.18);
+            --grid: rgba(220, 160, 255, 0.08);
+            --ax: rgba(220, 160, 255, 0.12);
+            --tick: #a070c8;
+         }
+         [data-theme="light"] {
+            --bg: #f5f3ff;
+            --bg2: #ffffff;
+            --bg3: #f0ebff;
+            --bg4: #e8e0ff;
+            --border: rgba(120, 80, 200, 0.12);
+            --border2: rgba(120, 80, 200, 0.22);
+            --text: #1e1340;
+            --muted: #7060a0;
+            --accent: #7c3aed;
+            --accent2: #5b21b6;
+            --good: #0e9e6a;
+            --warn: #c47d0a;
+            --bad: #d63030;
+            --good-bg: rgba(14, 158, 106, 0.1);
+            --warn-bg: rgba(196, 125, 10, 0.1);
+            --bad-bg: rgba(214, 48, 48, 0.1);
+            --rise-bg: rgba(214, 48, 48, 0.08);
+            --fall-bg: rgba(14, 158, 106, 0.08);
+            --flat-bg: rgba(112, 96, 160, 0.08);
+            --tooltip-bg: #ffffff;
+            --tooltip-bd: rgba(120, 80, 200, 0.15);
+            --grid: rgba(120, 80, 200, 0.08);
+            --ax: rgba(120, 80, 200, 0.12);
+            --tick: #7060a0;
+         }
+
+         *,
+         *::before,
+         *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+         }
+         body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: "DM Sans", sans-serif;
+            min-height: 100vh;
+            padding: 0 0 80px;
+            transition:
+               background 0.3s,
+               color 0.3s;
+         }
+
+         header {
+            background: var(--bg2);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+         }
+         header h1 {
+            font-family: "DM Serif Display", serif;
+            font-size: 20px;
+            font-weight: 400;
+            letter-spacing: -0.02em;
+         }
+         header h1 span {
+            color: var(--accent);
+         }
+         .hdr-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+         }
+         .hdr-date {
+            font-size: 12px;
+            color: var(--muted);
+         }
+         .theme-btn {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 99px;
+            padding: 5px 13px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--muted);
+            font-family: "DM Sans", sans-serif;
+            transition: all 0.2s;
+            user-select: none;
+         }
+         .theme-btn:hover {
+            border-color: var(--border2);
+            color: var(--text);
+         }
+
+         .tabs {
+            display: flex;
+            gap: 2px;
+            background: var(--bg2);
+            border-bottom: 1px solid var(--border);
+            padding: 0 40px;
+         }
+         .tab {
+            padding: 12px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            user-select: none;
+         }
+         .tab:hover {
+            color: var(--text);
+         }
+         .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+         }
+
+         .page {
+            display: none;
+            padding: 32px 40px;
+            max-width: 980px;
+            margin: 0 auto;
+         }
+         .page.active {
+            display: block;
+         }
+
+         .slabel {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 12px;
+         }
+
+         .card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 22px 24px;
+            margin-bottom: 16px;
+         }
+
+         .input-grid {
+            display: grid;
+            gap: 11px;
+            margin-bottom: 16px;
+         }
+         .input-grid.c4 {
+            grid-template-columns: repeat(4, 1fr);
+         }
+         .input-grid.c3 {
+            grid-template-columns: repeat(3, 1fr);
+         }
+         .field label {
+            display: block;
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 5px;
+            font-weight: 500;
+         }
+         .field input {
+            width: 100%;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 9px 12px;
+            font-size: 15px;
+            font-family: "DM Sans", sans-serif;
+            color: var(--text);
+            transition:
+               border-color 0.2s,
+               background 0.2s;
+            -moz-appearance: textfield;
+         }
+         .field input::-webkit-outer-spin-button,
+         .field input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+         }
+         .field input:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: var(--bg4);
+         }
+
+         .result-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1.5fr;
+            gap: 12px;
+            margin-bottom: 16px;
+         }
+         .stat-card {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 17px;
+         }
+         .stat-card .slabel {
+            margin-bottom: 6px;
+         }
+         .stat-card .num {
+            font-size: 28px;
+            font-weight: 600;
+            line-height: 1;
+         }
+         .stat-card .sub {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 4px;
+            line-height: 1.5;
+         }
+         .pct-card {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: center;
+         }
+         .pct-card .slabel {
+            margin-bottom: 4px;
+         }
+         .pct-big {
+            font-family: "DM Serif Display", serif;
+            font-size: 48px;
+            line-height: 1;
+            transition: color 0.4s;
+         }
+         .pct-big.good {
+            color: var(--good);
+         }
+         .pct-big.warn {
+            color: var(--warn);
+         }
+         .pct-big.bad {
+            color: var(--bad);
+         }
+         .pct-formula {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 6px;
+         }
+
+         .bar-wrap {
+            margin-bottom: 16px;
+         }
+         .bar-bg {
+            height: 10px;
+            background: var(--bg3);
+            border-radius: 99px;
+            overflow: hidden;
+            margin-top: 9px;
+            border: 1px solid var(--border);
+            position: relative;
+         }
+         .bar-bg::before,
+         .bar-bg::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: rgba(255, 255, 255, 0.16);
+            z-index: 1;
+         }
+         .bar-bg::before {
+            left: 10%;
+         }
+         .bar-bg::after {
+            left: 20%;
+         }
+         .bar-fill {
+            height: 100%;
+            border-radius: 99px;
+            transition:
+               width 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+               background 0.4s;
+         }
+         .bar-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 11px;
+            color: var(--muted);
+         }
+
+         .save-btn {
+            width: 100%;
+            padding: 13px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-family: "DM Sans", sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition:
+               background 0.2s,
+               transform 0.1s;
+         }
+         .save-btn:hover {
+            background: var(--accent2);
+         }
+         .save-btn:active {
+            transform: scale(0.99);
+         }
+
+         /* ── SUMMARY ROW ── */
+         .sum-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 11px;
+            margin-bottom: 18px;
+         }
+         .sum-card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+         }
+         .sum-card .slabel {
+            margin-bottom: 4px;
+         }
+         .sum-card .num {
+            font-size: 21px;
+            font-weight: 600;
+         }
+         .num.good {
+            color: var(--good);
+         }
+         .num.warn {
+            color: var(--warn);
+         }
+         .num.bad {
+            color: var(--bad);
+         }
+         .num.neu {
+            color: var(--text);
+         }
+
+         /* ── CHART ── */
+         .chart-wrap {
+            position: relative;
+            width: 100%;
+            height: 320px;
+         }
+         .legend-row {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+         }
+         .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--muted);
+         }
+         .legend-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+         }
+
+         /* ── HISTORY TABLE ── */
+         .htable {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+         }
+         .htable th {
+            text-align: left;
+            padding: 9px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: var(--muted);
+            border-bottom: 1px solid var(--border);
+         }
+         .htable td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+         }
+         .htable tr:last-child td {
+            border-bottom: none;
+         }
+         .htable tbody tr:hover td {
+            background: var(--bg3);
+         }
+         .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 99px;
+            font-size: 12px;
+            font-weight: 600;
+         }
+         .badge.good {
+            background: var(--good-bg);
+            color: var(--good);
+         }
+         .badge.warn {
+            background: var(--warn-bg);
+            color: var(--warn);
+         }
+         .badge.bad {
+            background: var(--bad-bg);
+            color: var(--bad);
+         }
+         .del-btn {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            color: var(--muted);
+            font-size: 12px;
+            padding: 3px 10px;
+            cursor: pointer;
+            font-family: "DM Sans", sans-serif;
+            transition: all 0.2s;
+         }
+         .del-btn:hover {
+            border-color: var(--bad);
+            color: var(--bad);
+            background: var(--bad-bg);
+         }
+
+         /* ── KUN TAHLILI PAGE ── */
+         .session-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 14px;
+            margin-bottom: 18px;
+         }
+         .session-block {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px 22px;
+         }
+         .session-block .session-title {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            margin-bottom: 16px;
+         }
+         .session-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+         }
+         .s-morning .session-icon {
+            background: rgba(245, 166, 35, 0.15);
+         }
+         .s-afternoon .session-icon {
+            background: rgba(204, 136, 255, 0.12);
+         }
+         .s-evening .session-icon {
+            background: rgba(34, 200, 138, 0.12);
+         }
+         .session-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+         }
+         .session-time {
+            font-size: 11px;
+            color: var(--muted);
+         }
+
+         .session-result {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+         }
+         .sess-pct {
+            font-family: "DM Serif Display", serif;
+            font-size: 36px;
+            line-height: 1;
+         }
+         .sess-pct.good {
+            color: var(--good);
+         }
+         .sess-pct.warn {
+            color: var(--warn);
+         }
+         .sess-pct.bad {
+            color: var(--bad);
+         }
+         .sess-pct.neu {
+            color: var(--muted);
+         }
+
+         /* DELTA BADGE */
+         .delta {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 99px;
+            font-size: 13px;
+            font-weight: 600;
+         }
+         .delta.rise {
+            background: var(--rise-bg);
+            color: var(--bad);
+         }
+         .delta.fall {
+            background: var(--fall-bg);
+            color: var(--good);
+         }
+         .delta.flat {
+            background: var(--flat-bg);
+            color: var(--muted);
+         }
+
+         /* DAILY CHANGE SUMMARY */
+         .day-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 18px;
+         }
+         .ds-card {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 18px;
+            text-align: center;
+         }
+         .ds-card .slabel {
+            margin-bottom: 6px;
+            text-align: center;
+         }
+         .ds-big {
+            font-family: "DM Serif Display", serif;
+            font-size: 34px;
+            line-height: 1;
+         }
+
+         /* SESSION SAVE BTN */
+         .sess-save-btn {
+            width: 100%;
+            padding: 11px;
+            background: var(--bg4);
+            color: var(--accent);
+            border: 1px solid var(--border2);
+            border-radius: 8px;
+            font-family: "DM Sans", sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 12px;
+         }
+         .sess-save-btn:hover {
+            background: var(--accent);
+            color: #fff;
+         }
+
+         /* SESSION CHART */
+         .sess-chart-wrap {
+            position: relative;
+            width: 100%;
+            height: 260px;
+         }
+
+         /* EMPTY */
+         .empty {
+            text-align: center;
+            padding: 50px 20px;
+            color: var(--muted);
+            font-size: 14px;
+         }
+         .empty svg {
+            margin-bottom: 12px;
+            opacity: 0.3;
+         }
+
+         @media (max-width: 720px) {
+            header,
+            .tabs,
+            .page {
+               padding-left: 16px;
+               padding-right: 16px;
+            }
+            .input-grid.c4 {
+               grid-template-columns: repeat(2, 1fr);
+            }
+            .input-grid.c3 {
+               grid-template-columns: repeat(2, 1fr);
+            }
+            .result-row {
+               grid-template-columns: 1fr 1fr;
+            }
+            .pct-card {
+               grid-column: span 2;
+            }
+            .sum-row {
+               grid-template-columns: repeat(2, 1fr);
+            }
+            .session-grid {
+               grid-template-columns: 1fr;
+            }
+            .day-summary {
+               grid-template-columns: 1fr;
+            }
+         }
+      </style>
+   </head>
+   <body>
+      <header>
+         <h1>LC <span>·</span> Qarzdorlar Nazorati</h1>
+         <div class="hdr-right">
+            <span class="hdr-date" id="hdr-date"></span>
+            <button class="theme-btn" onclick="toggleTheme()">
+               <span id="theme-icon">☀️</span
+               ><span id="theme-label">Light</span>
+            </button>
+         </div>
+      </header>
+
+      <nav class="tabs">
+         <div class="tab active" onclick="switchTab('input')">
+            Kunlik Kiritish
+         </div>
+         <div class="tab" onclick="switchTab('graph')">Grafik &amp; Tarix</div>
+         <div class="tab" onclick="switchTab('session')">Kun Tahlili</div>
+      </nav>
+
+      <!-- ══════════════════════════════════════════════
+     PAGE 1 — KUNLIK KIRITISH
+══════════════════════════════════════════════ -->
+      <div class="page active" id="page-input">
+         <div class="card">
+            <div class="slabel">Qarzdorlar</div>
+            <div class="input-grid c4">
+               <div class="field">
+                  <label>Debtors</label
+                  ><input
+                     type="number"
+                     id="d1"
+                     min="0"
+                     value="0"
+                     oninput="calc()" />
+               </div>
+               <div class="field">
+                  <label>Debtors &gt;1 month</label
+                  ><input
+                     type="number"
+                     id="d2"
+                     min="0"
+                     value="0"
+                     oninput="calc()" />
+               </div>
+               <div class="field">
+                  <label>Archive debtors</label
+                  ><input
+                     type="number"
+                     id="d3"
+                     min="0"
+                     value="0"
+                     oninput="calc()" />
+               </div>
+               <div class="field">
+                  <label>Finished debtors</label
+                  ><input
+                     type="number"
+                     id="d4"
+                     min="0"
+                     value="0"
+                     oninput="calc()" />
+               </div>
+            </div>
+            <div class="slabel">O'quvchilar</div>
+            <div class="input-grid c3">
+               <div class="field">
+                  <label>Students</label
+                  ><input
+                     type="number"
+                     id="s1"
+                     min="0"
+                     value="0"
+                     oninput="calc()" />
+               </div>
+               <div class="field">
+                  <label>Archive students</label
+                  ><input
+                     type="number"
+                     id="s2"
+                     min="0"
+                     value="0"
+                     oninput="calc()" />
+               </div>
+               <div class="field">
+                  <label>Finished students</label
+                  ><input
+                     type="number"
+                     id="s3"
+                     min="0"
+                     value="0"
+                     oninput="calc()" />
+               </div>
+            </div>
+         </div>
+
+         <div class="result-row">
+            <div class="stat-card">
+               <div class="slabel">Jami Qarzdorlar</div>
+               <div class="num" id="total-d">0</div>
+               <div class="sub" id="sub-d">0 + 0 + 0 + 0</div>
+            </div>
+            <div class="stat-card">
+               <div class="slabel">Jami O'quvchilar</div>
+               <div class="num" id="total-s">0</div>
+               <div class="sub" id="sub-s">0 + 0 + 0</div>
+            </div>
+            <div class="pct-card">
+               <div class="slabel">Qarzdorlar Ulushi</div>
+               <div class="pct-big good" id="pct-big">—</div>
+               <div class="pct-formula" id="pct-formula">
+                  O'quvchilar sonini kiriting
+               </div>
+            </div>
+         </div>
+
+         <div class="card bar-wrap">
+            <div
+               style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 4px;
+               ">
+               <div class="slabel" style="margin: 0">Ulush ko'rsatkichi</div>
+               <span style="font-size: 12px; color: var(--muted)" id="bar-label"
+                  >0%</span
+               >
+            </div>
+            <div class="bar-bg">
+               <div class="bar-fill" id="status-bar" style="width: 0%"></div>
+            </div>
+            <div class="bar-labels">
+               <span>Yaxshi (&lt;10%)</span><span>O'rta (10–20%)</span
+               ><span>Yuqori (&gt;20%)</span>
+            </div>
+         </div>
+
+         <button class="save-btn" id="save-btn" onclick="saveDay()">
+            ＋ Bugungi ma'lumotni saqlash
+         </button>
+      </div>
+
+      <!-- ══════════════════════════════════════════════
+     PAGE 2 — GRAFIK & TARIX
+══════════════════════════════════════════════ -->
+      <div class="page" id="page-graph">
+         <div class="sum-row">
+            <div class="sum-card">
+               <div class="slabel">Jami kunlar</div>
+               <div class="num neu" id="sum-days">0</div>
+            </div>
+            <div class="sum-card">
+               <div class="slabel">O'rtacha</div>
+               <div class="num warn" id="sum-avg">—</div>
+            </div>
+            <div class="sum-card">
+               <div class="slabel">Eng past</div>
+               <div class="num good" id="sum-min">—</div>
+            </div>
+            <div class="sum-card">
+               <div class="slabel">Eng yuqori</div>
+               <div class="num bad" id="sum-max">—</div>
+            </div>
+         </div>
+
+         <div class="card">
+            <div
+               style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 18px;
+                  flex-wrap: wrap;
+                  gap: 8px;
+               ">
+               <div class="slabel" style="margin: 0">
+                  Kunlik o'zgarish grafigi
+               </div>
+               <div class="legend-row">
+                  <div class="legend-item">
+                     <div
+                        class="legend-dot"
+                        style="background: var(--good)"></div>
+                     Yaxshi (&lt;10%)
+                  </div>
+                  <div class="legend-item">
+                     <div
+                        class="legend-dot"
+                        style="background: var(--warn)"></div>
+                     O'rta (10–20%)
+                  </div>
+                  <div class="legend-item">
+                     <div
+                        class="legend-dot"
+                        style="background: var(--bad)"></div>
+                     Yuqori (&gt;20%)
+                  </div>
+               </div>
+            </div>
+            <div class="chart-wrap">
+               <canvas
+                  id="lineChart"
+                  role="img"
+                  aria-label="Kunlik qarzdorlar foizi grafigi"></canvas>
+            </div>
+         </div>
+
+         <div class="card">
+            <div class="slabel">Tarix</div>
+            <div id="history-area">
+               <div class="empty">
+                  <svg
+                     width="38"
+                     height="38"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="1.5">
+                     <rect x="3" y="4" width="18" height="18" rx="2" />
+                     <line x1="16" y1="2" x2="16" y2="6" />
+                     <line x1="8" y1="2" x2="8" y2="6" />
+                     <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                  <p>Hali saqlangan ma'lumot yo'q.</p>
+               </div>
+            </div>
+         </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════
+     PAGE 3 — KUN TAHLILI (Morning/Afternoon/Evening)
+══════════════════════════════════════════════ -->
+      <div class="page" id="page-session">
+         <div class="session-grid">
+            <!-- MORNING -->
+            <div class="session-block s-morning">
+               <div class="session-title">
+                  <div class="session-icon">🌅</div>
+                  <div>
+                     <div class="session-name">Morning</div>
+                     <div class="session-time">08:00 – 12:00</div>
+                  </div>
+               </div>
+               <div class="slabel">Qarzdorlar</div>
+               <div
+                  class="input-grid c4"
+                  style="grid-template-columns: repeat(2, 1fr)">
+                  <div class="field">
+                     <label>Debtors</label
+                     ><input
+                        type="number"
+                        id="md1"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>&gt;1 month</label
+                     ><input
+                        type="number"
+                        id="md2"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>Archive</label
+                     ><input
+                        type="number"
+                        id="md3"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>Finished</label
+                     ><input
+                        type="number"
+                        id="md4"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+               </div>
+               <div class="slabel">O'quvchilar</div>
+               <div
+                  class="input-grid c4"
+                  style="grid-template-columns: repeat(3, 1fr)">
+                  <div class="field">
+                     <label>Students</label
+                     ><input
+                        type="number"
+                        id="ms1"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>Archive</label
+                     ><input
+                        type="number"
+                        id="ms2"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>Finished</label
+                     ><input
+                        type="number"
+                        id="ms3"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+               </div>
+               <div class="session-result">
+                  <div>
+                     <div class="slabel" style="margin-bottom: 3px">Ulush</div>
+                     <div class="sess-pct neu" id="m-pct">—</div>
+                  </div>
+                  <div id="m-delta"></div>
+               </div>
+               <button class="sess-save-btn" onclick="saveSession('morning')">
+                  Saqlash
+               </button>
+            </div>
+
+            <!-- EVENING -->
+            <div class="session-block s-evening">
+               <div class="session-title">
+                  <div class="session-icon">🌙</div>
+                  <div>
+                     <div class="session-name">Evening</div>
+                     <div class="session-time">17:00 – 21:00</div>
+                  </div>
+               </div>
+               <div class="slabel">Qarzdorlar</div>
+               <div
+                  class="input-grid c4"
+                  style="grid-template-columns: repeat(2, 1fr)">
+                  <div class="field">
+                     <label>Debtors</label
+                     ><input
+                        type="number"
+                        id="ed1"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>&gt;1 month</label
+                     ><input
+                        type="number"
+                        id="ed2"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>Archive</label
+                     ><input
+                        type="number"
+                        id="ed3"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>Finished</label
+                     ><input
+                        type="number"
+                        id="ed4"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+               </div>
+               <div class="slabel">O'quvchilar</div>
+               <div
+                  class="input-grid c4"
+                  style="grid-template-columns: repeat(3, 1fr)">
+                  <div class="field">
+                     <label>Students</label
+                     ><input
+                        type="number"
+                        id="es1"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>Archive</label
+                     ><input
+                        type="number"
+                        id="es2"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+                  <div class="field">
+                     <label>Finished</label
+                     ><input
+                        type="number"
+                        id="es3"
+                        min="0"
+                        value="0"
+                        oninput="calcSession()" />
+                  </div>
+               </div>
+               <div class="session-result">
+                  <div>
+                     <div class="slabel" style="margin-bottom: 3px">Ulush</div>
+                     <div class="sess-pct neu" id="e-pct">—</div>
+                  </div>
+                  <div id="e-delta"></div>
+               </div>
+               <button class="sess-save-btn" onclick="saveSession('evening')">
+                  Saqlash
+               </button>
+            </div>
+         </div>
+
+         <!-- KUN ICHIDAGI O'ZGARISH XULOSASI -->
+         <div class="card">
+            <div
+               style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  margin-bottom: 16px;
+                  flex-wrap: wrap;
+                  gap: 8px;
+               ">
+               <div class="slabel" style="margin: 0">Bugungi o'zgarish</div>
+               <div class="legend-row">
+                  <div class="legend-item">
+                     <div
+                        class="legend-dot"
+                        style="background: var(--bad)"></div>
+                     O'sish (yomon)
+                  </div>
+                  <div class="legend-item">
+                     <div
+                        class="legend-dot"
+                        style="background: var(--good)"></div>
+                     Tushish (yaxshi)
+                  </div>
+               </div>
+            </div>
+            <div class="day-summary" style="grid-template-columns: 1fr">
+               <div class="ds-card">
+                  <div class="slabel">🌅→🌙 Umumiy o'zgarish</div>
+                  <div class="ds-big neu" id="delta-me">—</div>
+                  <div
+                     style="
+                        font-size: 11px;
+                        color: var(--muted);
+                        margin-top: 4px;
+                     ">
+                     Morning → Evening
+                  </div>
+               </div>
+            </div>
+            <div class="sess-chart-wrap">
+               <canvas
+                  id="sessChart"
+                  role="img"
+                  aria-label="Kun ichidagi foiz o'zgarishi grafigi"></canvas>
+            </div>
+         </div>
+
+         <!-- SESSION HISTORY -->
+         <div class="card">
+            <div class="slabel">Sessiya tarixi</div>
+            <div id="sess-history-area">
+               <div class="empty">
+                  <svg
+                     width="38"
+                     height="38"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="1.5">
+                     <circle cx="12" cy="12" r="10" />
+                     <line x1="12" y1="8" x2="12" y2="12" />
+                     <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <p>Hali sessiya ma'lumoti yo'q.</p>
+               </div>
+            </div>
+         </div>
+      </div>
+
+      <script>
+         // ─── STATE ───────────────────────────────────────────
+         let history = JSON.parse(localStorage.getItem("lc_history") || "[]");
+         let sessHistory = JSON.parse(
+            localStorage.getItem("lc_sessions") || "[]",
+         );
+         let chart = null;
+         let sessChart = null;
+         let currentTheme = localStorage.getItem("lc_theme") || "dark";
+
+         // Session working state (today's computed values, not saved yet)
+         let sessVals = { morning: null, evening: null };
+
+         // ─── THEME ───────────────────────────────────────────
+         function applyTheme(t) {
+            document.documentElement.setAttribute("data-theme", t);
+            document.getElementById("theme-icon").textContent =
+               t === "dark" ? "☀️" : "🌙";
+            document.getElementById("theme-label").textContent =
+               t === "dark" ? "Light" : "Dark";
+            localStorage.setItem("lc_theme", t);
+            currentTheme = t;
+            if (chart) renderGraph();
+            if (sessChart) renderSessChart();
+         }
+         function toggleTheme() {
+            applyTheme(currentTheme === "dark" ? "light" : "dark");
+         }
+         applyTheme(currentTheme);
+
+         // ─── HELPERS ─────────────────────────────────────────
+         function today() {
+            const d = new Date();
+            return (
+               d.getDate().toString().padStart(2, "0") +
+               "." +
+               (d.getMonth() + 1).toString().padStart(2, "0") +
+               "." +
+               d.getFullYear()
+            );
+         }
+         function vv(id) {
+            const el = document.getElementById(id);
+            if (/^0+\d/.test(el.value))
+               el.value = el.value.replace(/^0+(?=\d)/, "");
+            return parseInt(el.value) || 0;
+         }
+         function pctClass(p) {
+            return p < 10 ? "good" : p < 20 ? "warn" : "bad";
+         }
+         function barColor(p) {
+            return p < 10
+               ? "var(--good)"
+               : p < 20
+                 ? "var(--warn)"
+                 : "var(--bad)";
+         }
+         function ptHex(p) {
+            return currentTheme === "dark"
+               ? p < 10
+                  ? "#22c88a"
+                  : p < 20
+                    ? "#f5a623"
+                    : "#ef4949"
+               : p < 10
+                 ? "#0e9e6a"
+                 : p < 20
+                   ? "#c47d0a"
+                   : "#d63030";
+         }
+         function deltaHtml(diff) {
+            if (diff === null) return "";
+            const abs = Math.abs(diff).toFixed(2);
+            if (diff > 0.05)
+               return `<span class="delta rise">▲ +${abs}%</span>`;
+            if (diff < -0.05)
+               return `<span class="delta fall">▼ ${diff.toFixed(2)}%</span>`;
+            return `<span class="delta flat">— 0%</span>`;
+         }
+         function deltaClass(diff) {
+            if (diff === null) return "neu";
+            if (diff > 0.05) return "bad";
+            if (diff < -0.05) return "good";
+            return "neu";
+         }
+
+         // ─── PAGE 1: CALC ────────────────────────────────────
+         function calc() {
+            const td = vv("d1") + vv("d2") + vv("d3") + vv("d4");
+            const ts = vv("s1") + vv("s2") + vv("s3");
+            const pct = ts > 0 ? (td / ts) * 100 : null;
+            document.getElementById("total-d").textContent = td;
+            document.getElementById("total-s").textContent = ts;
+            document.getElementById("sub-d").textContent =
+               vv("d1") +
+               " + " +
+               vv("d2") +
+               " + " +
+               vv("d3") +
+               " + " +
+               vv("d4");
+            document.getElementById("sub-s").textContent =
+               vv("s1") + " + " + vv("s2") + " + " + vv("s3");
+            const pEl = document.getElementById("pct-big");
+            const bEl = document.getElementById("status-bar");
+            if (pct !== null) {
+               pEl.textContent = pct.toFixed(1) + "%";
+               pEl.className = "pct-big " + pctClass(pct);
+               document.getElementById("pct-formula").textContent =
+                  td + " ÷ " + ts + " = " + pct.toFixed(1) + "%";
+               bEl.style.width = Math.min(pct, 100).toFixed(1) + "%";
+               bEl.style.background = barColor(pct);
+               document.getElementById("bar-label").textContent =
+                  pct.toFixed(1) + "%";
+            } else {
+               pEl.textContent = "—";
+               pEl.className = "pct-big good";
+               document.getElementById("pct-formula").textContent =
+                  "O'quvchilar sonini kiriting";
+               bEl.style.width = "0%";
+               document.getElementById("bar-label").textContent = "0%";
+            }
+         }
+
+         function saveDay() {
+            const td = vv("d1") + vv("d2") + vv("d3") + vv("d4");
+            const ts = vv("s1") + vv("s2") + vv("s3");
+            if (!ts) {
+               alert("O'quvchilar sonini kiriting!");
+               return;
+            }
+            const pct = (td / ts) * 100;
+            history.push({
+               date: today(),
+               td,
+               ts,
+               pct,
+               d1: vv("d1"),
+               d2: vv("d2"),
+               d3: vv("d3"),
+               d4: vv("d4"),
+               s1: vv("s1"),
+               s2: vv("s2"),
+               s3: vv("s3"),
+            });
+            localStorage.setItem("lc_history", JSON.stringify(history));
+            renderHistory();
+            renderSummary();
+            if (
+               document
+                  .getElementById("page-graph")
+                  .classList.contains("active")
+            )
+               renderGraph();
+            const btn = document.getElementById("save-btn");
+            btn.textContent = "✓ Saqlandi!";
+            btn.style.background = "var(--good)";
+            setTimeout(() => {
+               btn.textContent = "＋ Bugungi ma'lumotni saqlash";
+               btn.style.background = "";
+            }, 1500);
+         }
+
+         // ─── PAGE 2: GRAPH & HISTORY ─────────────────────────
+         function renderSummary() {
+            const n = history.length;
+            document.getElementById("sum-days").textContent = n;
+            if (!n) {
+               ["sum-avg", "sum-min", "sum-max"].forEach(
+                  (id) => (document.getElementById(id).textContent = "—"),
+               );
+               return;
+            }
+            const vals = history.map((r) => r.pct);
+            const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+            document.getElementById("sum-avg").textContent =
+               avg.toFixed(1) + "%";
+            document.getElementById("sum-min").textContent =
+               Math.min(...vals).toFixed(1) + "%";
+            document.getElementById("sum-max").textContent =
+               Math.max(...vals).toFixed(1) + "%";
+         }
+
+         function renderGraph() {
+            if (chart) {
+               chart.destroy();
+               chart = null;
+            }
+            if (!history.length) return;
+            const isDark = currentTheme === "dark";
+            const labels = history.map((r) => r.date);
+            const data = history.map((r) => +r.pct.toFixed(2));
+            const ptColors = data.map((p) => ptHex(p));
+            const lineCol = isDark ? "#cc88ff" : "#7c3aed";
+            const lineAlpha = isDark
+               ? "rgba(200,120,255,0.09)"
+               : "rgba(124,58,237,0.07)";
+            const tickCol = isDark ? "#a070c8" : "#7060a0";
+            const gridCol = isDark
+               ? "rgba(220,160,255,0.08)"
+               : "rgba(120,80,200,0.08)";
+            const axCol = isDark
+               ? "rgba(220,160,255,0.12)"
+               : "rgba(120,80,200,0.12)";
+            const ttBg = isDark ? "#2e0055" : "#ffffff";
+            const ttBd = isDark
+               ? "rgba(220,160,255,0.18)"
+               : "rgba(120,80,200,0.15)";
+            chart = new Chart(document.getElementById("lineChart"), {
+               type: "line",
+               data: {
+                  labels,
+                  datasets: [
+                     {
+                        label: "%",
+                        data,
+                        borderColor: lineCol,
+                        backgroundColor: lineAlpha,
+                        pointBackgroundColor: ptColors,
+                        pointBorderColor: ptColors,
+                        pointBorderWidth: 2,
+                        pointRadius: 7,
+                        pointHoverRadius: 10,
+                        borderWidth: 2.5,
+                        tension: 0.4,
+                        fill: true,
+                     },
+                     {
+                        data: labels.map(() => 10),
+                        borderColor: isDark
+                           ? "rgba(34,200,138,0.4)"
+                           : "rgba(14,158,106,0.4)",
+                        borderWidth: 1.5,
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        fill: false,
+                     },
+                     {
+                        data: labels.map(() => 20),
+                        borderColor: isDark
+                           ? "rgba(239,73,73,0.4)"
+                           : "rgba(214,48,48,0.4)",
+                        borderWidth: 1.5,
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        fill: false,
+                     },
+                  ],
+               },
+               options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                     legend: { display: false },
+                     tooltip: {
+                        backgroundColor: ttBg,
+                        borderColor: ttBd,
+                        borderWidth: 1,
+                        titleColor: tickCol,
+                        bodyColor: isDark ? "#f0e6ff" : "#1e1340",
+                        padding: 11,
+                        callbacks: {
+                           label: (ctx) => {
+                              if (ctx.datasetIndex === 0) {
+                                 const r = history[ctx.dataIndex];
+                                 return [
+                                    " Ulush: " + ctx.parsed.y.toFixed(1) + "%",
+                                    " Qarzdor: " + r.td + ", O'quvchi: " + r.ts,
+                                 ];
+                              }
+                              return [];
+                           },
+                        },
+                     },
+                  },
+                  scales: {
+                     y: {
+                        beginAtZero: true,
+                        max: Math.max(30, Math.max(...data) + 5),
+                        grid: { color: gridCol },
+                        border: { color: axCol },
+                        ticks: {
+                           callback: (v) => v + "%",
+                           color: tickCol,
+                           font: { size: 11, family: "'DM Sans',sans-serif" },
+                        },
+                     },
+                     x: {
+                        grid: { display: false },
+                        border: { color: axCol },
+                        ticks: {
+                           color: tickCol,
+                           font: { size: 11, family: "'DM Sans',sans-serif" },
+                           maxRotation: 45,
+                           autoSkip: history.length > 14,
+                        },
+                     },
+                  },
+               },
+            });
+         }
+
+         function renderHistory() {
+            const area = document.getElementById("history-area");
+            if (!history.length) {
+               area.innerHTML =
+                  '<div class="empty"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><p>Hali saqlangan ma\'lumot yo\'q.</p></div>';
+               return;
+            }
+            const rows = history
+               .slice()
+               .reverse()
+               .map((r, ri) => {
+                  const idx = history.length - 1 - ri;
+                  const cl = pctClass(r.pct);
+                  return `<tr>
+      <td style="color:var(--muted);font-size:12px;">${r.date}</td>
+      <td>${r.td}</td><td>${r.ts}</td>
+      <td><span class="badge ${cl}">${r.pct.toFixed(1)}%</span></td>
+      <td style="color:var(--muted);font-size:11px;">${r.d1}+${r.d2}+${r.d3}+${r.d4}</td>
+      <td><button class="del-btn" data-idx="${idx}">O'chirish</button></td>
+    </tr>`;
+               })
+               .join("");
+            area.innerHTML = `<table class="htable"><thead><tr>
+    <th>Sana</th><th>Qarzdor</th><th>O'quvchi</th><th>Foiz</th><th>Tafsilot</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+            area.querySelectorAll(".del-btn").forEach((btn) => {
+               btn.addEventListener("click", () =>
+                  deleteDay(parseInt(btn.dataset.idx)),
+               );
+            });
+         }
+
+         function deleteDay(idx) {
+            if (!confirm("Bu yozuvni o'chirishni tasdiqlaysizmi?")) return;
+            history.splice(idx, 1);
+            localStorage.setItem("lc_history", JSON.stringify(history));
+            renderHistory();
+            renderSummary();
+            renderGraph();
+         }
+
+         // ─── PAGE 3: SESSION ─────────────────────────────────
+         function sessPct(prefix) {
+            const td =
+               vv(prefix + "d1") +
+               vv(prefix + "d2") +
+               vv(prefix + "d3") +
+               vv(prefix + "d4");
+            const ts =
+               vv(prefix + "s1") + vv(prefix + "s2") + vv(prefix + "s3");
+            return ts > 0 ? (td / ts) * 100 : null;
+         }
+
+         function calcSession() {
+            const m = sessPct("m");
+            const e = sessPct("e");
+
+            function updSess(pct, pctId, deltaId, prev) {
+               const pEl = document.getElementById(pctId);
+               if (pct !== null) {
+                  pEl.textContent = pct.toFixed(1) + "%";
+                  pEl.className = "sess-pct " + pctClass(pct);
+               } else {
+                  pEl.textContent = "—";
+                  pEl.className = "sess-pct neu";
+               }
+               const diff = pct !== null && prev !== null ? pct - prev : null;
+               document.getElementById(deltaId).innerHTML = deltaHtml(diff);
+            }
+
+            updSess(m, "m-pct", "m-delta", null);
+            updSess(e, "e-pct", "e-delta", m);
+
+            // Delta summary — only Morning→Evening
+            function setDeltaCard(elId, from, to) {
+               const el = document.getElementById(elId);
+               if (from === null || to === null) {
+                  el.textContent = "—";
+                  el.className = "ds-big neu";
+                  return;
+               }
+               const d = to - from;
+               el.textContent = (d >= 0 ? "+" : "") + d.toFixed(2) + "%";
+               el.className = "ds-big " + deltaClass(d);
+            }
+            setDeltaCard("delta-me", m, e);
+
+            sessVals = { morning: m, evening: e };
+            renderSessChart();
+         }
+
+         function renderSessChart() {
+            if (sessChart) {
+               sessChart.destroy();
+               sessChart = null;
+            }
+            const { morning: m, evening: e } = sessVals;
+            const vals = [m, e];
+            if (vals.every((v) => v === null)) return;
+            const isDark = currentTheme === "dark";
+            const tickCol = isDark ? "#a070c8" : "#7060a0";
+            const gridCol = isDark
+               ? "rgba(220,160,255,0.08)"
+               : "rgba(120,80,200,0.08)";
+            const axCol = isDark
+               ? "rgba(220,160,255,0.12)"
+               : "rgba(120,80,200,0.12)";
+            const ttBg = isDark ? "#2e0055" : "#ffffff";
+            const ttBd = isDark
+               ? "rgba(220,160,255,0.18)"
+               : "rgba(120,80,200,0.15)";
+            const labels = ["Morning 🌅", "Evening 🌙"];
+            const data = vals.map((v) => (v !== null ? +v.toFixed(2) : null));
+            const ptColors = data.map((v) =>
+               v !== null ? ptHex(v) : isDark ? "#a070c8" : "#7060a0",
+            );
+            sessChart = new Chart(document.getElementById("sessChart"), {
+               type: "line",
+               data: {
+                  labels,
+                  datasets: [
+                     {
+                        label: "Foiz",
+                        data,
+                        borderColor: isDark ? "#cc88ff" : "#7c3aed",
+                        backgroundColor: isDark
+                           ? "rgba(200,120,255,0.09)"
+                           : "rgba(124,58,237,0.07)",
+                        pointBackgroundColor: ptColors,
+                        pointBorderColor: ptColors,
+                        pointBorderWidth: 2,
+                        pointRadius: 10,
+                        pointHoverRadius: 13,
+                        borderWidth: 2.5,
+                        tension: 0.3,
+                        fill: true,
+                        spanGaps: true,
+                     },
+                     {
+                        data: [10, 10],
+                        borderColor: isDark
+                           ? "rgba(34,200,138,0.4)"
+                           : "rgba(14,158,106,0.4)",
+                        borderWidth: 1.5,
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        fill: false,
+                     },
+                     {
+                        data: [20, 20],
+                        borderColor: isDark
+                           ? "rgba(239,73,73,0.4)"
+                           : "rgba(214,48,48,0.4)",
+                        borderWidth: 1.5,
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        fill: false,
+                     },
+                  ],
+               },
+               options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                     legend: { display: false },
+                     tooltip: {
+                        backgroundColor: ttBg,
+                        borderColor: ttBd,
+                        borderWidth: 1,
+                        titleColor: tickCol,
+                        bodyColor: isDark ? "#f0e6ff" : "#1e1340",
+                        padding: 11,
+                        callbacks: {
+                           label: (ctx) => {
+                              if (ctx.datasetIndex === 0) {
+                                 const v = ctx.parsed.y;
+                                 if (v === null)
+                                    return " Ma'lumot kiritilmagan";
+                                 return " Ulush: " + v.toFixed(1) + "%";
+                              }
+                              return [];
+                           },
+                        },
+                     },
+                  },
+                  scales: {
+                     y: {
+                        beginAtZero: true,
+                        max:
+                           Math.max(30, ...data.filter((v) => v !== null)) + 5,
+                        grid: { color: gridCol },
+                        border: { color: axCol },
+                        ticks: {
+                           callback: (v) => v + "%",
+                           color: tickCol,
+                           font: { size: 11, family: "'DM Sans',sans-serif" },
+                        },
+                     },
+                     x: {
+                        grid: { display: false },
+                        border: { color: axCol },
+                        ticks: {
+                           color: tickCol,
+                           font: { size: 13, family: "'DM Sans',sans-serif" },
+                        },
+                     },
+                  },
+               },
+            });
+         }
+
+         function saveSession(period) {
+            const prefMap = { morning: "m", evening: "e" };
+            const p = prefMap[period];
+            const td =
+               vv(p + "d1") + vv(p + "d2") + vv(p + "d3") + vv(p + "d4");
+            const ts = vv(p + "s1") + vv(p + "s2") + vv(p + "s3");
+            if (!ts) {
+               alert("O'quvchilar sonini kiriting!");
+               return;
+            }
+            const pct = (td / ts) * 100;
+            const labelMap = { morning: "🌅 Morning", evening: "🌙 Evening" };
+            sessHistory.push({
+               date: today(),
+               period,
+               label: labelMap[period],
+               td,
+               ts,
+               pct,
+            });
+            localStorage.setItem("lc_sessions", JSON.stringify(sessHistory));
+            renderSessHistory();
+            const btn = event.target;
+            btn.textContent = "✓ Saqlandi!";
+            btn.style.background = "var(--good)";
+            btn.style.color = "#fff";
+            setTimeout(() => {
+               btn.textContent = "Saqlash";
+               btn.style.background = "";
+               btn.style.color = "";
+            }, 1500);
+         }
+
+         function renderSessHistory() {
+            const area = document.getElementById("sess-history-area");
+            if (!sessHistory.length) {
+               area.innerHTML =
+                  '<div class="empty"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p>Hali sessiya ma\'lumoti yo\'q.</p></div>';
+               return;
+            }
+
+            // Group by date, show delta between sessions of same day
+            const byDate = {};
+            sessHistory.forEach((r, i) => {
+               if (!byDate[r.date]) byDate[r.date] = [];
+               byDate[r.date].push({ ...r, origIdx: i });
+            });
+
+            let rows = "";
+            Object.keys(byDate)
+               .reverse()
+               .forEach((date) => {
+                  const group = byDate[date];
+                  group.forEach((r, gi) => {
+                     const prev = gi > 0 ? group[gi - 1].pct : null;
+                     const diff = prev !== null ? r.pct - prev : null;
+                     const cl = pctClass(r.pct);
+                     rows += `<tr>
+        <td style="color:var(--muted);font-size:12px;">${r.date}</td>
+        <td>${r.label}</td>
+        <td>${r.td}</td><td>${r.ts}</td>
+        <td><span class="badge ${cl}">${r.pct.toFixed(1)}%</span></td>
+        <td>${deltaHtml(diff)}</td>
+        <td><button class="del-btn" data-sidx="${r.origIdx}">O'chirish</button></td>
+      </tr>`;
+                  });
+               });
+
+            area.innerHTML = `<table class="htable"><thead><tr>
+    <th>Sana</th><th>Sessiya</th><th>Qarzdor</th><th>O'quvchi</th><th>Foiz</th><th>O'zgarish</th><th></th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+            area.querySelectorAll(".del-btn").forEach((btn) => {
+               btn.addEventListener("click", () =>
+                  deleteSess(parseInt(btn.dataset.sidx)),
+               );
+            });
+         }
+
+         function deleteSess(idx) {
+            if (!confirm("Bu yozuvni o'chirishni tasdiqlaysizmi?")) return;
+            sessHistory.splice(idx, 1);
+            localStorage.setItem("lc_sessions", JSON.stringify(sessHistory));
+            renderSessHistory();
+         }
+
+         // ─── TAB SWITCH ──────────────────────────────────────
+         function switchTab(tab) {
+            document
+               .querySelectorAll(".tab")
+               .forEach((t) => t.classList.remove("active"));
+            document
+               .querySelectorAll(".page")
+               .forEach((p) => p.classList.remove("active"));
+            const tabMap = { input: 0, graph: 1, session: 2 };
+            document
+               .querySelectorAll(".tab")
+               [tabMap[tab]].classList.add("active");
+            document.getElementById("page-" + tab).classList.add("active");
+            if (tab === "graph") renderGraph();
+            if (tab === "session") {
+               calcSession();
+               renderSessHistory();
+            }
+         }
+
+         // ─── INIT ────────────────────────────────────────────
+         document.getElementById("hdr-date").textContent = today();
+         calc();
+         renderHistory();
+         renderSummary();
+      </script>
+   </body>
+</html>

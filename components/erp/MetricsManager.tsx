@@ -3,12 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
    PiChartLineUpLight,
+   PiCalculatorLight,
    PiFloppyDiskLight,
    PiMoneyLight,
    PiPlusLight,
    PiUsersThreeLight,
 } from "react-icons/pi";
-import { getMonthBounds } from "@/lib/erp";
+import DebtorsCalculator, {
+   type CashierDebtorMetricView,
+} from "@/components/erp/DebtorsCalculator";
+import { getMonthBounds, type ErpStaffRole } from "@/lib/erp";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 
 type BranchOption = {
@@ -97,6 +101,11 @@ export default function MetricsManager() {
    const [metrics, setMetrics] = useState<MetricView[]>([]);
    const [branches, setBranches] = useState<BranchOption[]>([]);
    const [summary, setSummary] = useState<MetricsSummary>(EMPTY_SUMMARY);
+   const [staffRole, setStaffRole] = useState<ErpStaffRole | null>(null);
+   const [primaryBranchId, setPrimaryBranchId] = useState<string | null>(null);
+   const [cashierDebtorMetrics, setCashierDebtorMetrics] = useState<
+      CashierDebtorMetricView[]
+   >([]);
    const [periodStart, setPeriodStart] = useState(monthBounds.periodStart);
    const [periodEnd, setPeriodEnd] = useState(monthBounds.periodEnd);
    const [branchFilter, setBranchFilter] = useState("all");
@@ -129,6 +138,9 @@ export default function MetricsManager() {
          setMetrics(payload.metrics || []);
          setBranches(payload.branches || []);
          setSummary(payload.summary || EMPTY_SUMMARY);
+         setStaffRole(payload.staff?.role || null);
+         setPrimaryBranchId(payload.staff?.primaryBranchId || null);
+         setCashierDebtorMetrics(payload.cashierDebtorMetrics || []);
       } catch (requestError) {
          setError(
             requestError instanceof Error
@@ -205,6 +217,49 @@ export default function MetricsManager() {
    const updateForm = (key: keyof MetricForm, value: string) => {
       setForm((current) => ({ ...current, [key]: value }));
    };
+
+   if (loading && staffRole === null) {
+      return (
+         <main className="flex min-h-[50vh] items-center justify-center">
+            <div className="flex flex-col items-center gap-4 text-slate-400">
+               <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-700 border-t-emerald-400" />
+               <p className="text-sm">Loading metrics...</p>
+            </div>
+         </main>
+      );
+   }
+
+   if (staffRole === "cashier") {
+      return (
+         <div className="space-y-5">
+            <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+               <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <div>
+                     <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-300">
+                        Cashier
+                     </p>
+                     <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+                        Debtors calculator
+                     </h1>
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3 text-sm text-slate-300">
+                     <PiCalculatorLight className="text-emerald-300" size={20} />
+                     Qarzdorlar nazorati
+                  </div>
+               </div>
+            </section>
+
+            <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+               <DebtorsCalculator
+                  branches={branches}
+                  primaryBranchId={primaryBranchId}
+                  initialMetrics={cashierDebtorMetrics}
+                  onChanged={loadMetrics}
+               />
+            </section>
+         </div>
+      );
+   }
 
    return (
       <div className="space-y-5">

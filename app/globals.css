@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
 :root {
-   --background: #ffffff;
-   --foreground: #171717;
+   --background: #020617;
+   --foreground: #f8fafc;
+}
+
+:root[data-theme="light"] {
+   --background: #f8fafc;
+   --foreground: #0f172a;
 }
 
 @theme inline {
@@ -12,17 +17,120 @@
    --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-   :root {
-      --background: #0a0a0a;
-      --foreground: #ededed;
-   }
-}
-
 body {
    background: var(--background);
    color: var(--foreground);
    font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+:root[data-theme="light"] .theme-toggle {
+   border-color: #cbd5e1;
+   background: rgba(255, 255, 255, 0.96);
+   color: #0f172a;
+   box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme="light"] .bg-slate-950,
+:root[data-theme="light"] .bg-slate-950\/30,
+:root[data-theme="light"] .bg-slate-950\/40,
+:root[data-theme="light"] .bg-slate-950\/50,
+:root[data-theme="light"] .bg-slate-950\/60,
+:root[data-theme="light"] .bg-slate-950\/70,
+:root[data-theme="light"] .bg-slate-950\/80,
+:root[data-theme="light"] .bg-slate-950\/95 {
+   background-color: #f8fafc !important;
+}
+
+:root[data-theme="light"] .bg-slate-900,
+:root[data-theme="light"] .bg-slate-900\/30,
+:root[data-theme="light"] .bg-slate-900\/40,
+:root[data-theme="light"] .bg-slate-900\/50,
+:root[data-theme="light"] .bg-slate-900\/60,
+:root[data-theme="light"] .bg-slate-900\/70,
+:root[data-theme="light"] .bg-slate-900\/80,
+:root[data-theme="light"] .bg-slate-900\/90,
+:root[data-theme="light"] .bg-slate-900\/95 {
+   background-color: #ffffff !important;
+}
+
+:root[data-theme="light"] .bg-slate-800,
+:root[data-theme="light"] .bg-slate-800\/50,
+:root[data-theme="light"] .bg-slate-800\/60,
+:root[data-theme="light"] .bg-slate-800\/70 {
+   background-color: #e2e8f0 !important;
+}
+
+:root[data-theme="light"] .text-white,
+:root[data-theme="light"] .text-slate-100,
+:root[data-theme="light"] .text-slate-200,
+:root[data-theme="light"] .text-slate-300 {
+   color: #0f172a !important;
+}
+
+:root[data-theme="light"] .text-slate-400,
+:root[data-theme="light"] .text-slate-500 {
+   color: #64748b !important;
+}
+
+:root[data-theme="light"] .border-slate-800,
+:root[data-theme="light"] .border-slate-700 {
+   border-color: #cbd5e1 !important;
+}
+
+:root[data-theme="light"] .hover\:bg-slate-950:hover,
+:root[data-theme="light"] .hover\:bg-slate-900:hover,
+:root[data-theme="light"] .hover\:bg-slate-800:hover {
+   background-color: #e2e8f0 !important;
+}
+
+:root[data-theme="light"] .hover\:bg-emerald-400:hover,
+:root[data-theme="light"] .hover\:bg-emerald-500:hover {
+   background-color: #059669 !important;
+   color: #ffffff !important;
+}
+
+:root[data-theme="light"] .hover\:bg-emerald-500\/10:hover {
+   background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+:root[data-theme="light"] .hover\:border-slate-700:hover {
+   border-color: #94a3b8 !important;
+}
+
+:root[data-theme="light"] .hover\:border-emerald-300:hover,
+:root[data-theme="light"] .hover\:border-emerald-400:hover,
+:root[data-theme="light"] .hover\:border-emerald-400\/50:hover,
+:root[data-theme="light"] .hover\:border-emerald-500:hover,
+:root[data-theme="light"] .hover\:border-emerald-500\/30:hover,
+:root[data-theme="light"] .hover\:border-emerald-500\/40:hover {
+   border-color: #10b981 !important;
+}
+
+:root[data-theme="light"] .hover\:text-white:hover,
+:root[data-theme="light"] .hover\:text-slate-100:hover {
+   color: #0f172a !important;
+}
+
+:root[data-theme="light"] .hover\:text-emerald-200:hover,
+:root[data-theme="light"] .hover\:text-emerald-300:hover {
+   color: #047857 !important;
+}
+
+:root[data-theme="light"] .group:hover .group-hover\:text-white {
+   color: #0f172a !important;
+}
+
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea {
+   color-scheme: light;
+}
+
+:root[data-theme="light"] .shadow-black\/20,
+:root[data-theme="light"] .shadow-black\/30,
+:root[data-theme="light"] .shadow-black\/50,
+:root[data-theme="light"] .shadow-black\/60 {
+   --tw-shadow-color: rgba(15, 23, 42, 0.12) !important;
 }
 
 button:not(:disabled),

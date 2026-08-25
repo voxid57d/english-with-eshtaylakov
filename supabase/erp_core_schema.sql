@@ -130,6 +130,29 @@ create table if not exists public.daily_metrics (
    unique (branch_id, metric_date)
 );
 
+create table if not exists public.cashier_debtor_metrics (
+   id uuid primary key default gen_random_uuid(),
+   cashier_user_id uuid not null references public.staff_profiles(user_id) on delete cascade,
+   branch_id uuid not null references public.branches(id) on delete cascade,
+   metric_date date not null,
+   entry_type text not null check (entry_type in ('daily', 'morning', 'evening')),
+   current_debtors integer not null default 0 check (current_debtors >= 0),
+   frozen_debtors integer not null default 0 check (frozen_debtors >= 0),
+   archive_debtors integer not null default 0 check (archive_debtors >= 0),
+   finished_debtors integer not null default 0 check (finished_debtors >= 0),
+   active_students integer not null default 0 check (active_students >= 0),
+   archive_students integer not null default 0 check (archive_students >= 0),
+   finished_students integer not null default 0 check (finished_students >= 0),
+   total_debtors integer not null default 0 check (total_debtors >= 0),
+   total_students integer not null default 0 check (total_students >= 0),
+   debtor_percentage numeric(7, 2) not null default 0 check (debtor_percentage >= 0),
+   note text,
+   created_by uuid references auth.users(id) on delete set null,
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now(),
+   unique (cashier_user_id, branch_id, metric_date, entry_type)
+);
+
 create table if not exists public.erp_role_permissions (
    role public.erp_staff_role not null,
    module text not null check (
@@ -185,6 +208,10 @@ create index if not exists kpi_progress_entries_target_date_idx on public.kpi_pr
 create index if not exists shifts_branch_date_idx on public.shifts(branch_id, shift_date);
 create index if not exists shifts_staff_date_idx on public.shifts(staff_user_id, shift_date);
 create index if not exists daily_metrics_branch_date_idx on public.daily_metrics(branch_id, metric_date);
+create index if not exists cashier_debtor_metrics_cashier_date_idx
+   on public.cashier_debtor_metrics(cashier_user_id, metric_date, entry_type);
+create index if not exists cashier_debtor_metrics_branch_date_idx
+   on public.cashier_debtor_metrics(branch_id, metric_date, entry_type);
 create index if not exists staff_working_hours_staff_weekday_idx
    on public.staff_working_hours(staff_user_id, weekday, active);
 create index if not exists staff_working_hours_branch_idx
@@ -339,6 +366,12 @@ before update on public.daily_metrics
 for each row
 execute function public.set_erp_updated_at();
 
+drop trigger if exists cashier_debtor_metrics_updated_at on public.cashier_debtor_metrics;
+create trigger cashier_debtor_metrics_updated_at
+before update on public.cashier_debtor_metrics
+for each row
+execute function public.set_erp_updated_at();
+
 drop trigger if exists erp_role_permissions_updated_at on public.erp_role_permissions;
 create trigger erp_role_permissions_updated_at
 before update on public.erp_role_permissions
@@ -365,6 +398,7 @@ alter table public.kpi_targets enable row level security;
 alter table public.kpi_progress_entries enable row level security;
 alter table public.shifts enable row level security;
 alter table public.daily_metrics enable row level security;
+alter table public.cashier_debtor_metrics enable row level security;
 alter table public.erp_role_permissions enable row level security;
 alter table public.erp_role_compensation_settings enable row level security;
 alter table public.staff_working_hours enable row level security;
