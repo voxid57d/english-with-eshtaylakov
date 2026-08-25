@@ -16,13 +16,10 @@ export default function Login() {
          setError(null);
          setLoadingGoogle(true);
 
-         const siteUrl =
-            process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
-
          const { error: signInError } = await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
-               redirectTo: `${siteUrl}/auth/callback`,
+               redirectTo: `${window.location.origin}/auth/callback`,
             },
          });
 
