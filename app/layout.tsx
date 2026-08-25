@@ -21,8 +21,8 @@ export const metadata: Metadata = {
    description:
       "IELTS ZONE Amir Temur is an internal administration workspace for branch operations, staff tasks, KPI, shifts, and daily metrics.",
    icons: {
-      icon: "/favicon.ico",
-      shortcut: "/favicon.ico",
+      icon: "/favicon.ico?v=2",
+      shortcut: "/favicon.ico?v=2",
       apple: "/apple-touch-icon.png",
    },
    openGraph: {
