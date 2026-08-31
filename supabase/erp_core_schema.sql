@@ -163,6 +163,7 @@ create table if not exists public.erp_role_permissions (
          'tasks',
          'kpi',
          'shifts',
+         'teachers',
          'metrics',
          'settings'
       )
@@ -201,6 +202,83 @@ create table if not exists public.staff_working_hours (
    unique (staff_user_id, weekday)
 );
 
+create table if not exists public.teacher_profiles (
+   id uuid primary key default gen_random_uuid(),
+   full_name text not null,
+   phone text,
+   birthday date,
+   ielts_score numeric(3, 1) check (ielts_score is null or (ielts_score >= 0 and ielts_score <= 9)),
+   celta_certified boolean not null default false,
+   started_working_on date,
+   stage text,
+   active boolean not null default true,
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.teacher_group_levels (
+   id uuid primary key default gen_random_uuid(),
+   name text not null unique,
+   active boolean not null default true,
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.teacher_lesson_groups (
+   id uuid primary key default gen_random_uuid(),
+   teacher_id uuid not null references public.teacher_profiles(id) on delete cascade,
+   level_id uuid not null references public.teacher_group_levels(id) on delete restrict,
+   starts_on date not null,
+   ends_on date,
+   starts_at time not null,
+   ends_at time not null,
+   weekdays integer[] not null,
+   active_students_count integer not null default 0 check (active_students_count >= 0),
+   active boolean not null default true,
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now(),
+   constraint teacher_lesson_groups_date_order check (ends_on is null or ends_on >= starts_on),
+   constraint teacher_lesson_groups_time_order check (ends_at > starts_at),
+   constraint teacher_lesson_groups_weekdays_check check (
+      array_length(weekdays, 1) is not null
+      and weekdays <@ array[1, 2, 3, 4, 5, 6, 7]
+   )
+);
+
+create table if not exists public.teacher_lesson_covers (
+   id uuid primary key default gen_random_uuid(),
+   lesson_group_id uuid not null references public.teacher_lesson_groups(id) on delete cascade,
+   cover_date date not null,
+   covering_teacher_id uuid references public.teacher_profiles(id) on delete set null,
+   covering_teacher_name text,
+   created_by uuid references auth.users(id) on delete set null,
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now(),
+   unique (lesson_group_id, cover_date),
+   constraint teacher_lesson_covers_coverer_check check (
+      covering_teacher_id is not null
+      or nullif(btrim(coalesce(covering_teacher_name, '')), '') is not null
+   )
+);
+
+alter table public.erp_role_permissions
+   drop constraint if exists erp_role_permissions_module_check;
+
+alter table public.erp_role_permissions
+   add constraint erp_role_permissions_module_check check (
+      module in (
+         'overview',
+         'branches',
+         'staff',
+         'tasks',
+         'kpi',
+         'shifts',
+         'teachers',
+         'metrics',
+         'settings'
+      )
+   );
+
 create index if not exists staff_profiles_role_idx on public.staff_profiles(role, active);
 create index if not exists staff_profiles_primary_branch_idx on public.staff_profiles(primary_branch_id);
 create index if not exists kpi_targets_period_idx on public.kpi_targets(period_start, period_end);
@@ -216,6 +294,12 @@ create index if not exists staff_working_hours_staff_weekday_idx
    on public.staff_working_hours(staff_user_id, weekday, active);
 create index if not exists staff_working_hours_branch_idx
    on public.staff_working_hours(branch_id, active);
+create index if not exists teacher_profiles_active_name_idx
+   on public.teacher_profiles(active, full_name);
+create index if not exists teacher_lesson_groups_teacher_idx
+   on public.teacher_lesson_groups(teacher_id, active, starts_on, ends_on);
+create index if not exists teacher_lesson_covers_group_date_idx
+   on public.teacher_lesson_covers(lesson_group_id, cover_date);
 
 insert into public.erp_role_permissions (role, module, can_view, can_manage)
 values
@@ -225,6 +309,7 @@ values
    ('admin', 'tasks', true, true),
    ('admin', 'kpi', true, true),
    ('admin', 'shifts', true, true),
+   ('admin', 'teachers', true, true),
    ('admin', 'metrics', true, true),
    ('admin', 'settings', true, true),
    ('branch_manager', 'overview', true, false),
@@ -233,6 +318,7 @@ values
    ('branch_manager', 'tasks', true, true),
    ('branch_manager', 'kpi', true, true),
    ('branch_manager', 'shifts', true, true),
+   ('branch_manager', 'teachers', true, true),
    ('branch_manager', 'metrics', true, true),
    ('branch_manager', 'settings', true, true),
    ('sales_manager', 'overview', true, false),
@@ -241,6 +327,7 @@ values
    ('sales_manager', 'tasks', true, true),
    ('sales_manager', 'kpi', true, true),
    ('sales_manager', 'shifts', true, true),
+   ('sales_manager', 'teachers', true, true),
    ('sales_manager', 'metrics', true, true),
    ('sales_manager', 'settings', false, false),
    ('salesman', 'overview', true, false),
@@ -249,6 +336,7 @@ values
    ('salesman', 'tasks', true, false),
    ('salesman', 'kpi', true, false),
    ('salesman', 'shifts', true, false),
+   ('salesman', 'teachers', false, false),
    ('salesman', 'metrics', false, false),
    ('salesman', 'settings', false, false),
    ('assistant', 'overview', true, false),
@@ -257,6 +345,7 @@ values
    ('assistant', 'tasks', true, false),
    ('assistant', 'kpi', true, false),
    ('assistant', 'shifts', true, false),
+   ('assistant', 'teachers', false, false),
    ('assistant', 'metrics', true, true),
    ('assistant', 'settings', false, false),
    ('cashier', 'overview', true, false),
@@ -265,6 +354,7 @@ values
    ('cashier', 'tasks', true, false),
    ('cashier', 'kpi', true, false),
    ('cashier', 'shifts', true, false),
+   ('cashier', 'teachers', false, false),
    ('cashier', 'metrics', true, true),
    ('cashier', 'settings', false, false)
 on conflict (role, module) do nothing;
@@ -287,7 +377,13 @@ update public.erp_role_permissions
 set can_view = true,
     can_manage = true
 where role = 'branch_manager'
-  and module in ('branches', 'staff', 'tasks', 'kpi', 'shifts', 'metrics', 'settings');
+  and module in ('branches', 'staff', 'tasks', 'kpi', 'shifts', 'teachers', 'metrics', 'settings');
+
+update public.erp_role_permissions
+set can_view = true,
+    can_manage = true
+where role = 'sales_manager'
+  and module = 'teachers';
 
 delete from public.erp_role_compensation_settings
 where role in ('admin', 'branch_manager');
@@ -390,6 +486,30 @@ before update on public.staff_working_hours
 for each row
 execute function public.set_erp_updated_at();
 
+drop trigger if exists teacher_profiles_updated_at on public.teacher_profiles;
+create trigger teacher_profiles_updated_at
+before update on public.teacher_profiles
+for each row
+execute function public.set_erp_updated_at();
+
+drop trigger if exists teacher_group_levels_updated_at on public.teacher_group_levels;
+create trigger teacher_group_levels_updated_at
+before update on public.teacher_group_levels
+for each row
+execute function public.set_erp_updated_at();
+
+drop trigger if exists teacher_lesson_groups_updated_at on public.teacher_lesson_groups;
+create trigger teacher_lesson_groups_updated_at
+before update on public.teacher_lesson_groups
+for each row
+execute function public.set_erp_updated_at();
+
+drop trigger if exists teacher_lesson_covers_updated_at on public.teacher_lesson_covers;
+create trigger teacher_lesson_covers_updated_at
+before update on public.teacher_lesson_covers
+for each row
+execute function public.set_erp_updated_at();
+
 alter table public.branches enable row level security;
 alter table public.staff_profiles enable row level security;
 alter table public.staff_branch_assignments enable row level security;
@@ -402,6 +522,10 @@ alter table public.cashier_debtor_metrics enable row level security;
 alter table public.erp_role_permissions enable row level security;
 alter table public.erp_role_compensation_settings enable row level security;
 alter table public.staff_working_hours enable row level security;
+alter table public.teacher_profiles enable row level security;
+alter table public.teacher_group_levels enable row level security;
+alter table public.teacher_lesson_groups enable row level security;
+alter table public.teacher_lesson_covers enable row level security;
 
 -- First version access pattern:
 -- keep browser clients blocked by RLS and access these tables through

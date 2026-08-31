@@ -35,6 +35,7 @@ export const ERP_MODULES = [
    "tasks",
    "kpi",
    "shifts",
+   "teachers",
    "metrics",
    "settings",
 ] as const;
@@ -173,6 +174,54 @@ export type StaffWorkingHour = {
    break_minutes: number;
    active: boolean;
    note: string | null;
+   created_by: string | null;
+   created_at: string;
+   updated_at: string;
+};
+
+export type TeacherProfile = {
+   id: string;
+   full_name: string;
+   phone: string | null;
+   birthday: string | null;
+   ielts_score: number | null;
+   celta_certified: boolean;
+   started_working_on: string | null;
+   stage: string | null;
+   active: boolean;
+   created_at: string;
+   updated_at: string;
+};
+
+export type TeacherGroupLevel = {
+   id: string;
+   name: string;
+   active: boolean;
+   created_at: string;
+   updated_at: string;
+};
+
+export type TeacherLessonGroup = {
+   id: string;
+   teacher_id: string;
+   level_id: string;
+   starts_on: string;
+   ends_on: string | null;
+   starts_at: string;
+   ends_at: string;
+   weekdays: number[];
+   active_students_count: number;
+   active: boolean;
+   created_at: string;
+   updated_at: string;
+};
+
+export type TeacherLessonCover = {
+   id: string;
+   lesson_group_id: string;
+   cover_date: string;
+   covering_teacher_id: string | null;
+   covering_teacher_name: string | null;
    created_by: string | null;
    created_at: string;
    updated_at: string;

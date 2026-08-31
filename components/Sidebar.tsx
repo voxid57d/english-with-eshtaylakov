@@ -12,6 +12,7 @@ import {
    PiGaugeLight,
    PiGearSixLight,
    PiMapPinLineLight,
+   PiStudentLight,
    PiTargetLight,
    PiUsersThreeLight,
 } from "react-icons/pi";
@@ -25,6 +26,7 @@ type ErpModule =
    | "tasks"
    | "kpi"
    | "shifts"
+   | "teachers"
    | "metrics"
    | "settings";
 
@@ -40,6 +42,7 @@ const links: SidebarLink[] = [
    { href: "/dashboard/tasks", label: "Tasks", icon: PiCalendarCheckLight, module: "tasks" },
    { href: "/dashboard/kpi", label: "KPI", icon: PiTargetLight, module: "kpi" },
    { href: "/dashboard/shifts", label: "Shifts", icon: PiBriefcaseLight, module: "shifts" },
+   { href: "/dashboard/teachers", label: "Teachers", icon: PiStudentLight, module: "teachers" },
    { href: "/dashboard/metrics", label: "Metrics", icon: PiChartLineUpLight, module: "metrics" },
    { href: "/dashboard/staff", label: "Staff", icon: PiUsersThreeLight, module: "staff" },
    { href: "/dashboard/branches", label: "Branches", icon: PiMapPinLineLight, module: "branches" },
