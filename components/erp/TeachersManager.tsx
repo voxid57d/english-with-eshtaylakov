@@ -720,11 +720,11 @@ export default function TeachersManager() {
                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <label className="block">
                                  <span className="text-sm text-slate-300">Birthday</span>
-                                 <input type="date" value={teacherForm.birthday} onChange={(event) => setTeacherForm((current) => ({ ...current, birthday: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
+                                 <input type="date" lang="en-GB" value={teacherForm.birthday} onChange={(event) => setTeacherForm((current) => ({ ...current, birthday: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
                               </label>
                               <label className="block">
                                  <span className="text-sm text-slate-300">Started working</span>
-                                 <input type="date" value={teacherForm.startedWorkingOn} onChange={(event) => setTeacherForm((current) => ({ ...current, startedWorkingOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
+                                 <input type="date" lang="en-GB" value={teacherForm.startedWorkingOn} onChange={(event) => setTeacherForm((current) => ({ ...current, startedWorkingOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
                               </label>
                            </div>
                            <label className="block">
@@ -804,11 +804,11 @@ export default function TeachersManager() {
                            </label>
                            <label className="block">
                               <span className="text-sm text-slate-300">Starting date</span>
-                              <input type="date" value={groupForm.startsOn} onChange={(event) => setGroupForm((current) => ({ ...current, startsOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" required />
+                              <input type="date" lang="en-GB" value={groupForm.startsOn} onChange={(event) => setGroupForm((current) => ({ ...current, startsOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" required />
                            </label>
                            <label className="block">
                               <span className="text-sm text-slate-300">Ending date</span>
-                              <input type="date" value={groupForm.endsOn} onChange={(event) => setGroupForm((current) => ({ ...current, endsOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
+                              <input type="date" lang="en-GB" value={groupForm.endsOn} onChange={(event) => setGroupForm((current) => ({ ...current, endsOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
                            </label>
                            <LessonTimeField
                               label="Starts"
