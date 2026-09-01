@@ -118,6 +118,8 @@ function toGroup(row: GroupRow) {
       teacherName: row.teacher_profiles?.full_name ?? "Teacher",
       levelId: row.level_id,
       levelName: row.teacher_group_levels?.name ?? "Group",
+      lmsGroupName: row.lms_group_name,
+      lmsGroupId: row.lms_group_id,
       startsOn: row.starts_on,
       endsOn: row.ends_on,
       startsAt: row.starts_at.slice(0, 5),
@@ -125,6 +127,8 @@ function toGroup(row: GroupRow) {
       weekdays: row.weekdays,
       activeStudentsCount: Number(row.active_students_count || 0),
       active: row.active,
+      isIntake: row.is_intake,
+      archivedOn: row.archived_on,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
    };
@@ -195,12 +199,12 @@ async function loadPayload(req: Request) {
          .order("name", { ascending: true }),
       supabaseAdmin
          .from("teacher_lesson_groups")
-         .select("id, teacher_id, level_id, starts_on, ends_on, starts_at, ends_at, weekdays, active_students_count, active, created_at, updated_at, teacher_profiles(id, full_name), teacher_group_levels(id, name)")
+         .select("id, teacher_id, level_id, lms_group_name, lms_group_id, starts_on, ends_on, starts_at, ends_at, weekdays, active_students_count, active, is_intake, archived_on, created_at, updated_at, teacher_profiles(id, full_name), teacher_group_levels(id, name)")
          .order("active", { ascending: false })
          .order("starts_at", { ascending: true }),
       supabaseAdmin
          .from("teacher_lesson_covers")
-         .select("id, lesson_group_id, cover_date, covering_teacher_id, covering_teacher_name, created_by, created_at, updated_at, teacher_lesson_groups(id, teacher_id, level_id, starts_on, ends_on, starts_at, ends_at, weekdays, active_students_count, active)")
+         .select("id, lesson_group_id, cover_date, covering_teacher_id, covering_teacher_name, created_by, created_at, updated_at, teacher_lesson_groups(id, teacher_id, level_id, lms_group_name, lms_group_id, starts_on, ends_on, starts_at, ends_at, weekdays, active_students_count, active, is_intake, archived_on)")
          .gte("cover_date", coverStart)
          .lte("cover_date", coverEnd)
          .order("cover_date", { ascending: true }),
@@ -263,29 +267,36 @@ function levelPayload(body: Record<string, unknown>) {
 function groupPayload(body: Record<string, unknown>) {
    const teacherId = cleanString(body.teacherId);
    const levelId = cleanString(body.levelId);
+   const isIntake = body.isIntake === true;
    const startsOn = cleanString(body.startsOn);
-   const endsOn = validateOptionalDate(body.endsOn, "Ending date");
+   const endsOn = isIntake ? null : validateOptionalDate(body.endsOn, "Ending date");
    const startsAt = cleanString(body.startsAt);
    const endsAt = cleanString(body.endsAt);
+   const active = body.active !== false;
+   const archivedOn = active ? null : validateOptionalDate(body.archivedOn, "Archive date") || new Date().toISOString().slice(0, 10);
 
    if (!teacherId) throw new Error("Choose a teacher.");
    if (!levelId) throw new Error("Choose a group level.");
-   if (!isDateString(startsOn)) throw new Error("Starting date is required.");
+   if (!isIntake && !isDateString(startsOn)) throw new Error("Starting date is required.");
    if (!isTimeString(startsAt)) throw new Error("Valid lesson start time is required.");
    if (!isTimeString(endsAt)) throw new Error("Valid lesson end time is required.");
    if (endsAt <= startsAt) throw new Error("Lesson end time must be later than start time.");
-   if (endsOn && endsOn < startsOn) throw new Error("Ending date must be after starting date.");
+   if (!isIntake && endsOn && endsOn < startsOn) throw new Error("Ending date must be after starting date.");
 
    return {
       teacher_id: teacherId,
       level_id: levelId,
-      starts_on: startsOn,
+      lms_group_name: nullableString(body.lmsGroupName),
+      lms_group_id: nullableString(body.lmsGroupId),
+      starts_on: isIntake ? null : startsOn,
       ends_on: endsOn,
       starts_at: startsAt,
       ends_at: endsAt,
       weekdays: normalizeWeekdays(body.weekdays),
-      active_students_count: toNonNegativeInteger(body.activeStudentsCount ?? 0, "Active students"),
-      active: body.active !== false,
+      active_students_count: isIntake ? 0 : toNonNegativeInteger(body.activeStudentsCount ?? 0, "Active students"),
+      active,
+      is_intake: isIntake,
+      archived_on: archivedOn,
    };
 }
 

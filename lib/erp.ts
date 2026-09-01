@@ -205,13 +205,17 @@ export type TeacherLessonGroup = {
    id: string;
    teacher_id: string;
    level_id: string;
-   starts_on: string;
+   lms_group_name: string | null;
+   lms_group_id: string | null;
+   starts_on: string | null;
    ends_on: string | null;
    starts_at: string;
    ends_at: string;
    weekdays: number[];
    active_students_count: number;
    active: boolean;
+   is_intake: boolean;
+   archived_on: string | null;
    created_at: string;
    updated_at: string;
 };

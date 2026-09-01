@@ -228,17 +228,22 @@ create table if not exists public.teacher_lesson_groups (
    id uuid primary key default gen_random_uuid(),
    teacher_id uuid not null references public.teacher_profiles(id) on delete cascade,
    level_id uuid not null references public.teacher_group_levels(id) on delete restrict,
-   starts_on date not null,
+   lms_group_name text,
+   lms_group_id text,
+   starts_on date,
    ends_on date,
    starts_at time not null,
    ends_at time not null,
    weekdays integer[] not null,
    active_students_count integer not null default 0 check (active_students_count >= 0),
    active boolean not null default true,
+   is_intake boolean not null default false,
+   archived_on date,
    created_at timestamptz not null default now(),
    updated_at timestamptz not null default now(),
    constraint teacher_lesson_groups_date_order check (ends_on is null or ends_on >= starts_on),
    constraint teacher_lesson_groups_time_order check (ends_at > starts_at),
+   constraint teacher_lesson_groups_regular_dates_check check (is_intake = true or starts_on is not null),
    constraint teacher_lesson_groups_weekdays_check check (
       array_length(weekdays, 1) is not null
       and weekdays <@ array[1, 2, 3, 4, 5, 6, 7]
@@ -423,6 +428,26 @@ alter table if exists public.shifts
    add column if not exists hourly_rate_override numeric(12, 2),
    add column if not exists extra_hourly_rate_override numeric(12, 2),
    add column if not exists extra_hours_enabled_override boolean;
+
+alter table if exists public.teacher_lesson_groups
+   add column if not exists is_intake boolean not null default false,
+   add column if not exists lms_group_name text,
+   add column if not exists lms_group_id text,
+   add column if not exists archived_on date,
+   alter column starts_on drop not null;
+
+update public.teacher_lesson_groups
+set archived_on = current_date
+where active = false
+  and archived_on is null;
+
+alter table if exists public.teacher_lesson_groups
+   drop constraint if exists teacher_lesson_groups_regular_dates_check;
+
+alter table if exists public.teacher_lesson_groups
+   add constraint teacher_lesson_groups_regular_dates_check check (
+      is_intake = true or starts_on is not null
+   );
 
 create index if not exists task_templates_branch_id_idx
    on public.task_templates(branch_id, active, start_date, end_date);

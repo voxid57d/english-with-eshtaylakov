@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
    PiBriefcaseLight,
    PiCalendarCheckLight,
@@ -35,6 +35,11 @@ type SidebarLink = {
    label: string;
    icon: IconType;
    module: ErpModule;
+   children?: Array<{
+      href: string;
+      label: string;
+      section: string;
+   }>;
 };
 
 const links: SidebarLink[] = [
@@ -42,7 +47,16 @@ const links: SidebarLink[] = [
    { href: "/dashboard/tasks", label: "Tasks", icon: PiCalendarCheckLight, module: "tasks" },
    { href: "/dashboard/kpi", label: "KPI", icon: PiTargetLight, module: "kpi" },
    { href: "/dashboard/shifts", label: "Shifts", icon: PiBriefcaseLight, module: "shifts" },
-   { href: "/dashboard/teachers", label: "Teachers", icon: PiStudentLight, module: "teachers" },
+   {
+      href: "/dashboard/teachers?section=lessons",
+      label: "Teachers",
+      icon: PiStudentLight,
+      module: "teachers",
+      children: [
+         { href: "/dashboard/teachers?section=lessons", label: "Lessons", section: "lessons" },
+         { href: "/dashboard/teachers?section=covers", label: "Covers", section: "covers" },
+      ],
+   },
    { href: "/dashboard/metrics", label: "Metrics", icon: PiChartLineUpLight, module: "metrics" },
    { href: "/dashboard/staff", label: "Staff", icon: PiUsersThreeLight, module: "staff" },
    { href: "/dashboard/branches", label: "Branches", icon: PiMapPinLineLight, module: "branches" },
@@ -65,6 +79,7 @@ function CollapsedTooltip({ label }: { label: string }) {
 
 function Sidebar({ isOpenOnMobile, closeMobile }: SidebarProps) {
    const pathname = usePathname();
+   const searchParams = useSearchParams();
    const [collapsed, setCollapsed] = useState(false);
    const [visibleModules, setVisibleModules] = useState<Set<ErpModule> | null>(null);
 
@@ -112,11 +127,13 @@ function Sidebar({ isOpenOnMobile, closeMobile }: SidebarProps) {
    const navLinks = (
       <nav className={collapsed ? "space-y-2" : "space-y-2"}>
          {filteredLinks.map((link) => {
+            const linkPath = link.href.split("?")[0];
             const isActive =
-               link.href === "/dashboard"
+               linkPath === "/dashboard"
                   ? pathname === "/dashboard"
-                  : pathname.startsWith(link.href);
+                  : pathname.startsWith(linkPath);
             const Icon = link.icon;
+            const activeSection = searchParams.get("section") || "lessons";
 
             if (collapsed) {
                return (
@@ -133,28 +150,71 @@ function Sidebar({ isOpenOnMobile, closeMobile }: SidebarProps) {
                         ].join(" ")}>
                         <Icon size={19} />
                      </Link>
-                     <CollapsedTooltip label={link.label} />
+                     {link.children ? (
+                        <div className="pointer-events-none absolute left-full top-1/2 z-30 -translate-y-1/2 pl-3 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+                           <div className="min-w-36 rounded-lg border border-slate-700 bg-slate-950/95 p-1 shadow-xl shadow-black/30">
+                              <p className="px-2 py-1 text-xs font-medium text-slate-500">{link.label}</p>
+                              {link.children.map((child) => (
+                                 <Link
+                                    key={child.href}
+                                    href={child.href}
+                                    onClick={closeMobile}
+                                    className={[
+                                       "block rounded-md px-3 py-2 text-sm transition",
+                                       pathname === "/dashboard/teachers" && activeSection === child.section
+                                          ? "bg-emerald-500 text-slate-950"
+                                          : "text-slate-300 hover:bg-slate-900 hover:text-white",
+                                    ].join(" ")}>
+                                    {child.label}
+                                 </Link>
+                              ))}
+                           </div>
+                        </div>
+                     ) : (
+                        <CollapsedTooltip label={link.label} />
+                     )}
                   </div>
                );
             }
 
             return (
-               <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={closeMobile}
-                  className={[
-                     "group relative flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200",
-                     isActive
-                        ? "bg-emerald-600/90 text-white shadow-md shadow-emerald-950/30"
-                        : "text-slate-300 hover:bg-slate-900 hover:text-white",
-                  ].join(" ")}>
-                  <Icon
-                     size={21}
-                     className={isActive ? "text-white" : "text-slate-400 group-hover:text-white"}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{link.label}</span>
-               </Link>
+               <div key={link.href} className="group relative">
+                  <Link
+                     href={link.href}
+                     onClick={closeMobile}
+                     className={[
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200",
+                        isActive
+                           ? "bg-emerald-600/90 text-white shadow-md shadow-emerald-950/30"
+                           : "text-slate-300 hover:bg-slate-900 hover:text-white",
+                     ].join(" ")}>
+                     <Icon
+                        size={21}
+                        className={isActive ? "text-white" : "text-slate-400 group-hover:text-white"}
+                     />
+                     <span className="min-w-0 flex-1 truncate">{link.label}</span>
+                  </Link>
+                  {link.children && (
+                     <div className="absolute left-full top-0 z-30 hidden pl-2 group-hover:block">
+                        <div className="min-w-40 rounded-lg border border-slate-700 bg-slate-950/95 p-1 shadow-xl shadow-black/30">
+                           {link.children.map((child) => (
+                              <Link
+                                 key={child.href}
+                                 href={child.href}
+                                 onClick={closeMobile}
+                                 className={[
+                                    "block rounded-md px-3 py-2 text-sm transition",
+                                    pathname === "/dashboard/teachers" && activeSection === child.section
+                                       ? "bg-emerald-500 text-slate-950"
+                                       : "text-slate-300 hover:bg-slate-900 hover:text-white",
+                                 ].join(" ")}>
+                                 {child.label}
+                              </Link>
+                           ))}
+                        </div>
+                     </div>
+                  )}
+               </div>
             );
          })}
       </nav>

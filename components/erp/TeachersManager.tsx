@@ -11,6 +11,7 @@ import {
    PiStudentLight,
    PiUsersThreeLight,
 } from "react-icons/pi";
+import { useSearchParams } from "next/navigation";
 import { ERP_WEEKDAYS } from "@/lib/erp";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 
@@ -38,13 +39,17 @@ type GroupView = {
    teacherName: string;
    levelId: string;
    levelName: string;
-   startsOn: string;
+   lmsGroupName: string | null;
+   lmsGroupId: string | null;
+   startsOn: string | null;
    endsOn: string | null;
    startsAt: string;
    endsAt: string;
    weekdays: number[];
    activeStudentsCount: number;
    active: boolean;
+   isIntake: boolean;
+   archivedOn: string | null;
 };
 
 type CoverView = {
@@ -65,7 +70,7 @@ type HolidayView = {
 type ScheduleCard = {
    key: string;
    group: GroupView;
-   variant: "lesson" | "cover";
+   variant: "lesson" | "cover" | "intake";
    coveringFor?: string;
 };
 
@@ -91,6 +96,8 @@ type GroupForm = {
    id: string;
    teacherId: string;
    levelId: string;
+   lmsGroupName: string;
+   lmsGroupId: string;
    startsOn: string;
    endsOn: string;
    startsAt: string;
@@ -98,6 +105,8 @@ type GroupForm = {
    weekdays: number[];
    activeStudentsCount: number;
    active: boolean;
+   isIntake: boolean;
+   archivedOn: string;
 };
 
 type CoverDraft = {
@@ -130,6 +139,8 @@ const EMPTY_GROUP_FORM: GroupForm = {
    id: "",
    teacherId: "",
    levelId: "",
+   lmsGroupName: "",
+   lmsGroupId: "",
    startsOn: new Date().toISOString().slice(0, 10),
    endsOn: "",
    startsAt: "09:00",
@@ -137,6 +148,8 @@ const EMPTY_GROUP_FORM: GroupForm = {
    weekdays: [1, 3, 5],
    activeStudentsCount: 0,
    active: true,
+   isIntake: false,
+   archivedOn: "",
 };
 
 const START_HOUR = 8;
@@ -233,8 +246,15 @@ function timeToMinutes(time: string) {
 }
 
 function groupIsOnDate(group: GroupView, date: string) {
+   const isAvailableOnDate = group.active || !group.archivedOn || date < group.archivedOn;
+
+   if (group.isIntake) {
+      return isAvailableOnDate && group.weekdays.includes(getWeekday(date));
+   }
+
    return (
-      group.active &&
+      isAvailableOnDate &&
+      !!group.startsOn &&
       group.startsOn <= date &&
       (!group.endsOn || group.endsOn >= date) &&
       group.weekdays.includes(getWeekday(date))
@@ -370,7 +390,9 @@ function CoverBadge({ cover, teachers }: { cover: CoverView | null; teachers: Te
 }
 
 export default function TeachersManager() {
-   const [activeTab, setActiveTab] = useState<"lessons" | "covers">("lessons");
+   const searchParams = useSearchParams();
+   const activeTab = searchParams.get("section") === "covers" ? "covers" : "lessons";
+   const [activeEditor, setActiveEditor] = useState<"teacher" | "levels" | "group" | null>(null);
    const [teachers, setTeachers] = useState<TeacherView[]>([]);
    const [levels, setLevels] = useState<LevelView[]>([]);
    const [groups, setGroups] = useState<GroupView[]>([]);
@@ -401,7 +423,23 @@ export default function TeachersManager() {
       () => covers.filter((cover) => !holidayDates.has(cover.coverDate)),
       [covers, holidayDates],
    );
+   const monthlyCovers = useMemo(
+      () => effectiveCovers.filter((cover) => cover.coverDate.startsWith(month)),
+      [effectiveCovers, month],
+   );
    const groupById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
+   const activeRegularGroups = useMemo(
+      () => groups.filter((group) => group.active && !group.isIntake),
+      [groups],
+   );
+   const activeIntakeGroups = useMemo(
+      () => groups.filter((group) => group.active && group.isIntake),
+      [groups],
+   );
+   const activeStudentsTotal = useMemo(
+      () => activeRegularGroups.reduce((sum, group) => sum + group.activeStudentsCount, 0),
+      [activeRegularGroups],
+   );
 
    const coverByGroupDate = useMemo(() => {
       return new Map(effectiveCovers.map((cover) => [`${cover.lessonGroupId}:${cover.coverDate}`, cover]));
@@ -411,12 +449,16 @@ export default function TeachersManager() {
       return teachers.map((teacher) => {
          const teacherGroups = groups.filter((group) => group.teacherId === teacher.id);
          const activeStudentTotal = teacherGroups
-            .filter((group) => group.active)
+            .filter((group) => group.active && !group.isIntake)
             .reduce((sum, group) => sum + group.activeStudentsCount, 0);
+         const activeGroupTotal = teacherGroups.filter((group) => group.active && !group.isIntake).length;
+         const intakeGroupTotal = teacherGroups.filter((group) => group.active && group.isIntake).length;
 
          return {
             ...teacher,
             groups: teacherGroups,
+            activeGroupTotal,
+            intakeGroupTotal,
             activeStudentTotal,
          };
       });
@@ -426,7 +468,7 @@ export default function TeachersManager() {
       const asked = new Map<string, number>();
       const covered = new Map<string, number>();
 
-      for (const cover of effectiveCovers) {
+      for (const cover of monthlyCovers) {
          if (cover.teacherId) {
             asked.set(cover.teacherId, (asked.get(cover.teacherId) || 0) + 1);
          }
@@ -436,7 +478,7 @@ export default function TeachersManager() {
       }
 
       return { asked, covered };
-   }, [effectiveCovers]);
+   }, [monthlyCovers]);
 
    const selectedTeacherGroups = useMemo(() => {
       return groups.filter(
@@ -445,6 +487,10 @@ export default function TeachersManager() {
             (showArchivedGroups || group.active),
       );
    }, [groups, selectedTeacher, showArchivedGroups]);
+   const coveredLessonsTotal = useMemo(
+      () => [...coverStats.covered.values()].reduce((sum, count) => sum + count, 0),
+      [coverStats],
+   );
 
    const loadTeachers = useCallback(async () => {
       try {
@@ -649,6 +695,7 @@ export default function TeachersManager() {
          stage: teacher.stage || "",
          active: teacher.active,
       });
+      setActiveEditor("teacher");
    };
 
    const editGroup = (group: GroupView) => {
@@ -656,14 +703,19 @@ export default function TeachersManager() {
          id: group.id,
          teacherId: group.teacherId,
          levelId: group.levelId,
-         startsOn: group.startsOn,
+         lmsGroupName: group.lmsGroupName || "",
+         lmsGroupId: group.lmsGroupId || "",
+         startsOn: group.startsOn || "",
          endsOn: group.endsOn || "",
          startsAt: group.startsAt,
          endsAt: group.endsAt,
          weekdays: group.weekdays,
          activeStudentsCount: group.activeStudentsCount,
          active: group.active,
+         isIntake: group.isIntake,
+         archivedOn: group.archivedOn || "",
       });
+      setActiveEditor("group");
    };
 
    const updateGroupActive = async (group: GroupView, active: boolean) => {
@@ -673,13 +725,17 @@ export default function TeachersManager() {
             id: group.id,
             teacherId: group.teacherId,
             levelId: group.levelId,
-            startsOn: group.startsOn,
+            lmsGroupName: group.lmsGroupName || "",
+            lmsGroupId: group.lmsGroupId || "",
+            startsOn: group.startsOn || "",
             endsOn: group.endsOn || "",
             startsAt: group.startsAt,
             endsAt: group.endsAt,
             weekdays: group.weekdays,
             activeStudentsCount: group.activeStudentsCount,
             active,
+            isIntake: group.isIntake,
+            archivedOn: active ? "" : group.archivedOn || today,
          },
          "PATCH",
       );
@@ -714,32 +770,38 @@ export default function TeachersManager() {
 
    return (
       <div className="space-y-5">
-         <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+         <section className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                <div>
-                  <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-300">
-                     Academic
-                  </p>
-                  <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+                  <h1 className="text-2xl font-semibold tracking-tight text-white">
                      Teachers
                   </h1>
                </div>
-               <div className="grid grid-cols-3 gap-3">
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3">
-                     <p className="text-xs text-slate-500">Teachers</p>
-                     <p className="mt-1 text-2xl font-semibold text-white">{activeTeachers.length}</p>
+               {activeTab === "covers" ? (
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-2">
+                     <p className="text-xs text-slate-500">Covered lessons</p>
+                     <p className="text-xl font-semibold text-white">{coveredLessonsTotal}</p>
                   </div>
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3">
-                     <p className="text-xs text-slate-500">Groups</p>
-                     <p className="mt-1 text-2xl font-semibold text-white">{groups.filter((group) => group.active).length}</p>
+               ) : (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                     <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                        <p className="text-xs text-slate-500">Teachers</p>
+                        <p className="text-xl font-semibold text-white">{activeTeachers.length}</p>
+                     </div>
+                     <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                        <p className="text-xs text-slate-500">Groups</p>
+                        <p className="text-xl font-semibold text-white">{activeRegularGroups.length}</p>
+                     </div>
+                     <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                        <p className="text-xs text-slate-500">Intake</p>
+                        <p className="text-xl font-semibold text-white">{activeIntakeGroups.length}</p>
+                     </div>
+                     <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                        <p className="text-xs text-slate-500">Students</p>
+                        <p className="text-xl font-semibold text-white">{activeStudentsTotal}</p>
+                     </div>
                   </div>
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3">
-                     <p className="text-xs text-slate-500">Students</p>
-                     <p className="mt-1 text-2xl font-semibold text-white">
-                        {groups.filter((group) => group.active).reduce((sum, group) => sum + group.activeStudentsCount, 0)}
-                     </p>
-                  </div>
-               </div>
+               )}
             </div>
          </section>
 
@@ -755,31 +817,37 @@ export default function TeachersManager() {
             </div>
          )}
 
-         <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-1">
-            <button
-               type="button"
-               onClick={() => setActiveTab("lessons")}
-               className={[
-                  "rounded-lg px-4 py-2 text-sm transition",
-                  activeTab === "lessons" ? "bg-emerald-500 text-slate-950" : "text-slate-300 hover:bg-slate-900",
-               ].join(" ")}>
-               Teachers&apos; lessons
-            </button>
-            <button
-               type="button"
-               onClick={() => setActiveTab("covers")}
-               className={[
-                  "rounded-lg px-4 py-2 text-sm transition",
-                  activeTab === "covers" ? "bg-emerald-500 text-slate-950" : "text-slate-300 hover:bg-slate-900",
-               ].join(" ")}>
-               Covers
-            </button>
-         </div>
-
          {activeTab === "lessons" ? (
             <div className="space-y-4">
                {canManage && (
-                  <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[420px_320px_1fr]">
+                  <section className="space-y-3">
+                     <div className="flex flex-wrap gap-2">
+                        {[
+                           ["teacher", "Teacher profile"],
+                           ["levels", "Group levels"],
+                           ["group", "Lesson group"],
+                        ].map(([editor, label]) => (
+                           <button
+                              key={editor}
+                              type="button"
+                              onClick={() =>
+                                 setActiveEditor((current) =>
+                                    current === editor ? null : (editor as "teacher" | "levels" | "group"),
+                                 )
+                              }
+                              className={[
+                                 "rounded-lg border px-3 py-2 text-sm transition",
+                                 activeEditor === editor
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                                    : "border-slate-700 text-slate-300 hover:bg-slate-800",
+                              ].join(" ")}>
+                              {label}
+                           </button>
+                        ))}
+                     </div>
+
+                     <div className="grid grid-cols-1 gap-4">
+                     {activeEditor === "teacher" && (
                      <form onSubmit={submitTeacher} className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
                         <div className="flex items-center gap-2">
                            {teacherForm.id ? <PiFloppyDiskLight className="text-emerald-300" size={22} /> : <PiPlusLight className="text-emerald-300" size={22} />}
@@ -839,7 +907,9 @@ export default function TeachersManager() {
                            )}
                         </div>
                      </form>
+                     )}
 
+                     {activeEditor === "levels" && (
                      <form onSubmit={submitLevel} className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
                         <div className="flex items-center gap-2">
                            <PiStudentLight className="text-emerald-300" size={22} />
@@ -859,14 +929,16 @@ export default function TeachersManager() {
                         </button>
                         <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
                            {levels.map((level) => (
-                              <button key={level.id} type="button" onClick={() => setLevelForm({ id: level.id, name: level.name, active: level.active })} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-900">
+                              <button key={level.id} type="button" onClick={() => { setLevelForm({ id: level.id, name: level.name, active: level.active }); setActiveEditor("levels"); }} className="flex w-full items-center justify-between rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-900">
                                  <span className="truncate">{level.name}</span>
                                  <span className="text-xs text-slate-500">{level.active ? "Active" : "Off"}</span>
                               </button>
                            ))}
                         </div>
                      </form>
+                     )}
 
+                     {activeEditor === "group" && (
                      <form onSubmit={submitGroup} className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
                         <div className="flex items-center gap-2">
                            <PiChalkboardTeacherLight className="text-emerald-300" size={22} />
@@ -887,17 +959,39 @@ export default function TeachersManager() {
                                  {levels.filter((level) => level.active).map((level) => <option key={level.id} value={level.id}>{level.name}</option>)}
                               </select>
                            </label>
-                           <DateField
-                              label="Starting date"
-                              value={groupForm.startsOn}
-                              onChange={(startsOn) => setGroupForm((current) => ({ ...current, startsOn }))}
-                              required
-                           />
-                           <DateField
-                              label="Ending date"
-                              value={groupForm.endsOn}
-                              onChange={(endsOn) => setGroupForm((current) => ({ ...current, endsOn }))}
-                           />
+                           <label className="block">
+                              <span className="text-sm text-slate-300">Group name</span>
+                              <input
+                                 value={groupForm.lmsGroupName}
+                                 onChange={(event) => setGroupForm((current) => ({ ...current, lmsGroupName: event.target.value }))}
+                                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                                 placeholder="Exact LMS group name"
+                              />
+                           </label>
+                           <label className="block">
+                              <span className="text-sm text-slate-300">Group ID</span>
+                              <input
+                                 value={groupForm.lmsGroupId}
+                                 onChange={(event) => setGroupForm((current) => ({ ...current, lmsGroupId: event.target.value }))}
+                                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                                 placeholder="Manual LMS ID"
+                              />
+                           </label>
+                           {!groupForm.isIntake && (
+                              <>
+                                 <DateField
+                                    label="Starting date"
+                                    value={groupForm.startsOn}
+                                    onChange={(startsOn) => setGroupForm((current) => ({ ...current, startsOn }))}
+                                    required
+                                 />
+                                 <DateField
+                                    label="Ending date"
+                                    value={groupForm.endsOn}
+                                    onChange={(endsOn) => setGroupForm((current) => ({ ...current, endsOn }))}
+                                 />
+                              </>
+                           )}
                            <LessonTimeField
                               label="Starts"
                               value={groupForm.startsAt}
@@ -908,14 +1002,48 @@ export default function TeachersManager() {
                               value={groupForm.endsAt}
                               onChange={(endsAt) => setGroupForm((current) => ({ ...current, endsAt }))}
                            />
-                           <label className="block">
-                              <span className="text-sm text-slate-300">Active students</span>
-                              <input type="number" min="0" value={groupForm.activeStudentsCount} onChange={(event) => setGroupForm((current) => ({ ...current, activeStudentsCount: Number(event.target.value) }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
-                           </label>
-                           <label className="flex items-center gap-3 self-end rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
-                              <input type="checkbox" checked={groupForm.active} onChange={(event) => setGroupForm((current) => ({ ...current, active: event.target.checked }))} className="h-4 w-4 accent-emerald-500" />
-                              <span className="text-sm text-slate-300">Active group</span>
-                           </label>
+                           {!groupForm.isIntake && (
+                              <>
+                                 <label className="block">
+                                    <span className="text-sm text-slate-300">Active students</span>
+                                    <input type="number" min="0" value={groupForm.activeStudentsCount} onChange={(event) => setGroupForm((current) => ({ ...current, activeStudentsCount: Number(event.target.value) }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
+                                 </label>
+                              </>
+                           )}
+                           <div className="flex flex-wrap items-center gap-5 self-end rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                              {!groupForm.isIntake && (
+                                 <label className="inline-flex items-center gap-2">
+                                    <input
+                                       type="checkbox"
+                                       checked={groupForm.active}
+                                       onChange={(event) =>
+                                          setGroupForm((current) => ({
+                                             ...current,
+                                             active: event.target.checked,
+                                             archivedOn: event.target.checked ? "" : current.archivedOn || today,
+                                          }))
+                                       }
+                                       className="h-4 w-4 accent-emerald-500"
+                                    />
+                                    <span className="text-sm text-slate-300">Active group</span>
+                                 </label>
+                              )}
+                              <label className="inline-flex items-center gap-2">
+                                 <input
+                                    type="checkbox"
+                                    checked={groupForm.isIntake}
+                                    onChange={(event) =>
+                                       setGroupForm((current) => ({
+                                          ...current,
+                                          isIntake: event.target.checked,
+                                          activeStudentsCount: event.target.checked ? 0 : current.activeStudentsCount,
+                                       }))
+                                    }
+                                    className="h-4 w-4 accent-sky-500"
+                                 />
+                                 <span className="text-sm text-slate-300">Intake</span>
+                              </label>
+                           </div>
                         </div>
                         <div className="mt-4 flex flex-wrap gap-2">
                            {ERP_WEEKDAYS.map((weekday) => (
@@ -941,6 +1069,8 @@ export default function TeachersManager() {
                            )}
                         </div>
                      </form>
+                     )}
+                     </div>
                   </section>
                )}
 
@@ -957,7 +1087,7 @@ export default function TeachersManager() {
                      ) : (
                         <div className="mt-4 space-y-2">
                            {groupsByTeacher.map((teacher) => (
-                              <button key={teacher.id} type="button" onClick={() => { setSelectedTeacherId(teacher.id); if (canManage) editTeacher(teacher); }} className={[
+                              <button key={teacher.id} type="button" onClick={() => setSelectedTeacherId(teacher.id)} className={[
                                  "w-full rounded-lg border px-4 py-3 text-left transition",
                                  selectedTeacher?.id === teacher.id
                                     ? "border-emerald-500/35 bg-emerald-500/10"
@@ -967,7 +1097,7 @@ export default function TeachersManager() {
                                     <div className="min-w-0">
                                        <p className="truncate font-semibold text-white">{teacher.fullName}</p>
                                        <p className="mt-1 text-xs text-slate-500">
-                                          {teacher.groups.filter((group) => group.active).length} groups | {teacher.activeStudentTotal} students
+                                          {teacher.activeGroupTotal} groups | {teacher.intakeGroupTotal} intake | {teacher.activeStudentTotal} students
                                        </p>
                                     </div>
                                     <span className={[
@@ -977,9 +1107,30 @@ export default function TeachersManager() {
                                        {teacher.active ? "Active" : "Inactive"}
                                     </span>
                                  </div>
-                                 <p className="mt-2 truncate text-xs text-slate-500">
-                                    {[teacher.phone, teacher.ieltsScore ? `IELTS ${teacher.ieltsScore}` : null, teacher.celtaCertified ? "CELTA" : null, teacher.stage].filter(Boolean).join(" | ") || "No details"}
-                                 </p>
+                                 <div className="mt-2 flex items-center gap-2">
+                                    <p className="min-w-0 flex-1 truncate text-xs text-slate-500">
+                                       {[teacher.phone, teacher.ieltsScore ? `IELTS ${teacher.ieltsScore}` : null, teacher.celtaCertified ? "CELTA" : null, teacher.stage].filter(Boolean).join(" | ") || "No details"}
+                                    </p>
+                                    {canManage && (
+                                       <span
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={(event) => {
+                                             event.stopPropagation();
+                                             editTeacher(teacher);
+                                          }}
+                                          onKeyDown={(event) => {
+                                             if (event.key === "Enter" || event.key === " ") {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                editTeacher(teacher);
+                                             }
+                                          }}
+                                          className="shrink-0 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:bg-slate-800">
+                                          Edit
+                                       </span>
+                                    )}
+                                 </div>
                               </button>
                            ))}
                         </div>
@@ -1074,7 +1225,7 @@ export default function TeachersManager() {
                                             .map((group) => ({
                                                key: `lesson:${group.id}:${day}`,
                                                group,
-                                               variant: "lesson" as const,
+                                               variant: group.isIntake ? "intake" as const : "lesson" as const,
                                             })),
                                          ...effectiveCovers
                                             .filter((cover) => cover.coveringTeacherId === selectedTeacher.id && cover.coverDate === day)
@@ -1135,28 +1286,43 @@ export default function TeachersManager() {
                                                    left: `calc(${(slotIndex / slotTotal) * 100}% + 0.5rem)`,
                                                    right: `calc(${((slotTotal - slotIndex - 1) / slotTotal) * 100}% + 0.5rem)`,
                                                 }}
-                                                className={[
-                                                   "absolute z-10 overflow-hidden rounded-lg p-2 text-left shadow-lg shadow-slate-950/30 transition",
-                                                   card.variant === "cover"
-                                                      ? "border border-amber-500/35 bg-amber-100 text-slate-950 hover:bg-amber-200"
-                                                      : "border border-emerald-500/30 bg-emerald-100 text-slate-950 hover:bg-emerald-200",
-                                                ].join(" ")}>
+                                                   className={[
+                                                      "absolute z-10 overflow-hidden rounded-lg p-2 text-left shadow-lg shadow-slate-950/30 transition",
+                                                      card.variant === "cover"
+                                                         ? "border border-amber-500/35 bg-amber-100 text-slate-950 hover:bg-amber-200"
+                                                         : card.variant === "intake"
+                                                           ? "border border-sky-500/35 bg-sky-100 text-slate-950 hover:bg-sky-200"
+                                                           : "border border-emerald-500/30 bg-emerald-100 text-slate-950 hover:bg-emerald-200",
+                                                   ].join(" ")}>
                                                 <p
                                                    className={[
                                                       "truncate text-xs font-semibold",
-                                                      card.variant === "cover" ? "text-amber-200" : "text-emerald-100",
+                                                      card.variant === "cover"
+                                                         ? "text-amber-800"
+                                                         : card.variant === "intake"
+                                                           ? "text-sky-800"
+                                                           : "text-emerald-800",
                                                    ].join(" ")}>
-                                                   {card.group.levelName}
+                                                   {card.group.lmsGroupName || card.group.levelName}
                                                 </p>
-                                                <p className="mt-1 text-[11px] text-slate-300">
+                                                <p className="mt-1 text-[11px] text-slate-800">
                                                    {card.group.startsAt} - {card.group.endsAt}
                                                 </p>
+                                                {card.group.lmsGroupId && (
+                                                   <p className="mt-1 truncate text-[10px] text-slate-700">
+                                                      ID {card.group.lmsGroupId}
+                                                   </p>
+                                                )}
                                                 {card.variant === "cover" ? (
-                                                   <p className="mt-1 truncate text-[10px] font-medium text-amber-200">
+                                                   <p className="mt-1 truncate text-[10px] font-medium text-amber-800">
                                                       Cover for {card.coveringFor}
                                                    </p>
+                                                ) : card.variant === "intake" ? (
+                                                   <p className="mt-1 truncate text-[10px] font-medium text-sky-800">
+                                                      Intake
+                                                   </p>
                                                 ) : (
-                                                   <p className="mt-1 truncate text-[10px] text-slate-400">
+                                                   <p className="mt-1 truncate text-[10px] text-slate-700">
                                                       {card.group.startsOn} to {card.group.endsOn || "open"}
                                                    </p>
                                                 )}
@@ -1201,19 +1367,32 @@ export default function TeachersManager() {
                                  <div className="flex items-start justify-between gap-3">
                                     <div>
                                        <div className="flex flex-wrap items-center gap-2">
-                                          <p className="font-semibold text-white">{group.levelName}</p>
+                                          <p className="font-semibold text-white">{group.lmsGroupName || group.levelName}</p>
+                                          {group.isIntake && (
+                                             <span className="rounded-lg border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-200">
+                                                Intake
+                                             </span>
+                                          )}
                                           {!group.active && (
                                              <span className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] text-slate-400">
                                                 Archived
                                              </span>
                                           )}
                                        </div>
-                                       <p className="mt-1 text-sm text-slate-400">{group.startsAt} - {group.endsAt}</p>
+                                       <p className="mt-1 text-sm text-slate-400">
+                                          {group.levelName} | {group.startsAt} - {group.endsAt}
+                                       </p>
+                                       {group.lmsGroupId && (
+                                          <p className="mt-1 text-xs text-slate-500">ID {group.lmsGroupId}</p>
+                                       )}
                                     </div>
-                                    <span className="rounded-lg border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-xs text-sky-200">{group.activeStudentsCount} students</span>
+                                    {!group.isIntake && (
+                                       <span className="rounded-lg border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-xs text-sky-200">{group.activeStudentsCount} students</span>
+                                    )}
                                  </div>
                                  <p className="mt-3 text-xs text-slate-500">
-                                    {group.weekdays.map((day) => ERP_WEEKDAYS.find((weekday) => weekday.value === day)?.label.slice(0, 3)).join(", ")} | {group.startsOn} to {group.endsOn || "open"}
+                                    {group.weekdays.map((day) => ERP_WEEKDAYS.find((weekday) => weekday.value === day)?.label.slice(0, 3)).join(", ")}
+                                    {!group.isIntake && ` | ${group.startsOn} to ${group.endsOn || "open"}`}
                                  </p>
                                  {canManage && (
                                     <div className="mt-4 flex flex-wrap gap-2">
@@ -1319,7 +1498,7 @@ export default function TeachersManager() {
                                  {monthDays.map((day) => {
                                     const isSunday = getWeekday(day) === 7;
                                     const isToday = day === today;
-                                    const dayGroups = groups.filter((group) => group.teacherId === teacher.id && groupIsOnDate(group, day) && !holidayDates.has(day));
+                                    const dayGroups = groups.filter((group) => group.teacherId === teacher.id && !group.isIntake && groupIsOnDate(group, day) && !holidayDates.has(day));
 
                                     return (
                                        <td
@@ -1340,8 +1519,11 @@ export default function TeachersManager() {
 
                                                 return (
                                                    <button key={group.id} type="button" onClick={() => openCover(group, day)} className="block w-full rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-left text-[11px] text-emerald-100 transition hover:bg-emerald-500/20">
-                                                      <span className="block truncate">{group.levelName}</span>
+                                                      <span className="block truncate">{group.lmsGroupName || group.levelName}</span>
                                                       <span className="block truncate text-[10px] text-slate-400">{group.startsAt}</span>
+                                                      {group.lmsGroupId && (
+                                                         <span className="block truncate text-[10px] text-slate-400">ID {group.lmsGroupId}</span>
+                                                      )}
                                                       <CoverBadge cover={cover} teachers={teachers} />
                                                    </button>
                                                 );
