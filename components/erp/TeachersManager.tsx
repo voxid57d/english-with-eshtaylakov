@@ -532,6 +532,16 @@ export default function TeachersManager() {
       void loadTeachers();
    }, [loadTeachers]);
 
+   useEffect(() => {
+      if (!success) return;
+
+      const timeoutId = window.setTimeout(() => {
+         setSuccess(null);
+      }, 3000);
+
+      return () => window.clearTimeout(timeoutId);
+   }, [success]);
+
    const saveEntity = async (entity: string, body: Record<string, unknown>, method: "POST" | "PATCH" = "POST") => {
       setSaving(true);
       setError(null);
