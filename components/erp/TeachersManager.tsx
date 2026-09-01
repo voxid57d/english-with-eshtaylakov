@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
    PiArchiveLight,
    PiArrowCounterClockwiseLight,
@@ -395,6 +395,7 @@ function CoverBadge({ cover, teachers }: { cover: CoverView | null; teachers: Te
 export default function TeachersManager() {
    const searchParams = useSearchParams();
    const activeTab = searchParams.get("section") === "covers" ? "covers" : "lessons";
+   const editorSectionRef = useRef<HTMLElement | null>(null);
    const [activeEditor, setActiveEditor] = useState<"teacher" | "levels" | "group" | null>(null);
    const [teachers, setTeachers] = useState<TeacherView[]>([]);
    const [levels, setLevels] = useState<LevelView[]>([]);
@@ -700,6 +701,9 @@ export default function TeachersManager() {
          active: teacher.active,
       });
       setActiveEditor("teacher");
+      requestAnimationFrame(() => {
+         editorSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
    };
 
    const editGroup = (group: GroupView) => {
@@ -720,6 +724,9 @@ export default function TeachersManager() {
          archivedOn: group.archivedOn || "",
       });
       setActiveEditor("group");
+      requestAnimationFrame(() => {
+         editorSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
    };
 
    const updateGroupActive = async (group: GroupView, active: boolean) => {
@@ -824,7 +831,7 @@ export default function TeachersManager() {
          {activeTab === "lessons" ? (
             <div className="space-y-4">
                {canManage && (
-                  <section className="space-y-3">
+                  <section ref={editorSectionRef} className="space-y-3">
                      <div className="flex flex-wrap gap-2">
                         {[
                            ["teacher", "Teacher profile"],
@@ -1149,23 +1156,23 @@ export default function TeachersManager() {
                                              Go
                                           </span>
                                           {canManage && (
-                                       <span
-                                          role="button"
-                                          tabIndex={0}
-                                          onClick={(event) => {
-                                             event.stopPropagation();
-                                             editTeacher(teacher);
-                                          }}
-                                          onKeyDown={(event) => {
-                                             if (event.key === "Enter" || event.key === " ") {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                editTeacher(teacher);
-                                             }
-                                          }}
-                                                className="w-11 rounded-md border border-slate-700 px-2 py-1 text-center text-xs text-slate-300 transition hover:bg-slate-800">
-                                          Edit
-                                       </span>
+                                             <span
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={(event) => {
+                                                   event.stopPropagation();
+                                                   editTeacher(teacher);
+                                                }}
+                                                onKeyDown={(event) => {
+                                                   if (event.key === "Enter" || event.key === " ") {
+                                                      event.preventDefault();
+                                                      event.stopPropagation();
+                                                      editTeacher(teacher);
+                                                   }
+                                                }}
+                                                className="w-11 rounded-md border border-slate-700 px-2 py-1 text-center text-xs text-slate-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200">
+                                                Edit
+                                             </span>
                                           )}
                                        </span>
                                     )}
