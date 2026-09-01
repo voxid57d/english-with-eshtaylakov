@@ -211,6 +211,7 @@ create table if not exists public.teacher_profiles (
    celta_certified boolean not null default false,
    started_working_on date,
    stage text,
+   lms_teacher_url text,
    active boolean not null default true,
    created_at timestamptz not null default now(),
    updated_at timestamptz not null default now()
@@ -428,6 +429,9 @@ alter table if exists public.shifts
    add column if not exists hourly_rate_override numeric(12, 2),
    add column if not exists extra_hourly_rate_override numeric(12, 2),
    add column if not exists extra_hours_enabled_override boolean;
+
+alter table if exists public.teacher_profiles
+   add column if not exists lms_teacher_url text;
 
 alter table if exists public.teacher_lesson_groups
    add column if not exists is_intake boolean not null default false,

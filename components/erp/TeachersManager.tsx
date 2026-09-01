@@ -24,6 +24,7 @@ type TeacherView = {
    celtaCertified: boolean;
    startedWorkingOn: string | null;
    stage: string | null;
+   lmsTeacherUrl: string | null;
    active: boolean;
 };
 
@@ -83,6 +84,7 @@ type TeacherForm = {
    celtaCertified: boolean;
    startedWorkingOn: string;
    stage: string;
+   lmsTeacherUrl: string;
    active: boolean;
 };
 
@@ -126,6 +128,7 @@ const EMPTY_TEACHER_FORM: TeacherForm = {
    celtaCertified: false,
    startedWorkingOn: "",
    stage: "",
+   lmsTeacherUrl: "",
    active: true,
 };
 
@@ -693,6 +696,7 @@ export default function TeachersManager() {
          celtaCertified: teacher.celtaCertified,
          startedWorkingOn: teacher.startedWorkingOn || "",
          stage: teacher.stage || "",
+         lmsTeacherUrl: teacher.lmsTeacherUrl || "",
          active: teacher.active,
       });
       setActiveEditor("teacher");
@@ -880,10 +884,16 @@ export default function TeachersManager() {
                                  onChange={(startedWorkingOn) => setTeacherForm((current) => ({ ...current, startedWorkingOn }))}
                               />
                            </div>
-                           <label className="block">
-                              <span className="text-sm text-slate-300">Stage</span>
-                              <input value={teacherForm.stage} onChange={(event) => setTeacherForm((current) => ({ ...current, stage: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" placeholder="Current stage" />
-                           </label>
+                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <label className="block">
+                                 <span className="text-sm text-slate-300">Stage</span>
+                                 <input value={teacherForm.stage} onChange={(event) => setTeacherForm((current) => ({ ...current, stage: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" placeholder="Current stage" />
+                              </label>
+                              <label className="block">
+                                 <span className="text-sm text-slate-300">LMS teacher link</span>
+                                 <input type="url" value={teacherForm.lmsTeacherUrl} onChange={(event) => setTeacherForm((current) => ({ ...current, lmsTeacherUrl: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" placeholder="https://..." />
+                              </label>
+                           </div>
                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <label className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
                                  <input type="checkbox" checked={teacherForm.celtaCertified} onChange={(event) => setTeacherForm((current) => ({ ...current, celtaCertified: event.target.checked }))} className="h-4 w-4 accent-emerald-500" />
@@ -1111,7 +1121,34 @@ export default function TeachersManager() {
                                     <p className="min-w-0 flex-1 truncate text-xs text-slate-500">
                                        {[teacher.phone, teacher.ieltsScore ? `IELTS ${teacher.ieltsScore}` : null, teacher.celtaCertified ? "CELTA" : null, teacher.stage].filter(Boolean).join(" | ") || "No details"}
                                     </p>
-                                    {canManage && (
+                                    {(teacher.lmsTeacherUrl || canManage) && (
+                                       <span className="flex shrink-0 flex-col gap-1">
+                                          <span
+                                             role="button"
+                                             tabIndex={teacher.lmsTeacherUrl ? 0 : -1}
+                                             aria-disabled={!teacher.lmsTeacherUrl}
+                                             onClick={(event) => {
+                                                event.stopPropagation();
+                                                if (teacher.lmsTeacherUrl) {
+                                                   window.open(teacher.lmsTeacherUrl, "_blank", "noopener,noreferrer");
+                                                }
+                                             }}
+                                             onKeyDown={(event) => {
+                                                if ((event.key === "Enter" || event.key === " ") && teacher.lmsTeacherUrl) {
+                                                   event.preventDefault();
+                                                   event.stopPropagation();
+                                                   window.open(teacher.lmsTeacherUrl, "_blank", "noopener,noreferrer");
+                                                }
+                                             }}
+                                             className={[
+                                                "w-11 rounded-md border px-2 py-1 text-center text-xs transition",
+                                                teacher.lmsTeacherUrl
+                                                   ? "border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/10"
+                                                   : "cursor-not-allowed border-slate-800 text-slate-600",
+                                             ].join(" ")}>
+                                             Go
+                                          </span>
+                                          {canManage && (
                                        <span
                                           role="button"
                                           tabIndex={0}
@@ -1126,8 +1163,10 @@ export default function TeachersManager() {
                                                 editTeacher(teacher);
                                              }
                                           }}
-                                          className="shrink-0 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:bg-slate-800">
+                                                className="w-11 rounded-md border border-slate-700 px-2 py-1 text-center text-xs text-slate-300 transition hover:bg-slate-800">
                                           Edit
+                                       </span>
+                                          )}
                                        </span>
                                     )}
                                  </div>
@@ -1401,6 +1440,21 @@ export default function TeachersManager() {
                                           onClick={() => editGroup(group)}
                                           className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 transition hover:bg-slate-800">
                                           Edit
+                                       </button>
+                                       <button
+                                          type="button"
+                                          onClick={() => {
+                                             if (group.lmsGroupId) {
+                                                window.open(
+                                                   `https://main.ieltszoneapp.uz/admin/groups/${encodeURIComponent(group.lmsGroupId)}`,
+                                                   "_blank",
+                                                   "noopener,noreferrer",
+                                                );
+                                             }
+                                          }}
+                                          disabled={!group.lmsGroupId}
+                                          className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+                                          Go
                                        </button>
                                        <button
                                           type="button"

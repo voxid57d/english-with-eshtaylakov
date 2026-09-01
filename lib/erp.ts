@@ -188,6 +188,7 @@ export type TeacherProfile = {
    celta_certified: boolean;
    started_working_on: string | null;
    stage: string | null;
+   lms_teacher_url: string | null;
    active: boolean;
    created_at: string;
    updated_at: string;

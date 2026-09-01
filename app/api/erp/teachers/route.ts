@@ -71,6 +71,22 @@ function validateOptionalDate(value: unknown, fieldName: string) {
    return dateValue;
 }
 
+function validateOptionalUrl(value: unknown, fieldName: string) {
+   const urlValue = cleanString(value);
+   if (!urlValue) return null;
+
+   try {
+      const url = new URL(urlValue);
+      if (url.protocol === "http:" || url.protocol === "https:") {
+         return url.toString();
+      }
+   } catch {
+      // Fall through to the shared validation error below.
+   }
+
+   throw new Error(`${fieldName} must be a valid http or https URL.`);
+}
+
 function normalizeWeekdays(value: unknown) {
    if (!Array.isArray(value)) throw new Error("Choose lesson weekdays.");
 
@@ -95,6 +111,7 @@ function toTeacher(row: TeacherRow) {
       celtaCertified: row.celta_certified,
       startedWorkingOn: row.started_working_on,
       stage: row.stage,
+      lmsTeacherUrl: row.lms_teacher_url,
       active: row.active,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -189,7 +206,7 @@ async function loadPayload(req: Request) {
    const [teacherResult, levelResult, groupResult, coverResult, holidayResult] = await Promise.all([
       supabaseAdmin
          .from("teacher_profiles")
-         .select("id, full_name, phone, birthday, ielts_score, celta_certified, started_working_on, stage, active, created_at, updated_at")
+         .select("id, full_name, phone, birthday, ielts_score, celta_certified, started_working_on, stage, lms_teacher_url, active, created_at, updated_at")
          .order("active", { ascending: false })
          .order("full_name", { ascending: true }),
       supabaseAdmin
@@ -250,6 +267,7 @@ function teacherPayload(body: Record<string, unknown>) {
       celta_certified: body.celtaCertified === true,
       started_working_on: validateOptionalDate(body.startedWorkingOn, "Started working"),
       stage: nullableString(body.stage),
+      lms_teacher_url: validateOptionalUrl(body.lmsTeacherUrl, "LMS teacher link"),
       active: body.active !== false,
    };
 }
