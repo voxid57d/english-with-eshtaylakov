@@ -261,6 +261,15 @@ create table if not exists public.teacher_lesson_covers (
    )
 );
 
+create table if not exists public.teacher_lesson_holidays (
+   id uuid primary key default gen_random_uuid(),
+   holiday_date date not null unique,
+   note text,
+   created_by uuid references auth.users(id) on delete set null,
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now()
+);
+
 alter table public.erp_role_permissions
    drop constraint if exists erp_role_permissions_module_check;
 
@@ -300,6 +309,8 @@ create index if not exists teacher_lesson_groups_teacher_idx
    on public.teacher_lesson_groups(teacher_id, active, starts_on, ends_on);
 create index if not exists teacher_lesson_covers_group_date_idx
    on public.teacher_lesson_covers(lesson_group_id, cover_date);
+create index if not exists teacher_lesson_holidays_date_idx
+   on public.teacher_lesson_holidays(holiday_date);
 
 insert into public.erp_role_permissions (role, module, can_view, can_manage)
 values
@@ -510,6 +521,12 @@ before update on public.teacher_lesson_covers
 for each row
 execute function public.set_erp_updated_at();
 
+drop trigger if exists teacher_lesson_holidays_updated_at on public.teacher_lesson_holidays;
+create trigger teacher_lesson_holidays_updated_at
+before update on public.teacher_lesson_holidays
+for each row
+execute function public.set_erp_updated_at();
+
 alter table public.branches enable row level security;
 alter table public.staff_profiles enable row level security;
 alter table public.staff_branch_assignments enable row level security;
@@ -526,6 +543,7 @@ alter table public.teacher_profiles enable row level security;
 alter table public.teacher_group_levels enable row level security;
 alter table public.teacher_lesson_groups enable row level security;
 alter table public.teacher_lesson_covers enable row level security;
+alter table public.teacher_lesson_holidays enable row level security;
 
 -- First version access pattern:
 -- keep browser clients blocked by RLS and access these tables through

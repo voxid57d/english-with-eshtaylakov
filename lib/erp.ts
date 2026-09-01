@@ -227,6 +227,15 @@ export type TeacherLessonCover = {
    updated_at: string;
 };
 
+export type TeacherLessonHoliday = {
+   id: string;
+   holiday_date: string;
+   note: string | null;
+   created_by: string | null;
+   created_at: string;
+   updated_at: string;
+};
+
 export const ERP_ROLE_LABELS: Record<ErpStaffRole, string> = {
    admin: "Admin",
    branch_manager: "Branch Manager",

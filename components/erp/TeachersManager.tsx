@@ -56,6 +56,19 @@ type CoverView = {
    coveringTeacherName: string | null;
 };
 
+type HolidayView = {
+   id: string;
+   holidayDate: string;
+   note: string | null;
+};
+
+type ScheduleCard = {
+   key: string;
+   group: GroupView;
+   variant: "lesson" | "cover";
+   coveringFor?: string;
+};
+
 type TeacherForm = {
    id: string;
    fullName: string;
@@ -129,11 +142,27 @@ const EMPTY_GROUP_FORM: GroupForm = {
 const START_HOUR = 8;
 const END_HOUR = 21;
 const HOUR_HEIGHT = 64;
+const LESSON_TIME_OPTIONS = Array.from({ length: (END_HOUR - START_HOUR + 1) * 2 }, (_, index) => {
+   const totalMinutes = START_HOUR * 60 + index * 30;
+   const hours = Math.floor(totalMinutes / 60);
+   const minutes = totalMinutes % 60;
+
+   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}).filter((time) => time <= `${END_HOUR}:00`);
+const QUICK_LESSON_TIMES = ["08:00", "10:00", "14:00", "16:00", "18:00", "20:00"];
 
 function addDays(dateValue: string, days: number) {
    const date = new Date(`${dateValue}T00:00:00.000Z`);
    date.setUTCDate(date.getUTCDate() + days);
    return date.toISOString().slice(0, 10);
+}
+
+function formatLocalDate(date: Date) {
+   const year = date.getFullYear();
+   const month = String(date.getMonth() + 1).padStart(2, "0");
+   const day = String(date.getDate()).padStart(2, "0");
+
+   return `${year}-${month}-${day}`;
 }
 
 function getWeekStart(anchor = new Date()) {
@@ -180,6 +209,53 @@ function weekDayShort(date: string) {
    );
 }
 
+function LessonTimeField({
+   label,
+   value,
+   onChange,
+}: {
+   label: string;
+   value: string;
+   onChange: (value: string) => void;
+}) {
+   const options = LESSON_TIME_OPTIONS.includes(value)
+      ? LESSON_TIME_OPTIONS
+      : [...LESSON_TIME_OPTIONS, value].sort();
+
+   return (
+      <div>
+         <span className="text-sm text-slate-300">{label}</span>
+         <select
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+            required>
+            {options.map((time) => (
+               <option key={time} value={time}>
+                  {time}
+               </option>
+            ))}
+         </select>
+         <div className="mt-2 grid grid-cols-3 gap-1.5">
+            {QUICK_LESSON_TIMES.map((time) => (
+               <button
+                  key={time}
+                  type="button"
+                  onClick={() => onChange(time)}
+                  className={[
+                     "rounded-md border px-2 py-1 text-xs transition",
+                     value === time
+                        ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+                        : "border-slate-800 text-slate-400 hover:border-slate-700 hover:bg-slate-900",
+                  ].join(" ")}>
+                  {time}
+               </button>
+            ))}
+         </div>
+      </div>
+   );
+}
+
 function CoverBadge({ cover, teachers }: { cover: CoverView | null; teachers: TeacherView[] }) {
    if (!cover) return null;
 
@@ -201,6 +277,7 @@ export default function TeachersManager() {
    const [levels, setLevels] = useState<LevelView[]>([]);
    const [groups, setGroups] = useState<GroupView[]>([]);
    const [covers, setCovers] = useState<CoverView[]>([]);
+   const [holidays, setHolidays] = useState<HolidayView[]>([]);
    const [canManage, setCanManage] = useState(false);
    const [selectedTeacherId, setSelectedTeacherId] = useState("");
    const [teacherForm, setTeacherForm] = useState<TeacherForm>(EMPTY_TEACHER_FORM);
@@ -210,6 +287,7 @@ export default function TeachersManager() {
    const [weekStart, setWeekStart] = useState(getWeekStart());
    const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
    const [coverDraft, setCoverDraft] = useState<CoverDraft | null>(null);
+   const [holidayDate, setHolidayDate] = useState<string | null>(null);
    const [loading, setLoading] = useState(true);
    const [saving, setSaving] = useState(false);
    const [error, setError] = useState<string | null>(null);
@@ -217,12 +295,19 @@ export default function TeachersManager() {
 
    const activeTeachers = useMemo(() => teachers.filter((teacher) => teacher.active), [teachers]);
    const selectedTeacher = teachers.find((teacher) => teacher.id === selectedTeacherId) || activeTeachers[0] || teachers[0];
+   const today = useMemo(() => formatLocalDate(new Date()), []);
    const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
    const monthDays = useMemo(() => getMonthDays(month), [month]);
+   const holidayDates = useMemo(() => new Set(holidays.map((holiday) => holiday.holidayDate)), [holidays]);
+   const effectiveCovers = useMemo(
+      () => covers.filter((cover) => !holidayDates.has(cover.coverDate)),
+      [covers, holidayDates],
+   );
+   const groupById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
 
    const coverByGroupDate = useMemo(() => {
-      return new Map(covers.map((cover) => [`${cover.lessonGroupId}:${cover.coverDate}`, cover]));
-   }, [covers]);
+      return new Map(effectiveCovers.map((cover) => [`${cover.lessonGroupId}:${cover.coverDate}`, cover]));
+   }, [effectiveCovers]);
 
    const groupsByTeacher = useMemo(() => {
       return teachers.map((teacher) => {
@@ -243,7 +328,7 @@ export default function TeachersManager() {
       const asked = new Map<string, number>();
       const covered = new Map<string, number>();
 
-      for (const cover of covers) {
+      for (const cover of effectiveCovers) {
          if (cover.teacherId) {
             asked.set(cover.teacherId, (asked.get(cover.teacherId) || 0) + 1);
          }
@@ -253,7 +338,7 @@ export default function TeachersManager() {
       }
 
       return { asked, covered };
-   }, [covers]);
+   }, [effectiveCovers]);
 
    const selectedTeacherGroups = useMemo(() => {
       return groups.filter(
@@ -268,10 +353,13 @@ export default function TeachersManager() {
          setLoading(true);
          setError(null);
          const token = await getSupabaseAccessToken();
-         const response = await fetch(`/api/erp/teachers?month=${month}`, {
+         const response = await fetch(
+            `/api/erp/teachers?month=${month}&weekStart=${weekStart}&weekEnd=${addDays(weekStart, 6)}`,
+            {
             headers: { Authorization: `Bearer ${token}` },
             cache: "no-store",
-         });
+            },
+         );
          const payload = await response.json();
 
          if (!response.ok) {
@@ -282,6 +370,7 @@ export default function TeachersManager() {
          setLevels(payload.levels || []);
          setGroups(payload.groups || []);
          setCovers(payload.covers || []);
+         setHolidays(payload.holidays || []);
          setCanManage(Boolean(payload.canManage));
          setSelectedTeacherId((current) => current || payload.teachers?.[0]?.id || "");
       } catch (requestError) {
@@ -289,7 +378,7 @@ export default function TeachersManager() {
       } finally {
          setLoading(false);
       }
-   }, [month]);
+   }, [month, weekStart]);
 
    useEffect(() => {
       void loadTeachers();
@@ -302,14 +391,17 @@ export default function TeachersManager() {
 
       try {
          const token = await getSupabaseAccessToken();
-         const response = await fetch(`/api/erp/teachers?month=${month}`, {
+         const response = await fetch(
+            `/api/erp/teachers?month=${month}&weekStart=${weekStart}&weekEnd=${addDays(weekStart, 6)}`,
+            {
             method,
             headers: {
                "Content-Type": "application/json",
                Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({ entity, ...body }),
-         });
+            },
+         );
          const payload = await response.json();
 
          if (!response.ok) {
@@ -320,12 +412,60 @@ export default function TeachersManager() {
          setLevels(payload.levels || []);
          setGroups(payload.groups || []);
          setCovers(payload.covers || []);
+         setHolidays(payload.holidays || []);
          setCanManage(Boolean(payload.canManage));
          setSuccess("Saved.");
          return true;
       } catch (requestError) {
          setError(requestError instanceof Error ? requestError.message : "Failed to save teacher data.");
          return false;
+      } finally {
+         setSaving(false);
+      }
+   };
+
+   const openHolidayDialog = (day: string) => {
+      if (!canManage) return;
+      setHolidayDate(day);
+      setError(null);
+      setSuccess(null);
+   };
+
+   const saveHoliday = async () => {
+      if (!holidayDate) return;
+      if (await saveEntity("holiday", { holidayDate }, "POST")) {
+         setSuccess("Lessons cancelled for this day.");
+         setHolidayDate(null);
+      }
+   };
+
+   const clearHoliday = async () => {
+      if (!holidayDate) return;
+
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+      try {
+         const token = await getSupabaseAccessToken();
+         const response = await fetch(
+            `/api/erp/teachers?month=${month}&weekStart=${weekStart}&weekEnd=${addDays(weekStart, 6)}`,
+            {
+               method: "DELETE",
+               headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+               },
+               body: JSON.stringify({ entity: "holiday", holidayDate }),
+            },
+         );
+         const payload = await response.json();
+         if (!response.ok) throw new Error(payload.error || "Failed to restore lessons.");
+         setCovers(payload.covers || []);
+         setHolidays(payload.holidays || []);
+         setSuccess("Lessons restored for this day.");
+         setHolidayDate(null);
+      } catch (requestError) {
+         setError(requestError instanceof Error ? requestError.message : "Failed to restore lessons.");
       } finally {
          setSaving(false);
       }
@@ -658,14 +798,16 @@ export default function TeachersManager() {
                               <span className="text-sm text-slate-300">Ending date</span>
                               <input type="date" value={groupForm.endsOn} onChange={(event) => setGroupForm((current) => ({ ...current, endsOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
                            </label>
-                           <label className="block">
-                              <span className="text-sm text-slate-300">Starts</span>
-                              <input type="time" value={groupForm.startsAt} onChange={(event) => setGroupForm((current) => ({ ...current, startsAt: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" required />
-                           </label>
-                           <label className="block">
-                              <span className="text-sm text-slate-300">Ends</span>
-                              <input type="time" value={groupForm.endsAt} onChange={(event) => setGroupForm((current) => ({ ...current, endsAt: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" required />
-                           </label>
+                           <LessonTimeField
+                              label="Starts"
+                              value={groupForm.startsAt}
+                              onChange={(startsAt) => setGroupForm((current) => ({ ...current, startsAt }))}
+                           />
+                           <LessonTimeField
+                              label="Ends"
+                              value={groupForm.endsAt}
+                              onChange={(endsAt) => setGroupForm((current) => ({ ...current, endsAt }))}
+                           />
                            <label className="block">
                               <span className="text-sm text-slate-300">Active students</span>
                               <input type="number" min="0" value={groupForm.activeStudentsCount} onChange={(event) => setGroupForm((current) => ({ ...current, activeStudentsCount: Number(event.target.value) }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
@@ -762,12 +904,48 @@ export default function TeachersManager() {
                         <div className="mt-4 overflow-x-auto">
                            <div className="grid min-w-[980px] grid-cols-[72px_repeat(7,minmax(120px,1fr))] overflow-hidden rounded-lg border border-slate-800">
                               <div className="border-b border-slate-800 bg-slate-950 p-3 text-xs text-slate-500">Time</div>
-                              {weekDays.map((day) => (
-                                 <div key={day} className="border-b border-l border-slate-800 bg-slate-950 p-3">
-                                    <p className="text-sm font-semibold text-white">{weekDayShort(day)}</p>
-                                    <p className="mt-0.5 text-xs text-slate-500">{day.slice(5)}</p>
+                              {weekDays.map((day) => {
+                                 const isSunday = getWeekday(day) === 7;
+                                 const isToday = day === today;
+
+                                 return (
+                                 <div
+                                    key={day}
+                                    className={[
+                                       "border-b border-l p-3",
+                                       holidayDates.has(day)
+                                          ? "border-red-500/30 bg-red-500/10"
+                                          : isToday
+                                            ? "border-emerald-500/40 bg-emerald-500/10"
+                                            : isSunday
+                                              ? "border-slate-800 bg-red-500/10"
+                                              : "border-slate-800 bg-slate-950",
+                                    ].join(" ")}>
+                                    <button
+                                       type="button"
+                                       onClick={() => openHolidayDialog(day)}
+                                       disabled={!canManage}
+                                       className="block w-full rounded-md text-left transition hover:bg-slate-900/40 disabled:cursor-default disabled:hover:bg-transparent">
+                                    <div className="flex items-start justify-between gap-2">
+                                       <div>
+                                          <p className="text-sm font-semibold text-white">{weekDayShort(day)}</p>
+                                          <p className="mt-0.5 text-xs text-slate-500">{day.slice(5)}</p>
+                                       </div>
+                                       {isToday && (
+                                          <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-200">
+                                             Today
+                                          </span>
+                                       )}
+                                    </div>
+                                    {holidayDates.has(day) && (
+                                       <span className="mt-2 inline-flex rounded-md border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-red-200">
+                                          Holiday
+                                       </span>
+                                    )}
+                                    </button>
                                  </div>
-                              ))}
+                                 );
+                              })}
                               <div className="bg-slate-950/50">
                                  {Array.from({ length: END_HOUR - START_HOUR }, (_, index) => START_HOUR + index).map((hour) => (
                                     <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-slate-800 px-2 py-1 text-xs text-slate-500">
@@ -776,24 +954,106 @@ export default function TeachersManager() {
                                  ))}
                               </div>
                               {weekDays.map((day) => {
-                                 const dayGroups = selectedTeacher
-                                    ? groups.filter((group) => group.teacherId === selectedTeacher.id && groupIsOnDate(group, day))
+                                 const isSunday = getWeekday(day) === 7;
+                                 const isToday = day === today;
+                                 const scheduleCards: ScheduleCard[] = selectedTeacher && !holidayDates.has(day)
+                                    ? [
+                                         ...groups
+                                            .filter(
+                                               (group) =>
+                                                  group.teacherId === selectedTeacher.id &&
+                                                  groupIsOnDate(group, day) &&
+                                                  !coverByGroupDate.has(`${group.id}:${day}`),
+                                            )
+                                            .map((group) => ({
+                                               key: `lesson:${group.id}:${day}`,
+                                               group,
+                                               variant: "lesson" as const,
+                                            })),
+                                         ...effectiveCovers
+                                            .filter((cover) => cover.coveringTeacherId === selectedTeacher.id && cover.coverDate === day)
+                                            .flatMap((cover) => {
+                                               const group = groupById.get(cover.lessonGroupId);
+                                               if (!group || !groupIsOnDate(group, day)) return [];
+
+                                               return [{
+                                                  key: `cover:${cover.id}`,
+                                                  group,
+                                                  variant: "cover" as const,
+                                                  coveringFor: group.teacherName,
+                                               }];
+                                            }),
+                                      ].sort((left, right) => left.group.startsAt.localeCompare(right.group.startsAt))
                                     : [];
+                                 const slotTotals = new Map<string, number>();
+                                 const slotIndexes = new Map<string, number>();
+
+                                 for (const card of scheduleCards) {
+                                    const slotKey = `${card.group.startsAt}:${card.group.endsAt}`;
+                                    slotTotals.set(slotKey, (slotTotals.get(slotKey) || 0) + 1);
+                                 }
 
                                  return (
-                                    <div key={day} className="relative border-l border-slate-800 bg-slate-950/30" style={{ height: (END_HOUR - START_HOUR) * HOUR_HEIGHT }}>
+                                    <div
+                                       key={day}
+                                       className={[
+                                          "relative border-l",
+                                       holidayDates.has(day)
+                                          ? "border-red-500/30 bg-red-500/10"
+                                          : isToday
+                                             ? "border-emerald-500/40 bg-emerald-500/10"
+                                             : isSunday
+                                               ? "border-slate-800 bg-red-500/10"
+                                               : "border-slate-800 bg-slate-950/30",
+                                       ].join(" ")}
+                                       style={{ height: (END_HOUR - START_HOUR) * HOUR_HEIGHT }}>
                                        {Array.from({ length: END_HOUR - START_HOUR }, (_, index) => (
                                           <div key={index} style={{ height: HOUR_HEIGHT }} className="border-b border-slate-800/80" />
                                        ))}
-                                       {dayGroups.map((group) => {
-                                          const top = Math.max(0, timeToMinutes(group.startsAt) - START_HOUR * 60) * (HOUR_HEIGHT / 60);
-                                          const height = Math.max(36, (timeToMinutes(group.endsAt) - timeToMinutes(group.startsAt)) * (HOUR_HEIGHT / 60));
+                                       {scheduleCards.map((card) => {
+                                          const top = Math.max(0, timeToMinutes(card.group.startsAt) - START_HOUR * 60) * (HOUR_HEIGHT / 60);
+                                          const height = Math.max(36, (timeToMinutes(card.group.endsAt) - timeToMinutes(card.group.startsAt)) * (HOUR_HEIGHT / 60));
+                                          const slotKey = `${card.group.startsAt}:${card.group.endsAt}`;
+                                          const slotTotal = slotTotals.get(slotKey) || 1;
+                                          const slotIndex = slotIndexes.get(slotKey) || 0;
+                                          slotIndexes.set(slotKey, slotIndex + 1);
 
                                           return (
-                                             <button key={group.id} type="button" onClick={() => canManage && editGroup(group)} style={{ top, height }} className="absolute left-2 right-2 overflow-hidden rounded-lg border border-emerald-500/30 bg-emerald-500/15 p-2 text-left shadow-lg shadow-slate-950/30 transition hover:bg-emerald-500/20">
-                                                <p className="truncate text-xs font-semibold text-emerald-100">{group.levelName}</p>
-                                                <p className="mt-1 text-[11px] text-slate-300">{group.startsAt} - {group.endsAt}</p>
-                                                <p className="mt-1 truncate text-[10px] text-slate-400">{group.startsOn} to {group.endsOn || "open"}</p>
+                                             <button
+                                                key={card.key}
+                                                type="button"
+                                                onClick={() => canManage && editGroup(card.group)}
+                                                style={{
+                                                   top,
+                                                   height,
+                                                   left: `calc(${(slotIndex / slotTotal) * 100}% + 0.5rem)`,
+                                                   right: `calc(${((slotTotal - slotIndex - 1) / slotTotal) * 100}% + 0.5rem)`,
+                                                }}
+                                                className={[
+                                                   "absolute overflow-hidden rounded-lg p-2 text-left shadow-lg shadow-slate-950/30 transition",
+                                                   card.variant === "cover"
+                                                      ? "border border-amber-500/35 bg-amber-500/20 hover:bg-amber-500/25"
+                                                      : "border border-emerald-500/30 bg-emerald-500/15 hover:bg-emerald-500/20",
+                                                ].join(" ")}>
+                                                <p
+                                                   className={[
+                                                      "truncate text-xs font-semibold",
+                                                      card.variant === "cover" ? "text-amber-200" : "text-emerald-100",
+                                                   ].join(" ")}>
+                                                   {card.group.levelName}
+                                                </p>
+                                                <p className="mt-1 text-[11px] text-slate-300">
+                                                   {card.group.startsAt} - {card.group.endsAt}
+                                                </p>
+                                                {card.variant === "cover" ? (
+                                                   <p className="mt-1 truncate text-[10px] font-medium text-amber-200">
+                                                      Cover for {card.coveringFor}
+                                                   </p>
+                                                ) : (
+                                                   <p className="mt-1 truncate text-[10px] text-slate-400">
+                                                      {card.group.startsOn} to {card.group.endsOn || "open"}
+                                                   </p>
+                                                )}
                                              </button>
                                           );
                                        })}
@@ -903,12 +1163,42 @@ export default function TeachersManager() {
                               <th className="sticky left-0 z-10 w-56 border border-slate-800 bg-slate-950 px-3 py-3 text-xs uppercase tracking-[0.14em] text-slate-500">
                                  Teacher
                               </th>
-                              {monthDays.map((day) => (
-                                 <th key={day} className="w-24 border-y border-r border-slate-800 bg-slate-950 px-2 py-3 text-center text-xs text-slate-500">
-                                    <span className="block text-slate-300">{Number(day.slice(8))}</span>
-                                    {weekDayShort(day)}
+                              {monthDays.map((day) => {
+                                 const isSunday = getWeekday(day) === 7;
+                                 const isToday = day === today;
+
+                                 return (
+                                 <th
+                                    key={day}
+                                    className={[
+                                       "w-24 border-y border-r px-2 py-3 text-center text-xs",
+                                       isToday
+                                          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                                          : isSunday
+                                            ? "border-slate-800 bg-red-500/10 text-red-200"
+                                            : "border-slate-800 bg-slate-950 text-slate-500",
+                                    ].join(" ")}>
+                                    <button
+                                       type="button"
+                                       onClick={() => openHolidayDialog(day)}
+                                       disabled={!canManage}
+                                       className="block w-full rounded-md transition hover:bg-slate-900/40 disabled:cursor-default disabled:hover:bg-transparent">
+                                       <span className="block text-slate-300">{Number(day.slice(8))}</span>
+                                       {weekDayShort(day)}
+                                       {isToday && (
+                                          <span className="mt-1 block rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1 py-0.5 text-[10px] font-semibold text-emerald-200">
+                                             Today
+                                          </span>
+                                       )}
+                                       {holidayDates.has(day) && (
+                                          <span className="mt-1 block rounded-md border border-red-500/30 bg-red-500/10 px-1 py-0.5 text-[10px] font-semibold text-red-200">
+                                             Holiday
+                                          </span>
+                                       )}
+                                    </button>
                                  </th>
-                              ))}
+                                 );
+                              })}
                            </tr>
                         </thead>
                         <tbody>
@@ -921,10 +1211,23 @@ export default function TeachersManager() {
                                     </p>
                                  </th>
                                  {monthDays.map((day) => {
-                                    const dayGroups = groups.filter((group) => group.teacherId === teacher.id && groupIsOnDate(group, day));
+                                    const isSunday = getWeekday(day) === 7;
+                                    const isToday = day === today;
+                                    const dayGroups = groups.filter((group) => group.teacherId === teacher.id && groupIsOnDate(group, day) && !holidayDates.has(day));
 
                                     return (
-                                       <td key={`${teacher.id}:${day}`} className="h-24 border-b border-r border-slate-800 bg-slate-950/30 p-1 align-top">
+                                       <td
+                                          key={`${teacher.id}:${day}`}
+                                          className={[
+                                             "h-24 border-b border-r p-1 align-top",
+                                             holidayDates.has(day)
+                                                ? "border-red-500/30 bg-red-500/10"
+                                                : isToday
+                                                  ? "border-emerald-500/40 bg-emerald-500/10"
+                                                  : isSunday
+                                                    ? "border-slate-800 bg-red-500/10"
+                                                  : "border-slate-800 bg-slate-950/30",
+                                          ].join(" ")}>
                                           <div className="space-y-1">
                                              {dayGroups.map((group) => {
                                                 const cover = coverByGroupDate.get(`${group.id}:${day}`) || null;
@@ -977,6 +1280,43 @@ export default function TeachersManager() {
                   </div>
                </div>
             </section>
+         )}
+
+         {holidayDate && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm">
+               <div className="w-full max-w-sm rounded-lg border border-slate-800 bg-slate-950 p-5 shadow-2xl">
+                  <h2 className="text-lg font-semibold text-white">Holiday day</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">
+                     Should {holidayDate} be a holiday? All lessons on this date will be hidden from schedules and covers.
+                  </p>
+
+                  <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                     <button
+                        type="button"
+                        onClick={() => setHolidayDate(null)}
+                        className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800">
+                        Cancel
+                     </button>
+                     {holidayDates.has(holidayDate) ? (
+                        <button
+                           type="button"
+                           onClick={() => void clearHoliday()}
+                           disabled={saving}
+                           className="inline-flex flex-1 items-center justify-center rounded-lg border border-emerald-500/30 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/10 disabled:opacity-60">
+                           {saving ? "Restoring..." : "Restore lessons"}
+                        </button>
+                     ) : (
+                        <button
+                           type="button"
+                           onClick={() => void saveHoliday()}
+                           disabled={saving}
+                           className="inline-flex flex-1 items-center justify-center rounded-lg bg-red-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-400 disabled:opacity-60">
+                           {saving ? "Saving..." : "Mark as holiday"}
+                        </button>
+                     )}
+                  </div>
+               </div>
+            </div>
          )}
 
          {coverDraft && (

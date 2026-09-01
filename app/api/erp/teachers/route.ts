@@ -7,6 +7,7 @@ import {
    type TeacherGroupLevel,
    type TeacherLessonCover,
    type TeacherLessonGroup,
+   type TeacherLessonHoliday,
    type TeacherProfile,
 } from "@/lib/erp";
 import { canErp, requireErpPermission } from "@/lib/erpAuth";
@@ -24,6 +25,8 @@ type GroupRow = TeacherLessonGroup & {
 type CoverRow = TeacherLessonCover & {
    teacher_lesson_groups?: GroupRow | null;
 };
+
+type HolidayRow = TeacherLessonHoliday;
 
 function jsonError(error: unknown, fallback: string) {
    const { message, status } = erpJsonError(error, fallback);
@@ -140,6 +143,16 @@ function toCover(row: CoverRow) {
    };
 }
 
+function toHoliday(row: HolidayRow) {
+   return {
+      id: row.id,
+      holidayDate: row.holiday_date,
+      note: row.note,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+   };
+}
+
 function getMonthBoundsFromParam(month: string | null) {
    const anchor = month && /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7);
    const [year, monthIndex] = anchor.split("-").map(Number);
@@ -158,8 +171,18 @@ async function loadPayload(req: Request) {
    const canManage = await canErp(staff.role, "teachers", "manage");
    const url = new URL(req.url);
    const { month, monthStart, monthEnd } = getMonthBoundsFromParam(url.searchParams.get("month"));
+   const weekStartParam = url.searchParams.get("weekStart");
+   const weekEndParam = url.searchParams.get("weekEnd");
+   const holidayStart = weekStartParam && isDateString(weekStartParam) && weekStartParam < monthStart
+      ? weekStartParam
+      : monthStart;
+   const holidayEnd = weekEndParam && isDateString(weekEndParam) && weekEndParam > monthEnd
+      ? weekEndParam
+      : monthEnd;
+   const coverStart = holidayStart;
+   const coverEnd = holidayEnd;
 
-   const [teacherResult, levelResult, groupResult, coverResult] = await Promise.all([
+   const [teacherResult, levelResult, groupResult, coverResult, holidayResult] = await Promise.all([
       supabaseAdmin
          .from("teacher_profiles")
          .select("id, full_name, phone, birthday, ielts_score, celta_certified, started_working_on, stage, active, created_at, updated_at")
@@ -178,12 +201,18 @@ async function loadPayload(req: Request) {
       supabaseAdmin
          .from("teacher_lesson_covers")
          .select("id, lesson_group_id, cover_date, covering_teacher_id, covering_teacher_name, created_by, created_at, updated_at, teacher_lesson_groups(id, teacher_id, level_id, starts_on, ends_on, starts_at, ends_at, weekdays, active_students_count, active)")
-         .gte("cover_date", monthStart)
-         .lte("cover_date", monthEnd)
+         .gte("cover_date", coverStart)
+         .lte("cover_date", coverEnd)
          .order("cover_date", { ascending: true }),
+      supabaseAdmin
+         .from("teacher_lesson_holidays")
+         .select("id, holiday_date, note, created_by, created_at, updated_at")
+         .gte("holiday_date", holidayStart)
+         .lte("holiday_date", holidayEnd)
+         .order("holiday_date", { ascending: true }),
    ]);
 
-   if (teacherResult.error || levelResult.error || groupResult.error || coverResult.error) {
+   if (teacherResult.error || levelResult.error || groupResult.error || coverResult.error || holidayResult.error) {
       throw new Error("Failed to load teachers. Apply supabase/erp_core_schema.sql first.");
    }
 
@@ -196,6 +225,7 @@ async function loadPayload(req: Request) {
       levels: ((levelResult.data || []) as LevelRow[]).map(toLevel),
       groups: ((groupResult.data || []) as unknown as GroupRow[]).map(toGroup),
       covers: ((coverResult.data || []) as unknown as CoverRow[]).map(toCover),
+      holidays: ((holidayResult.data || []) as HolidayRow[]).map(toHoliday),
    };
 }
 
@@ -280,6 +310,18 @@ function coverPayload(body: Record<string, unknown>, userId: string) {
    };
 }
 
+function holidayPayload(body: Record<string, unknown>, userId: string) {
+   const holidayDate = cleanString(body.holidayDate);
+
+   if (!isDateString(holidayDate)) throw new Error("Choose a holiday date.");
+
+   return {
+      holiday_date: holidayDate,
+      note: nullableString(body.note),
+      created_by: userId,
+   };
+}
+
 export async function GET(req: Request) {
    try {
       return NextResponse.json(await loadPayload(req));
@@ -315,6 +357,13 @@ export async function POST(req: Request) {
                .from("teacher_lesson_covers")
                .upsert(coverPayload(body, user.id), { onConflict: "lesson_group_id,cover_date" }),
             "Failed to save cover.",
+         );
+      } else if (entity === "holiday") {
+         assertDbResult(
+            await supabaseAdmin
+               .from("teacher_lesson_holidays")
+               .upsert(holidayPayload(body, user.id), { onConflict: "holiday_date" }),
+            "Failed to save holiday.",
          );
       } else {
          throw new Error("Choose what to save.");
@@ -373,15 +422,21 @@ export async function DELETE(req: Request) {
       const body = await req.json();
       const entity = cleanString(body?.entity);
       const id = cleanString(body?.id);
+      const holidayDate = cleanString(body?.holidayDate);
 
-      if (entity !== "cover" || !id) {
-         throw new Error("Choose a cover record to clear.");
+      if (entity === "cover" && id) {
+         assertDbResult(
+            await supabaseAdmin.from("teacher_lesson_covers").delete().eq("id", id),
+            "Failed to clear cover.",
+         );
+      } else if (entity === "holiday" && isDateString(holidayDate)) {
+         assertDbResult(
+            await supabaseAdmin.from("teacher_lesson_holidays").delete().eq("holiday_date", holidayDate),
+            "Failed to clear holiday.",
+         );
+      } else {
+         throw new Error("Choose a cover record or holiday date to clear.");
       }
-
-      assertDbResult(
-         await supabaseAdmin.from("teacher_lesson_covers").delete().eq("id", id),
-         "Failed to clear cover.",
-      );
 
       return NextResponse.json(await loadPayload(req));
    } catch (error) {
