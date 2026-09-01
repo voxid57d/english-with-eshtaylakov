@@ -165,6 +165,44 @@ function formatLocalDate(date: Date) {
    return `${year}-${month}-${day}`;
 }
 
+function formatDateForDisplay(value: string) {
+   if (!value) return "";
+
+   const [year, month, day] = value.split("-");
+   if (!year || !month || !day) return value;
+
+   return `${day}/${month}/${year}`;
+}
+
+function normalizeDateDisplay(value: string) {
+   const digits = value.replace(/\D/g, "").slice(0, 8);
+   const day = digits.slice(0, 2);
+   const month = digits.slice(2, 4);
+   const year = digits.slice(4, 8);
+
+   return [day, month, year].filter(Boolean).join("/");
+}
+
+function parseDisplayDate(value: string) {
+   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+   if (!match) return null;
+
+   const [, day, month, year] = match;
+   const isoDate = `${year}-${month}-${day}`;
+   const parsedDate = new Date(`${isoDate}T00:00:00.000Z`);
+
+   if (
+      Number.isNaN(parsedDate.getTime()) ||
+      parsedDate.getUTCFullYear() !== Number(year) ||
+      parsedDate.getUTCMonth() + 1 !== Number(month) ||
+      parsedDate.getUTCDate() !== Number(day)
+   ) {
+      return null;
+   }
+
+   return isoDate;
+}
+
 function getWeekStart(anchor = new Date()) {
    const date = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate()));
    const day = date.getUTCDay();
@@ -219,6 +257,54 @@ function hourBarClass(hour: number) {
    }
 
    return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
+}
+
+function DateField({
+   label,
+   value,
+   onChange,
+   required = false,
+}: {
+   label: string;
+   value: string;
+   onChange: (value: string) => void;
+   required?: boolean;
+}) {
+   const [displayValue, setDisplayValue] = useState(() => formatDateForDisplay(value));
+
+   useEffect(() => {
+      setDisplayValue(formatDateForDisplay(value));
+   }, [value]);
+
+   return (
+      <label className="block">
+         <span className="text-sm text-slate-300">{label}</span>
+         <input
+            type="text"
+            inputMode="numeric"
+            placeholder="dd/mm/yyyy"
+            pattern="\d{2}/\d{2}/\d{4}"
+            value={displayValue}
+            onChange={(event) => {
+               const nextDisplayValue = normalizeDateDisplay(event.target.value);
+               setDisplayValue(nextDisplayValue);
+
+               if (!nextDisplayValue) {
+                  onChange("");
+                  return;
+               }
+
+               const nextValue = parseDisplayDate(nextDisplayValue);
+               if (nextValue) {
+                  onChange(nextValue);
+               }
+            }}
+            onBlur={() => setDisplayValue(formatDateForDisplay(value))}
+            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+            required={required}
+         />
+      </label>
+   );
 }
 
 function LessonTimeField({
@@ -718,14 +804,16 @@ export default function TeachersManager() {
                               </label>
                            </div>
                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <label className="block">
-                                 <span className="text-sm text-slate-300">Birthday</span>
-                                 <input type="date" lang="en-GB" value={teacherForm.birthday} onChange={(event) => setTeacherForm((current) => ({ ...current, birthday: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
-                              </label>
-                              <label className="block">
-                                 <span className="text-sm text-slate-300">Started working</span>
-                                 <input type="date" lang="en-GB" value={teacherForm.startedWorkingOn} onChange={(event) => setTeacherForm((current) => ({ ...current, startedWorkingOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
-                              </label>
+                              <DateField
+                                 label="Birthday"
+                                 value={teacherForm.birthday}
+                                 onChange={(birthday) => setTeacherForm((current) => ({ ...current, birthday }))}
+                              />
+                              <DateField
+                                 label="Started working"
+                                 value={teacherForm.startedWorkingOn}
+                                 onChange={(startedWorkingOn) => setTeacherForm((current) => ({ ...current, startedWorkingOn }))}
+                              />
                            </div>
                            <label className="block">
                               <span className="text-sm text-slate-300">Stage</span>
@@ -802,14 +890,17 @@ export default function TeachersManager() {
                                  {levels.filter((level) => level.active).map((level) => <option key={level.id} value={level.id}>{level.name}</option>)}
                               </select>
                            </label>
-                           <label className="block">
-                              <span className="text-sm text-slate-300">Starting date</span>
-                              <input type="date" lang="en-GB" value={groupForm.startsOn} onChange={(event) => setGroupForm((current) => ({ ...current, startsOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" required />
-                           </label>
-                           <label className="block">
-                              <span className="text-sm text-slate-300">Ending date</span>
-                              <input type="date" lang="en-GB" value={groupForm.endsOn} onChange={(event) => setGroupForm((current) => ({ ...current, endsOn: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
-                           </label>
+                           <DateField
+                              label="Starting date"
+                              value={groupForm.startsOn}
+                              onChange={(startsOn) => setGroupForm((current) => ({ ...current, startsOn }))}
+                              required
+                           />
+                           <DateField
+                              label="Ending date"
+                              value={groupForm.endsOn}
+                              onChange={(endsOn) => setGroupForm((current) => ({ ...current, endsOn }))}
+                           />
                            <LessonTimeField
                               label="Starts"
                               value={groupForm.startsAt}
