@@ -723,9 +723,6 @@ export default function TeachersManager() {
                   <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
                      Teachers
                   </h1>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                     Manage teacher profiles, lesson groups, weekly schedules, and monthly covers.
-                  </p>
                </div>
                <div className="grid grid-cols-3 gap-3">
                   <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3">
@@ -1117,7 +1114,7 @@ export default function TeachersManager() {
                                        ].join(" ")}
                                        style={{ height: (END_HOUR - START_HOUR) * HOUR_HEIGHT }}>
                                        {Array.from({ length: END_HOUR - START_HOUR }, (_, index) => (
-                                          <div key={index} style={{ height: HOUR_HEIGHT }} className="border-b border-slate-800/80" />
+                                          <div key={index} style={{ height: HOUR_HEIGHT }} className="pointer-events-none border-b border-slate-800/80" />
                                        ))}
                                        {scheduleCards.map((card) => {
                                           const top = Math.max(0, timeToMinutes(card.group.startsAt) - START_HOUR * 60) * (HOUR_HEIGHT / 60);
@@ -1139,10 +1136,10 @@ export default function TeachersManager() {
                                                    right: `calc(${((slotTotal - slotIndex - 1) / slotTotal) * 100}% + 0.5rem)`,
                                                 }}
                                                 className={[
-                                                   "absolute overflow-hidden rounded-lg p-2 text-left shadow-lg shadow-slate-950/30 transition",
+                                                   "absolute z-10 overflow-hidden rounded-lg p-2 text-left shadow-lg shadow-slate-950/30 transition",
                                                    card.variant === "cover"
-                                                      ? "border border-amber-500/35 bg-amber-500/20 hover:bg-amber-500/25"
-                                                      : "border border-emerald-500/30 bg-emerald-500/15 hover:bg-emerald-500/20",
+                                                      ? "border border-amber-500/35 bg-amber-100 text-slate-950 hover:bg-amber-200"
+                                                      : "border border-emerald-500/30 bg-emerald-100 text-slate-950 hover:bg-emerald-200",
                                                 ].join(" ")}>
                                                 <p
                                                    className={[

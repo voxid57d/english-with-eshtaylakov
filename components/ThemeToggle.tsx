@@ -12,18 +12,33 @@ function getInitialTheme(): ThemeMode {
 }
 
 export default function ThemeToggle() {
-   const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
+   const [theme, setTheme] = useState<ThemeMode | null>(null);
 
    useEffect(() => {
-      document.documentElement.dataset.theme = theme;
+      const timeoutId = window.setTimeout(() => {
+         const initialTheme = getInitialTheme();
+         setTheme(initialTheme);
+         document.documentElement.dataset.theme = initialTheme;
+      }, 0);
+
+      return () => window.clearTimeout(timeoutId);
+   }, []);
+
+   useEffect(() => {
+      if (theme) {
+         document.documentElement.dataset.theme = theme;
+      }
    }, [theme]);
 
    const toggleTheme = () => {
+      if (!theme) return;
       const nextTheme = theme === "dark" ? "light" : "dark";
       setTheme(nextTheme);
       document.documentElement.dataset.theme = nextTheme;
       window.localStorage.setItem("theme-mode", nextTheme);
    };
+
+   if (!theme) return null;
 
    return (
       <button
