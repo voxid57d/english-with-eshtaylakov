@@ -209,6 +209,18 @@ function weekDayShort(date: string) {
    );
 }
 
+function hourBarClass(hour: number) {
+   if (hour < 12) {
+      return "border-sky-500/25 bg-sky-500/10 text-sky-200";
+   }
+
+   if (hour < 14) {
+      return "border-amber-500/25 bg-amber-500/10 text-amber-200";
+   }
+
+   return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
+}
+
 function LessonTimeField({
    label,
    value,
@@ -948,7 +960,13 @@ export default function TeachersManager() {
                               })}
                               <div className="bg-slate-950/50">
                                  {Array.from({ length: END_HOUR - START_HOUR }, (_, index) => START_HOUR + index).map((hour) => (
-                                    <div key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-slate-800 px-2 py-1 text-xs text-slate-500">
+                                    <div
+                                       key={hour}
+                                       style={{ height: HOUR_HEIGHT }}
+                                       className={[
+                                          "border-b px-2 py-1 text-xs font-medium",
+                                          hourBarClass(hour),
+                                       ].join(" ")}>
                                        {String(hour).padStart(2, "0")}:00
                                     </div>
                                  ))}
