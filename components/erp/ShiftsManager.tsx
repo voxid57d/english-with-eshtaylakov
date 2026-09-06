@@ -628,16 +628,25 @@ export default function ShiftsManager() {
 
       const applyUpdate = (shift: ShiftView): ShiftView => {
          const nextShift = { ...shift, ...updates };
+         if (nextShift.absenceReason) {
+            nextShift.uniformOk = true;
+            nextShift.lateMinutes = 0;
+            nextShift.lateCountsPenalty = false;
+            nextShift.workQuality = "normal";
+         }
          const lateDeductedMinutes = Math.floor(nextShift.lateMinutes / 60) * 60;
          const finalWorkMinutes = nextShift.absenceReason
             ? 0
             : Math.max(0, nextShift.scheduledWorkMinutes - lateDeductedMinutes);
-         const penaltyCount = [
-            nextShift.uniformOk !== true,
-            nextShift.lateCountsPenalty === true,
-            nextShift.workQuality === "bad",
-            nextShift.absenceReason === "no_reason",
-         ].filter(Boolean).length;
+         const penaltyCount = nextShift.absenceReason
+            ? nextShift.absenceReason === "no_reason"
+               ? 1
+               : 0
+            : [
+                 nextShift.uniformOk !== true,
+                 nextShift.lateCountsPenalty === true,
+                 nextShift.workQuality === "bad",
+              ].filter(Boolean).length;
          const status = nextShift.absenceReason ? "absent" : "scheduled";
 
          return {
@@ -670,6 +679,10 @@ export default function ShiftsManager() {
                action: "bulkAssessments",
                shifts: dailyShifts.map((shift) => ({
                   ...shift,
+                  uniformOk: shift.absenceReason ? true : shift.uniformOk,
+                  lateMinutes: shift.absenceReason ? 0 : shift.lateMinutes,
+                  lateCountsPenalty: shift.absenceReason ? false : shift.lateCountsPenalty,
+                  workQuality: shift.absenceReason ? "normal" : shift.workQuality,
                   actualWorkMinutes: null,
                   status: shift.absenceReason ? "absent" : "scheduled",
                })),
@@ -787,6 +800,7 @@ export default function ShiftsManager() {
 
    const renderDailyAssessmentCard = (shift: ShiftView) => {
       const summary = monthlySummaries.find((entry) => entry.staffUserId === shift.staffUserId);
+      const isAbsentState = Boolean(shift.absenceReason);
       const penaltyTone =
          shift.penaltyCount >= 3
             ? "border-red-500/50 bg-red-500/10"
@@ -843,61 +857,68 @@ export default function ShiftsManager() {
                )}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-               <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-slate-200">
-                  <input
-                     type="checkbox"
-                     checked={shift.uniformOk}
-                     onChange={(event) =>
-                        updateShiftDraft(shift.id, { uniformOk: event.target.checked })
-                     }
-                     className="h-4 w-4 accent-emerald-500"
-                  />
-                  Uniform
-               </label>
+            {!isAbsentState && (
+               <>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                     <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-slate-200">
+                        <input
+                           type="checkbox"
+                           checked={shift.uniformOk}
+                           onChange={(event) =>
+                              updateShiftDraft(shift.id, { uniformOk: event.target.checked })
+                           }
+                           className="h-4 w-4 accent-emerald-500"
+                        />
+                        Uniform
+                     </label>
 
-               <label className="block">
-                  <span className="sr-only">Quality</span>
-                  <select
-                     value={shift.workQuality}
-                     onChange={(event) =>
-                        updateShiftDraft(shift.id, {
-                           workQuality: event.target.value as ShiftView["workQuality"],
-                        })
-                     }
-                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400">
-                     <option value="good">Good</option>
-                     <option value="normal">Normal</option>
-                     <option value="bad">Bad</option>
-                  </select>
-               </label>
-            </div>
+                     <label className="block">
+                        <span className="sr-only">Quality</span>
+                        <select
+                           value={shift.workQuality}
+                           onChange={(event) =>
+                              updateShiftDraft(shift.id, {
+                                 workQuality: event.target.value as ShiftView["workQuality"],
+                              })
+                           }
+                           className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400">
+                           <option value="good">Good</option>
+                           <option value="normal">Normal</option>
+                           <option value="bad">Bad</option>
+                        </select>
+                     </label>
+                  </div>
 
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-               <label className="block">
-                  <span className="text-xs text-slate-400">Late minutes</span>
-                  <input
-                     type="number"
-                     min="0"
-                     step="1"
-                     value={shift.lateMinutes}
-                     onChange={(event) =>
-                        updateShiftDraft(shift.id, { lateMinutes: Number(event.target.value) })
-                     }
-                     className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                  />
-               </label>
-               <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-200 sm:mt-5">
-                  <input
-                     type="checkbox"
-                     checked={shift.lateCountsPenalty}
-                     onChange={(event) =>
-                        updateShiftDraft(shift.id, { lateCountsPenalty: event.target.checked })
-                     }
-                     className="h-4 w-4 accent-emerald-500"
-                  />
-                  Late penalty
-               </label>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                     <label className="block">
+                        <span className="text-xs text-slate-400">Late minutes</span>
+                        <input
+                           type="number"
+                           min="0"
+                           step="1"
+                           value={shift.lateMinutes}
+                           onChange={(event) =>
+                              updateShiftDraft(shift.id, { lateMinutes: Number(event.target.value) })
+                           }
+                           className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                        />
+                     </label>
+                     <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-200 sm:mt-5">
+                        <input
+                           type="checkbox"
+                           checked={shift.lateCountsPenalty}
+                           onChange={(event) =>
+                              updateShiftDraft(shift.id, { lateCountsPenalty: event.target.checked })
+                           }
+                           className="h-4 w-4 accent-emerald-500"
+                        />
+                        Late penalty
+                     </label>
+                  </div>
+               </>
+            )}
+
+            <div className="mt-3">
                <label className="block">
                   <span className="text-xs text-slate-400">State</span>
                   <select

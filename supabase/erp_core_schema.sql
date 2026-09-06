@@ -529,6 +529,17 @@ set staff_name_snapshot = coalesce(shift.staff_name_snapshot, staff.full_name),
 from public.staff_profiles staff
 where shift.staff_user_id = staff.user_id;
 
+update public.shifts
+set status = case
+      when absence_reason is null then 'scheduled'::public.erp_shift_status
+      else 'absent'::public.erp_shift_status
+   end,
+    uniform_ok = case when absence_reason is null then uniform_ok else true end,
+    late_minutes = case when absence_reason is null then late_minutes else 0 end,
+    late_counts_penalty = case when absence_reason is null then late_counts_penalty else false end,
+    work_quality = case when absence_reason is null then work_quality else 'normal' end,
+    actual_work_minutes = null;
+
 alter table if exists public.teacher_profiles
    add column if not exists lms_teacher_url text;
 

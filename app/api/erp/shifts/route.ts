@@ -65,11 +65,6 @@ function toNonNegativeInteger(value: unknown, fieldName: string) {
    return numberValue;
 }
 
-function toOptionalNonNegativeInteger(value: unknown, fieldName: string) {
-   if (value === "" || value === null || value === undefined) return null;
-   return toNonNegativeInteger(value, fieldName);
-}
-
 function parseWorkQuality(value: unknown): ErpWorkQuality {
    const quality = cleanString(value) || "normal";
    if (!(ERP_WORK_QUALITY_VALUES as readonly string[]).includes(quality)) {
@@ -101,11 +96,14 @@ function lateDeductionMinutes(lateMinutes: number) {
 }
 
 function penaltyCount(shift: Pick<ShiftRow, "uniform_ok" | "late_counts_penalty" | "work_quality" | "absence_reason">) {
+   if (shift.absence_reason) {
+      return shift.absence_reason === "no_reason" ? 1 : 0;
+   }
+
    return [
       shift.uniform_ok !== true,
       shift.late_counts_penalty === true,
       shift.work_quality === "bad",
-      shift.absence_reason === "no_reason",
    ].filter(Boolean).length;
 }
 
@@ -197,6 +195,8 @@ function validateShiftBody(body: Record<string, unknown>) {
    if (!isErpShiftStatus(status)) throw new Error("Choose a valid shift status.");
    if (endsAt <= startsAt) throw new Error("End time must be later than start time.");
 
+   const absenceReason = parseAbsenceReason(body?.absenceReason);
+
    return {
       staffUserId,
       branchId,
@@ -204,13 +204,13 @@ function validateShiftBody(body: Record<string, unknown>) {
       startsAt,
       endsAt,
       breakMinutes,
-      status,
-      uniformOk: body?.uniformOk !== false,
-      lateMinutes: toNonNegativeInteger(body?.lateMinutes ?? 0, "Late minutes"),
-      lateCountsPenalty: body?.lateCountsPenalty === true,
-      workQuality: parseWorkQuality(body?.workQuality),
-      absenceReason: parseAbsenceReason(body?.absenceReason),
-      actualWorkMinutes: toOptionalNonNegativeInteger(body?.actualWorkMinutes, "Actual work minutes"),
+      status: absenceReason ? "absent" : status,
+      uniformOk: absenceReason ? true : body?.uniformOk !== false,
+      lateMinutes: absenceReason ? 0 : toNonNegativeInteger(body?.lateMinutes ?? 0, "Late minutes"),
+      lateCountsPenalty: absenceReason ? false : body?.lateCountsPenalty === true,
+      workQuality: absenceReason ? "normal" : parseWorkQuality(body?.workQuality),
+      absenceReason,
+      actualWorkMinutes: null,
       note: nullableString(body?.note),
    };
 }
@@ -355,9 +355,9 @@ function summarizeMonthly(
       const hourlyRate = Number(shift.hourly_rate_snapshot ?? compensation?.hourly_rate ?? 0);
 
       current.workedMinutes += workMinutes;
-      if (shift.work_quality === "good") current.goodQuality += 1;
-      if (shift.work_quality === "normal") current.normalQuality += 1;
-      if (shift.work_quality === "bad") current.badQuality += 1;
+      if (!shift.absence_reason && shift.work_quality === "good") current.goodQuality += 1;
+      if (!shift.absence_reason && shift.work_quality === "normal") current.normalQuality += 1;
+      if (!shift.absence_reason && shift.work_quality === "bad") current.badQuality += 1;
       for (let index = 1; index <= shiftPenalties; index += 1) {
          current.penalties += 1;
          current.penaltyAmount += getPenaltyAmount(current.penalties, penaltyRules);
