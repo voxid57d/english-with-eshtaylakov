@@ -107,6 +107,14 @@ type RatingSort = {
    direction: "asc" | "desc";
 };
 
+function getSalesmanTierLabel(row: Pick<MonthlySummary, "staffRoleLabel" | "salaryTier">) {
+   if (row.staffRoleLabel !== "Salesman" || row.salaryTier === "default") {
+      return null;
+   }
+
+   return row.salaryTier.replace("_", " ");
+}
+
 type BranchOption = {
    id: string;
    name: string;
@@ -1514,10 +1522,20 @@ export default function ShiftsManager() {
                               </tr>
                            </thead>
                            <tbody className="divide-y divide-slate-800">
-                              {sortedRatingRows.map((row) => (
+                              {sortedRatingRows.map((row) => {
+                                 const salesmanTierLabel = getSalesmanTierLabel(row);
+
+                                 return (
                                     <tr key={row.staffUserId} className="bg-slate-950/30">
                                        <td className="px-4 py-3 font-medium text-white">
-                                          {row.staffName}
+                                          <div className="flex flex-wrap items-center gap-2">
+                                             <span>{row.staffName}</span>
+                                             {salesmanTierLabel && (
+                                                <span className="rounded-md border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-normal text-emerald-100">
+                                                   {salesmanTierLabel}
+                                                </span>
+                                             )}
+                                          </div>
                                        </td>
                                        <td className="px-4 py-3 text-slate-300">
                                           {row.staffRoleLabel || "Staff"}
@@ -1534,7 +1552,8 @@ export default function ShiftsManager() {
                                           {row.salary.toLocaleString()}
                                        </td>
                                     </tr>
-                                 ))}
+                                 );
+                              })}
                            </tbody>
                         </table>
                      </div>

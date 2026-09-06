@@ -74,6 +74,14 @@ type StaffTreeGroup = {
 
 const HIERARCHY_ROLE_ORDER: ErpStaffRole[] = ["salesman", "assistant", "cashier"];
 
+function getSalesmanTierLabel(member: Pick<StaffView, "role" | "salaryTier">) {
+   if (member.role !== "salesman" || member.salaryTier === "default") {
+      return null;
+   }
+
+   return member.salaryTier.replace("_", " ");
+}
+
 function StaffNode({
    member,
    tone = "default",
@@ -83,6 +91,7 @@ function StaffNode({
    tone?: "leader" | "manager" | "default";
    onClick?: (member: StaffView) => void;
 }) {
+   const salesmanTierLabel = getSalesmanTierLabel(member);
    const toneClass =
       tone === "leader"
          ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-100"
@@ -103,7 +112,14 @@ function StaffNode({
             toneClass,
          ].join(" ")}>
          <p className="truncate text-sm font-semibold">{member.fullName}</p>
-         <p className="mt-1 truncate text-xs opacity-75">{member.roleLabel}</p>
+         <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
+            <p className="truncate text-xs opacity-75">{member.roleLabel}</p>
+            {salesmanTierLabel && (
+               <span className="inline-flex rounded-md border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-normal text-emerald-100">
+                  {salesmanTierLabel}
+               </span>
+            )}
+         </div>
          {!member.active && (
             <span className="mt-2 inline-flex rounded-md border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-200">
                Inactive
