@@ -225,7 +225,7 @@ export async function ensureTaskMember(user: User) {
    const { data: existing, error: existingError } = await supabaseAdmin
       .from("staff_profiles")
       .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
-      .eq("user_id", user.id)
+      .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
       .maybeSingle();
 
    if (existingError) {
@@ -243,7 +243,7 @@ export async function ensureTaskMember(user: User) {
             .update({
                role: "branch_manager",
             })
-            .eq("user_id", user.id)
+            .eq("user_id", existing.user_id)
             .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
             .single();
 
@@ -264,7 +264,7 @@ export async function ensureTaskMember(user: User) {
    const { data, error } = await supabaseAdmin
       .from("staff_profiles")
       .insert({
-         user_id: user.id,
+         auth_user_id: user.id,
          role: "branch_manager",
          full_name: getDisplayName(user),
          primary_branch_id: null,

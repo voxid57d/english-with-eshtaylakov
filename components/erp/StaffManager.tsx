@@ -11,9 +11,11 @@ import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 
 type StaffView = {
    userId: string;
+   authUserId: string | null;
    fullName: string;
    role: ErpStaffRole;
    roleLabel: string;
+   salaryTier: string;
    primaryBranchId: string | null;
    branchName: string | null;
    telegramUsername: string | null;
@@ -35,8 +37,10 @@ type AuthUserOption = {
 
 type StaffForm = {
    userId: string;
+   authUserId: string;
    fullName: string;
    role: ErpStaffRole;
+   salaryTier: string;
    primaryBranchId: string;
    telegramUsername: string;
    phone: string;
@@ -46,8 +50,10 @@ type StaffForm = {
 
 const EMPTY_FORM: StaffForm = {
    userId: "",
+   authUserId: "",
    fullName: "",
    role: "salesman",
+   salaryTier: "tier_1",
    primaryBranchId: "",
    telegramUsername: "",
    phone: "",
@@ -218,8 +224,10 @@ export default function StaffManager() {
 
       setForm({
          userId: member.userId,
+         authUserId: member.authUserId || "",
          fullName: member.fullName,
          role: member.role,
+         salaryTier: member.salaryTier || "default",
          primaryBranchId: member.primaryBranchId || "",
          telegramUsername: member.telegramUsername || "",
          phone: member.phone || "",
@@ -231,11 +239,11 @@ export default function StaffManager() {
       setError(null);
    };
 
-   const handleUserChange = (userId: string) => {
-      const selectedUser = authUsers.find((user) => user.id === userId);
+   const handleAuthUserChange = (authUserId: string) => {
+      const selectedUser = authUsers.find((user) => user.id === authUserId);
       setForm((current) => ({
          ...current,
-         userId,
+         authUserId,
          fullName: current.fullName || selectedUser?.displayName || "",
       }));
    };
@@ -454,11 +462,11 @@ export default function StaffManager() {
                   <label className="block">
                      <span className="text-sm text-slate-300">Auth user</span>
                      <select
-                        value={form.userId}
-                        onChange={(event) => handleUserChange(event.target.value)}
+                        value={form.authUserId}
+                        onChange={(event) => handleAuthUserChange(event.target.value)}
                         className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
-                        required>
-                        <option value="">Choose logged-in user</option>
+                     >
+                        <option value="">No auth user yet</option>
                         {authUsers.map((user) => (
                            <option key={user.id} value={user.id}>
                               {user.displayName} {user.email ? `(${user.email})` : ""}
@@ -513,6 +521,23 @@ export default function StaffManager() {
                         </select>
                      </label>
                   </div>
+
+                  {form.role === "salesman" && (
+                     <label className="block">
+                        <span className="text-sm text-slate-300">Salesman tier</span>
+                        <select
+                           value={form.salaryTier}
+                           onChange={(event) =>
+                              setForm((current) => ({ ...current, salaryTier: event.target.value }))
+                           }
+                           className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400">
+                           <option value="tier_1">Tier 1</option>
+                           <option value="tier_2">Tier 2</option>
+                           <option value="tier_3">Tier 3</option>
+                           <option value="tier_4">Tier 4</option>
+                        </select>
+                     </label>
+                  )}
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                      <label className="block">
@@ -609,6 +634,20 @@ export default function StaffManager() {
                                     ].join(" ")}>
                                     {member.active ? "Active" : "Inactive"}
                                  </span>
+                                 <span
+                                    className={[
+                                       "rounded-lg border px-2 py-0.5 text-[11px]",
+                                       member.authUserId
+                                          ? "border-sky-500/25 bg-sky-500/10 text-sky-200"
+                                          : "border-slate-700 bg-slate-900 text-slate-400",
+                                    ].join(" ")}>
+                                    {member.authUserId ? "Auth linked" : "No auth"}
+                                 </span>
+                                 {member.role === "salesman" && (
+                                    <span className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] text-slate-300">
+                                       {member.salaryTier.replace("_", " ")}
+                                    </span>
+                                 )}
                               </div>
                               <p className="mt-1 text-sm text-slate-500">
                                  {[member.branchName, member.telegramUsername, member.phone]

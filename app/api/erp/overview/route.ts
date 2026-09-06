@@ -93,7 +93,7 @@ function summarizePayroll(
    );
 
    return shifts
-      .filter((shift) => ["completed", "late"].includes(shift.status))
+      .filter((shift) => !shift.absence_reason)
       .filter(
          (shift) =>
             !!shift.staff_profiles?.role &&
@@ -165,14 +165,14 @@ export async function GET(req: Request) {
             .eq("active", true),
          supabaseAdmin
             .from("shifts")
-            .select("id, staff_user_id, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, note, created_at, updated_at")
+            .select("id, staff_user_id, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, absence_reason, note, created_at, updated_at")
             .eq("staff_user_id", currentStaff.userId)
             .gte("shift_date", weekStart)
             .lte("shift_date", weekEnd),
          supabaseAdmin
             .from("shifts")
             .select(
-               "id, staff_user_id, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, note, created_at, updated_at, staff_profiles(role)",
+               "id, staff_user_id, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, absence_reason, note, created_at, updated_at, staff_profiles(role)",
             )
             .eq("staff_user_id", currentStaff.userId)
             .gte("shift_date", periodStart)
@@ -253,9 +253,7 @@ export async function GET(req: Request) {
             kpiAverage: getKpiAverage(kpiTargets, kpiProgressEntries),
             kpiTargets: kpiTargets.length,
             weeklyShifts: shifts.length,
-            shiftIssues: shifts.filter((shift) =>
-               ["late", "absent"].includes(shift.status),
-            ).length,
+            shiftIssues: shifts.filter((shift) => shift.absence_reason).length,
             leadsCount: metricSummary.leadsCount,
             trialLessonsCount: metricSummary.trialLessonsCount,
             conversionsCount: metricSummary.conversionsCount,

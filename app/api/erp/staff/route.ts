@@ -24,9 +24,11 @@ function jsonError(error: unknown, fallback: string) {
 function toStaff(row: StaffProfileWithBranch) {
    return {
       userId: row.user_id,
+      authUserId: row.auth_user_id,
       fullName: row.full_name,
       role: row.role,
       roleLabel: ERP_ROLE_LABELS[row.role],
+      salaryTier: row.salary_tier,
       primaryBranchId: row.primary_branch_id,
       branchName: row.branches?.name ?? null,
       telegramUsername: row.telegram_username,
@@ -60,7 +62,7 @@ export async function GET(req: Request) {
          supabaseAdmin
             .from("staff_profiles")
             .select(
-               "user_id, full_name, role, primary_branch_id, telegram_username, phone, notes, active, created_at, updated_at, branches:primary_branch_id(id, name)",
+               "user_id, auth_user_id, full_name, role, salary_tier, primary_branch_id, telegram_username, phone, notes, active, created_at, updated_at, branches:primary_branch_id(id, name)",
             )
             .order("active", { ascending: false })
             .order("full_name", { ascending: true }),
@@ -111,14 +113,12 @@ export async function POST(req: Request) {
       await requireErpPermission(req, "staff", "manage");
 
       const body = await req.json();
-      const userId = cleanString(body?.userId);
+      const staffId = cleanString(body?.userId);
+      const authUserId = nullableString(body?.authUserId);
       const fullName = cleanString(body?.fullName);
       const role = cleanString(body?.role);
+      const salaryTier = cleanString(body?.salaryTier) || "default";
       const primaryBranchId = nullableString(body?.primaryBranchId);
-
-      if (!userId) {
-         throw new Error("Choose an auth user.");
-      }
 
       if (!fullName) {
          throw new Error("Full name is required.");
@@ -132,9 +132,11 @@ export async function POST(req: Request) {
          .from("staff_profiles")
          .upsert(
             {
-               user_id: userId,
+               ...(staffId ? { user_id: staffId } : {}),
+               auth_user_id: authUserId,
                full_name: fullName,
                role,
+               salary_tier: role === "salesman" ? salaryTier : "default",
                primary_branch_id: primaryBranchId,
                telegram_username: nullableString(body?.telegramUsername),
                phone: nullableString(body?.phone),
@@ -144,7 +146,7 @@ export async function POST(req: Request) {
             { onConflict: "user_id" },
          )
          .select(
-            "user_id, full_name, role, primary_branch_id, telegram_username, phone, notes, active, created_at, updated_at, branches:primary_branch_id(id, name)",
+            "user_id, auth_user_id, full_name, role, salary_tier, primary_branch_id, telegram_username, phone, notes, active, created_at, updated_at, branches:primary_branch_id(id, name)",
          )
          .single();
 
@@ -153,10 +155,11 @@ export async function POST(req: Request) {
       }
 
       if (primaryBranchId) {
+         const savedStaffId = data.user_id;
          await supabaseAdmin
             .from("staff_branch_assignments")
             .upsert(
-               { staff_user_id: userId, branch_id: primaryBranchId },
+               { staff_user_id: savedStaffId, branch_id: primaryBranchId },
                { onConflict: "staff_user_id,branch_id" },
             );
       }

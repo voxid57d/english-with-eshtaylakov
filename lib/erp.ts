@@ -10,7 +10,6 @@ export const ERP_STAFF_ROLES = [
 export type ErpStaffRole = (typeof ERP_STAFF_ROLES)[number];
 
 export const ERP_SHIFT_WORKER_ROLES = [
-   "sales_manager",
    "salesman",
    "assistant",
    "cashier",
@@ -18,15 +17,22 @@ export const ERP_SHIFT_WORKER_ROLES = [
 
 export const ERP_SHIFT_STATUSES = [
    "scheduled",
-   "completed",
-   "late",
    "absent",
-   "day_off",
-   "sick_leave",
-   "approved_leave",
 ] as const;
 
 export type ErpShiftStatus = (typeof ERP_SHIFT_STATUSES)[number];
+
+export const ERP_WORK_QUALITY_VALUES = ["good", "normal", "bad"] as const;
+
+export type ErpWorkQuality = (typeof ERP_WORK_QUALITY_VALUES)[number];
+
+export const ERP_ABSENCE_REASONS = ["no_reason", "sick_leave", "asked"] as const;
+
+export type ErpAbsenceReason = (typeof ERP_ABSENCE_REASONS)[number];
+
+export const ERP_SALESMAN_TIERS = ["tier_1", "tier_2", "tier_3", "tier_4"] as const;
+
+export type ErpSalesmanTier = (typeof ERP_SALESMAN_TIERS)[number];
 
 export const ERP_MODULES = [
    "overview",
@@ -58,8 +64,10 @@ export type Branch = {
 
 export type StaffProfile = {
    user_id: string;
+   auth_user_id: string | null;
    full_name: string;
    role: ErpStaffRole;
+   salary_tier: string;
    primary_branch_id: string | null;
    telegram_username: string | null;
    phone: string | null;
@@ -113,7 +121,10 @@ export type KpiProgressEntry = {
 
 export type Shift = {
    id: string;
-   staff_user_id: string;
+   staff_user_id: string | null;
+   staff_name_snapshot: string | null;
+   staff_role_snapshot: ErpStaffRole | null;
+   salary_tier_snapshot: string | null;
    branch_id: string;
    shift_date: string;
    starts_at: string;
@@ -124,6 +135,14 @@ export type Shift = {
    hourly_rate_override: number | null;
    extra_hourly_rate_override: number | null;
    extra_hours_enabled_override: boolean | null;
+   uniform_ok: boolean;
+   late_minutes: number;
+   late_counts_penalty: boolean;
+   work_quality: ErpWorkQuality;
+   absence_reason: ErpAbsenceReason | null;
+   actual_work_minutes: number | null;
+   penalty_amount_snapshot: number;
+   hourly_rate_snapshot: number | null;
    note: string | null;
    created_at: string;
    updated_at: string;
@@ -157,10 +176,19 @@ export type ErpRolePermission = {
 
 export type ErpRoleCompensationSetting = {
    role: ErpStaffRole;
+   salary_tier: string;
    hourly_rate: number;
    extra_hours_enabled: boolean;
    extra_hourly_rate: number;
    extra_hours_threshold: number;
+   updated_at: string;
+};
+
+export type ErpPenaltyRule = {
+   penalty_number: number;
+   label: string;
+   amount: number;
+   active: boolean;
    updated_at: string;
 };
 
@@ -252,12 +280,7 @@ export const ERP_ROLE_LABELS: Record<ErpStaffRole, string> = {
 
 export const ERP_SHIFT_STATUS_LABELS: Record<ErpShiftStatus, string> = {
    scheduled: "Scheduled",
-   completed: "Completed",
-   late: "Late",
    absent: "Absent",
-   day_off: "Day off",
-   sick_leave: "Sick leave",
-   approved_leave: "Approved leave",
 };
 
 export const ERP_WEEKDAYS = [

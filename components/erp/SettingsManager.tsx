@@ -27,11 +27,19 @@ type PermissionRow = {
 
 type CompensationRow = {
    role: ErpStaffRole;
+   salaryTier: string;
    roleLabel: string;
    hourlyRate: number;
    extraHoursEnabled: boolean;
    extraHourlyRate: number;
    extraHoursThreshold: number;
+};
+
+type PenaltyRule = {
+   penalty_number: number;
+   label: string;
+   amount: number;
+   active: boolean;
 };
 
 type ErpMePayload = {
@@ -63,9 +71,11 @@ export default function SettingsManager() {
    const [profile, setProfile] = useState<ErpMePayload | null>(null);
    const [rows, setRows] = useState<PermissionRow[]>([]);
    const [compensationRows, setCompensationRows] = useState<CompensationRow[]>([]);
+   const [penaltyRules, setPenaltyRules] = useState<PenaltyRule[]>([]);
    const [loading, setLoading] = useState(true);
    const [savingKey, setSavingKey] = useState<string | null>(null);
-   const [savingRateRole, setSavingRateRole] = useState<ErpStaffRole | null>(null);
+   const [savingRateKey, setSavingRateKey] = useState<string | null>(null);
+   const [savingPenaltyNumber, setSavingPenaltyNumber] = useState<number | null>(null);
    const [resetting, setResetting] = useState(false);
    const [error, setError] = useState<string | null>(null);
    const [success, setSuccess] = useState<string | null>(null);
@@ -114,6 +124,7 @@ export default function SettingsManager() {
          setProfile(profilePayload);
          setRows(permissionsPayload.rows || []);
          setCompensationRows(compensationPayload.rows || []);
+         setPenaltyRules(compensationPayload.penaltyRules || []);
       } catch (requestError) {
          setError(
             requestError instanceof Error ? requestError.message : "Failed to load settings.",
@@ -168,12 +179,13 @@ export default function SettingsManager() {
 
    const updateCompensationField = (
       role: ErpStaffRole,
-      field: keyof Omit<CompensationRow, "role" | "roleLabel">,
+      salaryTier: string,
+      field: keyof Omit<CompensationRow, "role" | "roleLabel" | "salaryTier">,
       value: number | boolean,
    ) => {
       setCompensationRows((currentRows) =>
          currentRows.map((row) =>
-            row.role === role
+            row.role === role && row.salaryTier === salaryTier
                ? {
                     ...row,
                     [field]: value,
@@ -184,8 +196,9 @@ export default function SettingsManager() {
    };
 
    const saveCompensation = async (row: CompensationRow) => {
+      const rateKey = `${row.role}:${row.salaryTier}`;
       try {
-         setSavingRateRole(row.role);
+         setSavingRateKey(rateKey);
          setError(null);
          setSuccess(null);
          const token = await getSupabaseAccessToken();
@@ -204,6 +217,7 @@ export default function SettingsManager() {
          }
 
          setCompensationRows(payload.rows || []);
+         setPenaltyRules(payload.penaltyRules || []);
          setSuccess("Role hourly rate updated.");
       } catch (requestError) {
          setError(
@@ -212,7 +226,64 @@ export default function SettingsManager() {
                : "Failed to update role hourly rate.",
          );
       } finally {
-         setSavingRateRole(null);
+         setSavingRateKey(null);
+      }
+   };
+
+   const updatePenaltyRuleField = (
+      penaltyNumber: number,
+      field: keyof Omit<PenaltyRule, "penalty_number">,
+      value: string | number | boolean,
+   ) => {
+      setPenaltyRules((currentRows) =>
+         currentRows.map((row) =>
+            row.penalty_number === penaltyNumber
+               ? {
+                    ...row,
+                    [field]: value,
+                 }
+               : row,
+         ),
+      );
+   };
+
+   const savePenaltyRule = async (row: PenaltyRule) => {
+      try {
+         setSavingPenaltyNumber(row.penalty_number);
+         setError(null);
+         setSuccess(null);
+         const token = await getSupabaseAccessToken();
+         const response = await fetch("/api/erp/compensation", {
+            method: "PATCH",
+            headers: {
+               "Content-Type": "application/json",
+               Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+               action: "penaltyRule",
+               penaltyNumber: row.penalty_number,
+               label: row.label,
+               amount: row.amount,
+               active: row.active,
+            }),
+         });
+         const payload = await response.json();
+
+         if (!response.ok) {
+            throw new Error(payload.error || "Failed to update penalty rule.");
+         }
+
+         setCompensationRows(payload.rows || []);
+         setPenaltyRules(payload.penaltyRules || []);
+         setSuccess("Penalty rule updated.");
+      } catch (requestError) {
+         setError(
+            requestError instanceof Error
+               ? requestError.message
+               : "Failed to update penalty rule.",
+         );
+      } finally {
+         setSavingPenaltyNumber(null);
       }
    };
 
@@ -317,13 +388,19 @@ export default function SettingsManager() {
                         </thead>
                         <tbody className="divide-y divide-slate-800">
                            {compensationRows.map((row) => {
-                              const isSaving = savingRateRole === row.role;
+                              const rateKey = `${row.role}:${row.salaryTier}`;
+                              const isSaving = savingRateKey === rateKey;
 
                               return (
-                                 <tr key={row.role} className="bg-slate-950/30">
-                                    <td className="px-4 py-3 font-medium text-white">
-                                       {row.roleLabel}
-                                    </td>
+                                 <tr key={rateKey} className="bg-slate-950/30">
+                                     <td className="px-4 py-3 font-medium text-white">
+                                        {row.roleLabel}
+                                        {row.salaryTier !== "default" && (
+                                           <span className="ml-2 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-normal text-slate-300">
+                                              {row.salaryTier.replace("_", " ")}
+                                           </span>
+                                        )}
+                                     </td>
                                     <td className="px-4 py-3">
                                        <input
                                           type="number"
@@ -333,6 +410,7 @@ export default function SettingsManager() {
                                           onChange={(event) =>
                                              updateCompensationField(
                                                 row.role,
+                                                row.salaryTier,
                                                 "hourlyRate",
                                                 Number(event.target.value),
                                              )
@@ -348,6 +426,7 @@ export default function SettingsManager() {
                                              onChange={(event) =>
                                                 updateCompensationField(
                                                    row.role,
+                                                   row.salaryTier,
                                                    "extraHoursEnabled",
                                                    event.target.checked,
                                                 )
@@ -366,6 +445,7 @@ export default function SettingsManager() {
                                           onChange={(event) =>
                                              updateCompensationField(
                                                 row.role,
+                                                row.salaryTier,
                                                 "extraHourlyRate",
                                                 Number(event.target.value),
                                              )
@@ -382,6 +462,7 @@ export default function SettingsManager() {
                                           onChange={(event) =>
                                              updateCompensationField(
                                                 row.role,
+                                                row.salaryTier,
                                                 "extraHoursThreshold",
                                                 Number(event.target.value),
                                              )
@@ -393,6 +474,103 @@ export default function SettingsManager() {
                                        <button
                                           type="button"
                                           onClick={() => void saveCompensation(row)}
+                                          disabled={isSaving}
+                                          className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
+                                          {isSaving ? "Saving..." : "Save"}
+                                       </button>
+                                    </td>
+                                 </tr>
+                              );
+                           })}
+                        </tbody>
+                     </table>
+                  </div>
+               </div>
+            )}
+         </section>
+
+         <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+            <div>
+               <h2 className="text-lg font-semibold text-white">Penalty rules</h2>
+               <p className="mt-1 text-sm text-slate-400">
+                  Set the monthly consequence for each accumulated penalty.
+               </p>
+            </div>
+
+            {loading ? (
+               <p className="mt-4 text-sm text-slate-500">Loading penalty rules...</p>
+            ) : (
+               <div className="mt-4 overflow-hidden rounded-lg border border-slate-800">
+                  <div className="overflow-x-auto">
+                     <table className="w-full min-w-[760px] text-left text-sm">
+                        <thead className="bg-slate-950 text-xs uppercase tracking-[0.14em] text-slate-500">
+                           <tr>
+                              <th className="px-4 py-3">Penalty</th>
+                              <th className="px-4 py-3">Action</th>
+                              <th className="px-4 py-3">Amount</th>
+                              <th className="px-4 py-3">Active</th>
+                              <th className="px-4 py-3"></th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800">
+                           {penaltyRules.map((row) => {
+                              const isSaving = savingPenaltyNumber === row.penalty_number;
+
+                              return (
+                                 <tr key={row.penalty_number} className="bg-slate-950/30">
+                                    <td className="px-4 py-3 font-medium text-white">
+                                       {row.penalty_number}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                       <input
+                                          value={row.label}
+                                          onChange={(event) =>
+                                             updatePenaltyRuleField(
+                                                row.penalty_number,
+                                                "label",
+                                                event.target.value,
+                                             )
+                                          }
+                                          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                                       />
+                                    </td>
+                                    <td className="px-4 py-3">
+                                       <input
+                                          type="number"
+                                          min="0"
+                                          step="1000"
+                                          value={row.amount}
+                                          onChange={(event) =>
+                                             updatePenaltyRuleField(
+                                                row.penalty_number,
+                                                "amount",
+                                                Number(event.target.value),
+                                             )
+                                          }
+                                          className="w-36 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
+                                       />
+                                    </td>
+                                    <td className="px-4 py-3">
+                                       <label className="inline-flex items-center gap-2 text-slate-300">
+                                          <input
+                                             type="checkbox"
+                                             checked={row.active}
+                                             onChange={(event) =>
+                                                updatePenaltyRuleField(
+                                                   row.penalty_number,
+                                                   "active",
+                                                   event.target.checked,
+                                                )
+                                             }
+                                             className="h-4 w-4 accent-emerald-500"
+                                          />
+                                          Enabled
+                                       </label>
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                       <button
+                                          type="button"
+                                          onClick={() => void savePenaltyRule(row)}
                                           disabled={isSaving}
                                           className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
                                           {isSaving ? "Saving..." : "Save"}

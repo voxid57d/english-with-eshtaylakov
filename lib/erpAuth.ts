@@ -12,6 +12,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export type ErpStaffContext = {
    userId: string;
+   authUserId: string | null;
    fullName: string;
    role: ErpStaffRole;
    roleLabel: string;
@@ -132,6 +133,7 @@ function isConfiguredAdmin(user: User) {
 
 function toStaffContext(row: {
    user_id: string;
+   auth_user_id?: string | null;
    full_name: string;
    role: ErpStaffRole;
    primary_branch_id: string | null;
@@ -140,6 +142,7 @@ function toStaffContext(row: {
 }): ErpStaffContext {
    return {
       userId: row.user_id,
+      authUserId: row.auth_user_id ?? null,
       fullName: row.full_name,
       role: row.role,
       roleLabel: ERP_ROLE_LABELS[row.role],
@@ -205,8 +208,8 @@ export async function requireErpStaff(req: Request) {
 
    const { data: existing, error: existingError } = await supabaseAdmin
       .from("staff_profiles")
-      .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
-      .eq("user_id", user.id)
+      .select("user_id, auth_user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
+      .or(`auth_user_id.eq.${user.id},user_id.eq.${user.id}`)
       .maybeSingle();
 
    if (existingError) {
@@ -222,8 +225,8 @@ export async function requireErpStaff(req: Request) {
          const { data, error } = await supabaseAdmin
             .from("staff_profiles")
             .update({ role: "branch_manager" })
-            .eq("user_id", user.id)
-            .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
+            .eq("user_id", existing.user_id)
+            .select("user_id, auth_user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
             .single();
 
          if (error || !data) {
@@ -246,12 +249,12 @@ export async function requireErpStaff(req: Request) {
    const { data, error } = await supabaseAdmin
       .from("staff_profiles")
       .insert({
-         user_id: user.id,
+         auth_user_id: user.id,
          full_name: getDisplayName(user),
          role: "branch_manager",
          primary_branch_id: null,
       })
-      .select("user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
+      .select("user_id, auth_user_id, full_name, role, primary_branch_id, active, branches:primary_branch_id(name)")
       .single();
 
    if (error || !data) {

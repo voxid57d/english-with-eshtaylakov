@@ -16,12 +16,7 @@ end $$;
 do $$ begin
    create type public.erp_shift_status as enum (
       'scheduled',
-      'completed',
-      'late',
-      'absent',
-      'day_off',
-      'sick_leave',
-      'approved_leave'
+      'absent'
    );
 exception
    when duplicate_object then null;
@@ -38,9 +33,11 @@ create table if not exists public.branches (
 );
 
 create table if not exists public.staff_profiles (
-   user_id uuid primary key references auth.users(id) on delete cascade,
+   user_id uuid primary key default gen_random_uuid(),
+   auth_user_id uuid unique references auth.users(id) on delete set null,
    full_name text not null,
    role public.erp_staff_role not null,
+   salary_tier text not null default 'default',
    primary_branch_id uuid references public.branches(id) on delete set null,
    telegram_username text,
    phone text,
@@ -49,6 +46,29 @@ create table if not exists public.staff_profiles (
    created_at timestamptz not null default now(),
    updated_at timestamptz not null default now()
 );
+
+alter table if exists public.staff_profiles
+   drop constraint if exists staff_profiles_user_id_fkey,
+   add column if not exists auth_user_id uuid,
+   add column if not exists salary_tier text not null default 'default',
+   alter column user_id set default gen_random_uuid();
+
+update public.staff_profiles staff
+set auth_user_id = staff.user_id
+where staff.auth_user_id is null
+  and exists (
+     select 1
+     from auth.users auth_user
+     where auth_user.id = staff.user_id
+  );
+
+do $$ begin
+   alter table public.staff_profiles
+      add constraint staff_profiles_auth_user_id_fkey
+      foreign key (auth_user_id) references auth.users(id) on delete set null;
+exception
+   when duplicate_object then null;
+end $$;
 
 create table if not exists public.staff_branch_assignments (
    staff_user_id uuid not null references public.staff_profiles(user_id) on delete cascade,
@@ -95,7 +115,10 @@ create table if not exists public.kpi_progress_entries (
 
 create table if not exists public.shifts (
    id uuid primary key default gen_random_uuid(),
-   staff_user_id uuid not null references public.staff_profiles(user_id) on delete cascade,
+   staff_user_id uuid references public.staff_profiles(user_id) on delete set null,
+   staff_name_snapshot text,
+   staff_role_snapshot public.erp_staff_role,
+   salary_tier_snapshot text,
    branch_id uuid not null references public.branches(id) on delete cascade,
    shift_date date not null,
    starts_at time not null,
@@ -106,6 +129,14 @@ create table if not exists public.shifts (
    hourly_rate_override numeric(12, 2),
    extra_hourly_rate_override numeric(12, 2),
    extra_hours_enabled_override boolean,
+   uniform_ok boolean not null default true,
+   late_minutes integer not null default 0 check (late_minutes >= 0),
+   late_counts_penalty boolean not null default false,
+   work_quality text not null default 'normal' check (work_quality in ('good', 'normal', 'bad')),
+   absence_reason text check (absence_reason in ('no_reason', 'sick_leave', 'asked')),
+   actual_work_minutes integer check (actual_work_minutes is null or actual_work_minutes >= 0),
+   penalty_amount_snapshot numeric(12, 2) not null default 0,
+   hourly_rate_snapshot numeric(12, 2),
    note text,
    created_at timestamptz not null default now(),
    updated_at timestamptz not null default now()
@@ -178,11 +209,21 @@ create table if not exists public.erp_role_permissions (
 );
 
 create table if not exists public.erp_role_compensation_settings (
-   role public.erp_staff_role primary key,
+   role public.erp_staff_role not null,
+   salary_tier text not null default 'default',
    hourly_rate numeric(12, 2) not null default 0 check (hourly_rate >= 0),
    extra_hours_enabled boolean not null default false,
    extra_hourly_rate numeric(12, 2) not null default 0 check (extra_hourly_rate >= 0),
    extra_hours_threshold numeric(5, 2) not null default 8 check (extra_hours_threshold >= 0),
+   updated_at timestamptz not null default now(),
+   primary key (role, salary_tier)
+);
+
+create table if not exists public.erp_penalty_rules (
+   penalty_number integer primary key check (penalty_number > 0),
+   label text not null,
+   amount numeric(12, 2) not null default 0 check (amount >= 0),
+   active boolean not null default true,
    updated_at timestamptz not null default now()
 );
 
@@ -296,6 +337,9 @@ alter table public.erp_role_permissions
 
 create index if not exists staff_profiles_role_idx on public.staff_profiles(role, active);
 create index if not exists staff_profiles_primary_branch_idx on public.staff_profiles(primary_branch_id);
+create unique index if not exists staff_profiles_auth_user_id_key
+   on public.staff_profiles(auth_user_id)
+   where auth_user_id is not null;
 create index if not exists kpi_targets_period_idx on public.kpi_targets(period_start, period_end);
 create index if not exists kpi_progress_entries_target_date_idx on public.kpi_progress_entries(kpi_target_id, entry_date);
 create index if not exists shifts_branch_date_idx on public.shifts(branch_id, shift_date);
@@ -376,19 +420,40 @@ values
    ('cashier', 'settings', false, false)
 on conflict (role, module) do nothing;
 
+alter table if exists public.erp_role_compensation_settings
+   add column if not exists salary_tier text not null default 'default';
+
+alter table if exists public.erp_role_compensation_settings
+   drop constraint if exists erp_role_compensation_settings_pkey;
+
+alter table if exists public.erp_role_compensation_settings
+   add primary key (role, salary_tier);
+
 insert into public.erp_role_compensation_settings (
    role,
+   salary_tier,
    hourly_rate,
    extra_hours_enabled,
    extra_hourly_rate,
    extra_hours_threshold
 )
 values
-   ('sales_manager', 0, true, 0, 8),
-   ('salesman', 0, true, 0, 8),
-   ('assistant', 0, true, 0, 8),
-   ('cashier', 0, true, 0, 8)
-on conflict (role) do nothing;
+   ('salesman', 'tier_1', 0, true, 0, 8),
+   ('salesman', 'tier_2', 0, true, 0, 8),
+   ('salesman', 'tier_3', 0, true, 0, 8),
+   ('salesman', 'tier_4', 0, true, 0, 8),
+   ('assistant', 'default', 0, true, 0, 8),
+   ('cashier', 'default', 0, true, 0, 8)
+on conflict (role, salary_tier) do nothing;
+
+insert into public.erp_penalty_rules (penalty_number, label, amount, active)
+values
+   (1, 'Warning', 0, true),
+   (2, 'Penalty', 50000, true),
+   (3, 'Penalty', 100000, true),
+   (4, 'Xayfsan and tet-a-tet with manager', 0, true),
+   (5, 'Fired', 0, true)
+on conflict (penalty_number) do nothing;
 
 update public.erp_role_permissions
 set can_view = true,
@@ -403,7 +468,7 @@ where role = 'sales_manager'
   and module = 'teachers';
 
 delete from public.erp_role_compensation_settings
-where role in ('admin', 'branch_manager');
+where role in ('admin', 'branch_manager', 'sales_manager');
 
 update public.erp_role_permissions
 set can_view = true,
@@ -425,10 +490,44 @@ alter table if exists public.task_templates
    add column if not exists branch_id uuid references public.branches(id) on delete set null;
 
 alter table if exists public.shifts
+   drop constraint if exists shifts_staff_user_id_fkey,
+   alter column staff_user_id drop not null,
+   add constraint shifts_staff_user_id_fkey
+      foreign key (staff_user_id) references public.staff_profiles(user_id) on delete set null,
    add column if not exists break_minutes integer not null default 0,
    add column if not exists hourly_rate_override numeric(12, 2),
    add column if not exists extra_hourly_rate_override numeric(12, 2),
-   add column if not exists extra_hours_enabled_override boolean;
+   add column if not exists extra_hours_enabled_override boolean,
+   add column if not exists staff_name_snapshot text,
+   add column if not exists staff_role_snapshot public.erp_staff_role,
+   add column if not exists salary_tier_snapshot text,
+   add column if not exists uniform_ok boolean not null default true,
+   add column if not exists late_minutes integer not null default 0,
+   add column if not exists late_counts_penalty boolean not null default false,
+   add column if not exists work_quality text not null default 'normal',
+   add column if not exists absence_reason text,
+   add column if not exists actual_work_minutes integer,
+   add column if not exists penalty_amount_snapshot numeric(12, 2) not null default 0,
+   add column if not exists hourly_rate_snapshot numeric(12, 2);
+
+alter table if exists public.shifts
+   drop constraint if exists shifts_work_quality_check,
+   drop constraint if exists shifts_absence_reason_check,
+   drop constraint if exists shifts_late_minutes_check,
+   drop constraint if exists shifts_actual_work_minutes_check;
+
+alter table if exists public.shifts
+   add constraint shifts_work_quality_check check (work_quality in ('good', 'normal', 'bad')),
+   add constraint shifts_absence_reason_check check (absence_reason in ('no_reason', 'sick_leave', 'asked')),
+   add constraint shifts_late_minutes_check check (late_minutes >= 0),
+   add constraint shifts_actual_work_minutes_check check (actual_work_minutes is null or actual_work_minutes >= 0);
+
+update public.shifts shift
+set staff_name_snapshot = coalesce(shift.staff_name_snapshot, staff.full_name),
+    staff_role_snapshot = coalesce(shift.staff_role_snapshot, staff.role),
+    salary_tier_snapshot = coalesce(shift.salary_tier_snapshot, staff.salary_tier)
+from public.staff_profiles staff
+where shift.staff_user_id = staff.user_id;
 
 alter table if exists public.teacher_profiles
    add column if not exists lms_teacher_url text;
@@ -520,6 +619,12 @@ before update on public.erp_role_compensation_settings
 for each row
 execute function public.set_erp_updated_at();
 
+drop trigger if exists erp_penalty_rules_updated_at on public.erp_penalty_rules;
+create trigger erp_penalty_rules_updated_at
+before update on public.erp_penalty_rules
+for each row
+execute function public.set_erp_updated_at();
+
 drop trigger if exists staff_working_hours_updated_at on public.staff_working_hours;
 create trigger staff_working_hours_updated_at
 before update on public.staff_working_hours
@@ -567,6 +672,7 @@ alter table public.daily_metrics enable row level security;
 alter table public.cashier_debtor_metrics enable row level security;
 alter table public.erp_role_permissions enable row level security;
 alter table public.erp_role_compensation_settings enable row level security;
+alter table public.erp_penalty_rules enable row level security;
 alter table public.staff_working_hours enable row level security;
 alter table public.teacher_profiles enable row level security;
 alter table public.teacher_group_levels enable row level security;

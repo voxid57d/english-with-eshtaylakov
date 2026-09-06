@@ -13,7 +13,7 @@ import { canErp, requireErpPermission } from "@/lib/erpAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type WorkingHourRow = StaffWorkingHour & {
-   staff_profiles?: Pick<StaffProfile, "user_id" | "full_name" | "role"> | null;
+   staff_profiles?: Pick<StaffProfile, "user_id" | "full_name" | "role" | "active"> | null;
    branches?: Pick<Branch, "id" | "name"> | null;
 };
 
@@ -36,12 +36,36 @@ function toNonNegativeInteger(value: unknown, fieldName: string) {
    return numberValue;
 }
 
+function parseWeekday(value: unknown) {
+   const weekday = Number(value);
+
+   if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
+      throw new Error("Choose a weekday.");
+   }
+
+   return weekday;
+}
+
+function parseWeekdays(value: unknown) {
+   const weekdayValues = Array.isArray(value) ? value : [value];
+   const weekdays = [...new Set(weekdayValues.map(parseWeekday))].sort(
+      (left, right) => left - right,
+   );
+
+   if (weekdays.length === 0) {
+      throw new Error("Choose at least one weekday.");
+   }
+
+   return weekdays;
+}
+
 function toWorkingHour(row: WorkingHourRow) {
    return {
       id: row.id,
       staffUserId: row.staff_user_id,
       staffName: row.staff_profiles?.full_name ?? "Staff member",
       staffRole: row.staff_profiles?.role ?? null,
+      staffActive: row.staff_profiles?.active ?? false,
       staffRoleLabel: row.staff_profiles?.role
          ? ERP_ROLE_LABELS[row.staff_profiles.role]
          : null,
@@ -60,15 +84,12 @@ function validateWorkingHourBody(body: Record<string, unknown>) {
    const id = cleanString(body?.id);
    const staffUserId = cleanString(body?.staffUserId);
    const branchId = cleanString(body?.branchId);
-   const weekday = Number(body?.weekday);
+   const weekdays = parseWeekdays(body?.weekdays ?? body?.weekday);
    const startsAt = cleanString(body?.startsAt);
    const endsAt = cleanString(body?.endsAt);
    const breakMinutes = toNonNegativeInteger(body?.breakMinutes ?? 0, "Break minutes");
 
    if (!staffUserId) throw new Error("Choose a staff member.");
-   if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
-      throw new Error("Choose a weekday.");
-   }
    if (!isTimeString(startsAt)) throw new Error("Valid start time is required.");
    if (!isTimeString(endsAt)) throw new Error("Valid end time is required.");
    if (endsAt <= startsAt) throw new Error("End time must be later than start time.");
@@ -77,7 +98,7 @@ function validateWorkingHourBody(body: Record<string, unknown>) {
       id,
       staffUserId,
       branchId: branchId || null,
-      weekday,
+      weekdays,
       startsAt,
       endsAt,
       breakMinutes,
@@ -106,7 +127,7 @@ async function loadRows(staffUserId?: string) {
    let query = supabaseAdmin
       .from("staff_working_hours")
       .select(
-         "id, staff_user_id, branch_id, weekday, starts_at, ends_at, break_minutes, active, note, created_by, created_at, updated_at, staff_profiles(user_id, full_name, role), branches(id, name)",
+         "id, staff_user_id, branch_id, weekday, starts_at, ends_at, break_minutes, active, note, created_by, created_at, updated_at, staff_profiles(user_id, full_name, role, active), branches(id, name)",
       )
       .order("weekday", { ascending: true });
 
@@ -125,6 +146,7 @@ async function loadRows(staffUserId?: string) {
       .filter(
          (row) =>
             !!row.staffRole &&
+            row.staffActive === true &&
             (ERP_SHIFT_WORKER_ROLES as readonly string[]).includes(row.staffRole),
       );
 }
@@ -148,33 +170,34 @@ export async function POST(req: Request) {
       const schedule = validateWorkingHourBody(body);
       await assertShiftWorker(schedule.staffUserId);
 
+      const rows = schedule.weekdays.map((weekday) => ({
+         staff_user_id: schedule.staffUserId,
+         branch_id: schedule.branchId,
+         weekday,
+         starts_at: schedule.startsAt,
+         ends_at: schedule.endsAt,
+         break_minutes: schedule.breakMinutes,
+         active: schedule.active,
+         note: schedule.note,
+         created_by: user.id,
+      }));
+
       const { data, error } = await supabaseAdmin
          .from("staff_working_hours")
          .upsert(
-            {
-               staff_user_id: schedule.staffUserId,
-               branch_id: schedule.branchId,
-               weekday: schedule.weekday,
-               starts_at: schedule.startsAt,
-               ends_at: schedule.endsAt,
-               break_minutes: schedule.breakMinutes,
-               active: schedule.active,
-               note: schedule.note,
-               created_by: user.id,
-            },
+            rows,
             { onConflict: "staff_user_id,weekday" },
          )
          .select(
-            "id, staff_user_id, branch_id, weekday, starts_at, ends_at, break_minutes, active, note, created_by, created_at, updated_at, staff_profiles(user_id, full_name, role), branches(id, name)",
-         )
-         .single();
+            "id, staff_user_id, branch_id, weekday, starts_at, ends_at, break_minutes, active, note, created_by, created_at, updated_at, staff_profiles(user_id, full_name, role, active), branches(id, name)",
+         );
 
       if (error || !data) {
          throw new Error("Failed to save working hours.");
       }
 
       return NextResponse.json({
-         workingHour: toWorkingHour(data as unknown as WorkingHourRow),
+         workingHoursSaved: ((data || []) as unknown as WorkingHourRow[]).map(toWorkingHour),
          workingHours: await loadRows(),
       });
    } catch (error) {
@@ -193,12 +216,16 @@ export async function PATCH(req: Request) {
          throw new Error("Working hours ID is required.");
       }
 
+      if (schedule.weekdays.length !== 1) {
+         throw new Error("Choose one weekday when editing working hours.");
+      }
+
       const { data, error } = await supabaseAdmin
          .from("staff_working_hours")
          .update({
             staff_user_id: schedule.staffUserId,
             branch_id: schedule.branchId,
-            weekday: schedule.weekday,
+            weekday: schedule.weekdays[0],
             starts_at: schedule.startsAt,
             ends_at: schedule.endsAt,
             break_minutes: schedule.breakMinutes,
@@ -207,7 +234,7 @@ export async function PATCH(req: Request) {
          })
          .eq("id", schedule.id)
          .select(
-            "id, staff_user_id, branch_id, weekday, starts_at, ends_at, break_minutes, active, note, created_by, created_at, updated_at, staff_profiles(user_id, full_name, role), branches(id, name)",
+            "id, staff_user_id, branch_id, weekday, starts_at, ends_at, break_minutes, active, note, created_by, created_at, updated_at, staff_profiles(user_id, full_name, role, active), branches(id, name)",
          )
          .single();
 
