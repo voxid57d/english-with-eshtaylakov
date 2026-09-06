@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { scheduledWorkMinutes, penaltyCount, finalWorkMinutes, summarizeMonthly, type ShiftRow } from "@/lib/shiftPayroll";
 import {
    cleanString,
    erpJsonError,
@@ -17,16 +18,10 @@ import {
    type Branch,
    type ErpStaffRole,
    type ErpWorkQuality,
-   type Shift,
    type StaffProfile,
 } from "@/lib/erp";
 import { canErp, requireErpPermission } from "@/lib/erpAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-type ShiftRow = Shift & {
-   staff_profiles?: Pick<StaffProfile, "user_id" | "full_name" | "role" | "salary_tier" | "active"> | null;
-   branches?: Pick<Branch, "id" | "name"> | null;
-};
 
 type AssessmentPayload = {
    id: string;
@@ -37,6 +32,7 @@ type AssessmentPayload = {
    endsAt: string;
    breakMinutes: number;
    status: string;
+   isAssessed: boolean;
    uniformOk: boolean;
    lateMinutes: number;
    lateCountsPenalty: boolean;
@@ -82,36 +78,6 @@ function parseAbsenceReason(value: unknown): ErpAbsenceReason | null {
    return reason as ErpAbsenceReason;
 }
 
-function scheduledWorkMinutes(shift: Pick<ShiftRow, "starts_at" | "ends_at" | "break_minutes">) {
-   const [startHours, startMinutes] = shift.starts_at.slice(0, 5).split(":").map(Number);
-   const [endHours, endMinutes] = shift.ends_at.slice(0, 5).split(":").map(Number);
-   return Math.max(
-      0,
-      endHours * 60 + endMinutes - (startHours * 60 + startMinutes) - Number(shift.break_minutes || 0),
-   );
-}
-
-function lateDeductionMinutes(lateMinutes: number) {
-   return Math.floor(lateMinutes / 60) * 60;
-}
-
-function penaltyCount(shift: Pick<ShiftRow, "uniform_ok" | "late_counts_penalty" | "work_quality" | "absence_reason">) {
-   if (shift.absence_reason) {
-      return shift.absence_reason === "no_reason" ? 1 : 0;
-   }
-
-   return [
-      shift.uniform_ok !== true,
-      shift.late_counts_penalty === true,
-      shift.work_quality === "bad",
-   ].filter(Boolean).length;
-}
-
-function getPenaltyAmount(totalPenaltyNumber: number, penaltyRules: ErpPenaltyRule[]) {
-   const rule = penaltyRules.find((entry) => entry.penalty_number === totalPenaltyNumber);
-   return Number(rule?.active ? rule.amount : 0);
-}
-
 function isMonthString(value: string) {
    return /^\d{4}-\d{2}$/.test(value);
 }
@@ -126,18 +92,6 @@ function getMonthBounds(monthValue: string) {
       monthStart,
       monthEnd: monthEndDate.toISOString().slice(0, 10),
    };
-}
-
-function finalWorkMinutes(shift: ShiftRow) {
-   if (shift.absence_reason) return 0;
-   return Math.max(
-      0,
-      scheduledWorkMinutes(shift) - lateDeductionMinutes(Number(shift.late_minutes || 0)),
-   );
-}
-
-function compensationKey(role: ErpStaffRole | null, salaryTier: string | null) {
-   return `${role || "none"}:${salaryTier || "default"}`;
 }
 
 function toShift(row: ShiftRow) {
@@ -161,6 +115,7 @@ function toShift(row: ShiftRow) {
       breakMinutes: Number(row.break_minutes || 0),
       status,
       statusLabel: ERP_SHIFT_STATUS_LABELS[status],
+      isAssessed: row.attendance_assessed,
       uniformOk: row.uniform_ok,
       lateMinutes: Number(row.late_minutes || 0),
       lateCountsPenalty: row.late_counts_penalty,
@@ -169,7 +124,7 @@ function toShift(row: ShiftRow) {
       actualWorkMinutes: row.actual_work_minutes,
       scheduledWorkMinutes: scheduledWorkMinutes(row),
       finalWorkMinutes: finalWorkMinutes(row),
-      penaltyCount: penaltyCount(row),
+      penaltyCount: row.attendance_assessed ? penaltyCount(row) : 0,
       penaltyAmount: Number(row.penalty_amount_snapshot || 0),
       hourlyRate: row.hourly_rate_snapshot,
       note: row.note,
@@ -195,7 +150,12 @@ function validateShiftBody(body: Record<string, unknown>) {
    if (!isErpShiftStatus(status)) throw new Error("Choose a valid shift status.");
    if (endsAt <= startsAt) throw new Error("End time must be later than start time.");
 
-   const absenceReason = parseAbsenceReason(body?.absenceReason);
+   if (typeof body?.isAssessed !== "boolean") {
+      throw new Error("Reload this page before saving attendance.");
+   }
+   const isAssessed = body.isAssessed;
+   const absenceReason = isAssessed ? parseAbsenceReason(body?.absenceReason) : null;
+   const hasAttendanceDetails = isAssessed && !absenceReason;
 
    return {
       staffUserId,
@@ -204,11 +164,12 @@ function validateShiftBody(body: Record<string, unknown>) {
       startsAt,
       endsAt,
       breakMinutes,
-      status: absenceReason ? "absent" : status,
-      uniformOk: absenceReason ? true : body?.uniformOk !== false,
-      lateMinutes: absenceReason ? 0 : toNonNegativeInteger(body?.lateMinutes ?? 0, "Late minutes"),
-      lateCountsPenalty: absenceReason ? false : body?.lateCountsPenalty === true,
-      workQuality: absenceReason ? "normal" : parseWorkQuality(body?.workQuality),
+      status: absenceReason ? "absent" : "scheduled",
+      isAssessed,
+      uniformOk: hasAttendanceDetails ? body?.uniformOk !== false : true,
+      lateMinutes: hasAttendanceDetails ? toNonNegativeInteger(body?.lateMinutes ?? 0, "Late minutes") : 0,
+      lateCountsPenalty: hasAttendanceDetails && body?.lateCountsPenalty === true,
+      workQuality: hasAttendanceDetails ? parseWorkQuality(body?.workQuality) : "normal",
       absenceReason,
       actualWorkMinutes: null,
       note: nullableString(body?.note),
@@ -259,7 +220,8 @@ async function saveAssessmentRow(row: AssessmentPayload, approvedBy: string) {
       ends_at: shift.endsAt,
       break_minutes: shift.breakMinutes,
       status: shift.absenceReason ? "absent" : "scheduled",
-      approved_by: approvedBy,
+      approved_by: shift.isAssessed ? approvedBy : null,
+      attendance_assessed: shift.isAssessed,
       uniform_ok: shift.uniformOk,
       late_minutes: shift.lateMinutes,
       late_counts_penalty: shift.lateCountsPenalty,
@@ -303,79 +265,6 @@ async function saveAssessmentRow(row: AssessmentPayload, approvedBy: string) {
    return data;
 }
 
-function summarizeMonthly(
-   monthShifts: ShiftRow[],
-   compensationSettings: ErpRoleCompensationSetting[],
-   penaltyRules: ErpPenaltyRule[],
-) {
-   const compensationByRoleTier = new Map(
-      compensationSettings.map((setting) => [
-         compensationKey(setting.role, setting.salary_tier),
-         setting,
-      ]),
-   );
-   const summaries = new Map<string, {
-      staffUserId: string;
-      staffName: string;
-      staffRoleLabel: string | null;
-      salaryTier: string;
-      workedMinutes: number;
-      penalties: number;
-      penaltyAmount: number;
-      grossSalary: number;
-      salary: number;
-      goodQuality: number;
-      normalQuality: number;
-      badQuality: number;
-   }>();
-
-   for (const shift of monthShifts) {
-      const staffUserId = shift.staff_user_id || `snapshot:${shift.staff_name_snapshot || shift.id}`;
-      const role = shift.staff_profiles?.role ?? shift.staff_role_snapshot;
-      const salaryTier = shift.staff_profiles?.salary_tier ?? shift.salary_tier_snapshot ?? "default";
-      const current = summaries.get(staffUserId) || {
-         staffUserId,
-         staffName: shift.staff_profiles?.full_name ?? shift.staff_name_snapshot ?? "Staff member",
-         staffRoleLabel: role ? ERP_ROLE_LABELS[role] : null,
-         salaryTier,
-         workedMinutes: 0,
-         penalties: 0,
-         penaltyAmount: 0,
-         grossSalary: 0,
-         salary: 0,
-         goodQuality: 0,
-         normalQuality: 0,
-         badQuality: 0,
-      };
-      const shiftPenalties = penaltyCount(shift);
-      const workMinutes = finalWorkMinutes(shift);
-      const compensation = role
-         ? compensationByRoleTier.get(compensationKey(role, salaryTier))
-         : null;
-      const hourlyRate = Number(shift.hourly_rate_snapshot ?? compensation?.hourly_rate ?? 0);
-
-      current.workedMinutes += workMinutes;
-      if (!shift.absence_reason && shift.work_quality === "good") current.goodQuality += 1;
-      if (!shift.absence_reason && shift.work_quality === "normal") current.normalQuality += 1;
-      if (!shift.absence_reason && shift.work_quality === "bad") current.badQuality += 1;
-      for (let index = 1; index <= shiftPenalties; index += 1) {
-         current.penalties += 1;
-         current.penaltyAmount += getPenaltyAmount(current.penalties, penaltyRules);
-      }
-      current.grossSalary += (workMinutes / 60) * hourlyRate;
-      current.salary = Math.max(0, current.grossSalary - current.penaltyAmount);
-      summaries.set(staffUserId, current);
-   }
-
-   return Array.from(summaries.values()).map((summary) => ({
-      ...summary,
-      workedHours: Math.round((summary.workedMinutes / 60) * 100) / 100,
-      grossSalary: Math.round(summary.grossSalary),
-      salary: Math.round(summary.salary),
-      penaltyAmount: Math.round(summary.penaltyAmount),
-   }));
-}
-
 export async function GET(req: Request) {
    try {
       const { staff: currentStaff } = await requireErpPermission(req, "shifts", "view");
@@ -401,7 +290,7 @@ export async function GET(req: Request) {
       let shiftQuery = supabaseAdmin
          .from("shifts")
          .select(
-            "id, staff_user_id, staff_name_snapshot, staff_role_snapshot, salary_tier_snapshot, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, uniform_ok, late_minutes, late_counts_penalty, work_quality, absence_reason, actual_work_minutes, penalty_amount_snapshot, hourly_rate_snapshot, note, created_at, updated_at, staff_profiles(user_id, full_name, role, salary_tier, active), branches(id, name)",
+            "id, staff_user_id, staff_name_snapshot, staff_role_snapshot, salary_tier_snapshot, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, attendance_assessed, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, uniform_ok, late_minutes, late_counts_penalty, work_quality, absence_reason, actual_work_minutes, penalty_amount_snapshot, hourly_rate_snapshot, note, created_at, updated_at, staff_profiles(user_id, full_name, role, salary_tier, active), branches(id, name)",
          )
          .gte("shift_date", weekStart)
          .lte("shift_date", weekEnd)
@@ -431,7 +320,7 @@ export async function GET(req: Request) {
       let monthShiftQuery = supabaseAdmin
          .from("shifts")
          .select(
-            "id, staff_user_id, staff_name_snapshot, staff_role_snapshot, salary_tier_snapshot, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, uniform_ok, late_minutes, late_counts_penalty, work_quality, absence_reason, actual_work_minutes, penalty_amount_snapshot, hourly_rate_snapshot, note, created_at, updated_at, staff_profiles(user_id, full_name, role, salary_tier, active), branches(id, name)",
+            "id, staff_user_id, staff_name_snapshot, staff_role_snapshot, salary_tier_snapshot, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, attendance_assessed, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, uniform_ok, late_minutes, late_counts_penalty, work_quality, absence_reason, actual_work_minutes, penalty_amount_snapshot, hourly_rate_snapshot, note, created_at, updated_at, staff_profiles(user_id, full_name, role, salary_tier, active), branches(id, name)",
          )
          .gte("shift_date", monthStart)
          .lte("shift_date", monthEnd);
@@ -530,7 +419,8 @@ export async function POST(req: Request) {
             ends_at: shift.endsAt,
             break_minutes: shift.breakMinutes,
             status: shift.absenceReason ? "absent" : "scheduled",
-            approved_by: user.id,
+            approved_by: shift.isAssessed ? user.id : null,
+            attendance_assessed: shift.isAssessed,
             uniform_ok: shift.uniformOk,
             late_minutes: shift.lateMinutes,
             late_counts_penalty: shift.lateCountsPenalty,
@@ -541,7 +431,7 @@ export async function POST(req: Request) {
             note: shift.note,
          })
          .select(
-            "id, staff_user_id, staff_name_snapshot, staff_role_snapshot, salary_tier_snapshot, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, uniform_ok, late_minutes, late_counts_penalty, work_quality, absence_reason, actual_work_minutes, penalty_amount_snapshot, hourly_rate_snapshot, note, created_at, updated_at, staff_profiles(user_id, full_name, role, salary_tier, active), branches(id, name)",
+            "id, staff_user_id, staff_name_snapshot, staff_role_snapshot, salary_tier_snapshot, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, attendance_assessed, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, uniform_ok, late_minutes, late_counts_penalty, work_quality, absence_reason, actual_work_minutes, penalty_amount_snapshot, hourly_rate_snapshot, note, created_at, updated_at, staff_profiles(user_id, full_name, role, salary_tier, active), branches(id, name)",
          )
          .single();
 
@@ -594,7 +484,8 @@ export async function PATCH(req: Request) {
             ends_at: shift.endsAt,
             break_minutes: shift.breakMinutes,
             status: shift.absenceReason ? "absent" : "scheduled",
-            approved_by: user.id,
+            approved_by: shift.isAssessed ? user.id : null,
+            attendance_assessed: shift.isAssessed,
             uniform_ok: shift.uniformOk,
             late_minutes: shift.lateMinutes,
             late_counts_penalty: shift.lateCountsPenalty,
@@ -606,7 +497,7 @@ export async function PATCH(req: Request) {
          })
          .eq("id", id)
          .select(
-            "id, staff_user_id, staff_name_snapshot, staff_role_snapshot, salary_tier_snapshot, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, uniform_ok, late_minutes, late_counts_penalty, work_quality, absence_reason, actual_work_minutes, penalty_amount_snapshot, hourly_rate_snapshot, note, created_at, updated_at, staff_profiles(user_id, full_name, role, salary_tier, active), branches(id, name)",
+            "id, staff_user_id, staff_name_snapshot, staff_role_snapshot, salary_tier_snapshot, branch_id, shift_date, starts_at, ends_at, break_minutes, status, approved_by, attendance_assessed, hourly_rate_override, extra_hourly_rate_override, extra_hours_enabled_override, uniform_ok, late_minutes, late_counts_penalty, work_quality, absence_reason, actual_work_minutes, penalty_amount_snapshot, hourly_rate_snapshot, note, created_at, updated_at, staff_profiles(user_id, full_name, role, salary_tier, active), branches(id, name)",
          )
          .single();
 

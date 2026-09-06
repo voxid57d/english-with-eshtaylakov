@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocalToday } from "@/lib/useLocalToday";
+import { getLocalDateString } from "@/lib/localDate";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -107,7 +109,7 @@ const WEEKDAYS = [
 const CALENDAR_WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function todayString() {
-   return new Date().toISOString().slice(0, 10);
+   return getLocalDateString();
 }
 
 function parseDate(value: string) {
@@ -243,7 +245,7 @@ function DatePickerPopover({
       parseDate(value || startDate || todayString()),
    );
    const calendarCells = useMemo(() => getCalendarCells(calendarMonth), [calendarMonth]);
-   const today = todayString();
+   const today = useLocalToday();
 
    return (
       <div className="relative mt-1">

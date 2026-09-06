@@ -1,3 +1,4 @@
+import { getLocalDateString } from "@/lib/localDate";
 import { NextResponse } from "next/server";
 import {
    cleanString,
@@ -175,7 +176,7 @@ function toHoliday(row: HolidayRow) {
 }
 
 function getMonthBoundsFromParam(month: string | null) {
-   const anchor = month && /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7);
+   const anchor = month && /^\d{4}-\d{2}$/.test(month) ? month : getLocalDateString().slice(0, 7);
    const [year, monthIndex] = anchor.split("-").map(Number);
    const start = new Date(Date.UTC(year, monthIndex - 1, 1));
    const end = new Date(Date.UTC(year, monthIndex, 0));
@@ -291,7 +292,7 @@ function groupPayload(body: Record<string, unknown>) {
    const startsAt = cleanString(body.startsAt);
    const endsAt = cleanString(body.endsAt);
    const active = body.active !== false;
-   const archivedOn = active ? null : validateOptionalDate(body.archivedOn, "Archive date") || new Date().toISOString().slice(0, 10);
+   const archivedOn = active ? null : validateOptionalDate(body.archivedOn, "Archive date") || getLocalDateString();
 
    if (!teacherId) throw new Error("Choose a teacher.");
    if (!levelId) throw new Error("Choose a group level.");

@@ -9,6 +9,7 @@ import Navbar from "@/components/Navbar";
 import Sidebar from "@/components/Sidebar";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { supabase } from "@/lib/supabaseClient";
+import { confirmPageLeave } from "@/lib/unsavedChanges";
 
 type DashboardViewer = {
    user: User;
@@ -131,6 +132,7 @@ export default function DashboardLayout({
    }, [router]);
 
    const handleLogOut = useCallback(async () => {
+      if (!confirmPageLeave()) return;
       await supabase.auth.signOut();
       router.push("/");
    }, [router]);

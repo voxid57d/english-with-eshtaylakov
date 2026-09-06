@@ -1,41 +1,42 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { PiMoonLight, PiSunLight } from "react-icons/pi";
 
 type ThemeMode = "dark" | "light";
 
 function getInitialTheme(): ThemeMode {
    if (typeof window === "undefined") return "dark";
-   const savedTheme = window.localStorage.getItem("theme-mode");
-   return savedTheme === "light" ? "light" : "dark";
+   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+function subscribe(onChange: () => void) {
+   const onStorage = (event: StorageEvent) => {
+      if (event.key !== "theme-mode" && event.key !== null) return;
+      document.documentElement.dataset.theme = event.newValue === "light" ? "light" : "dark";
+      onChange();
+   };
+   window.addEventListener("storage", onStorage);
+   window.addEventListener("theme-change", onChange);
+   return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("theme-change", onChange);
+   };
 }
 
 export default function ThemeToggle() {
-   const [theme, setTheme] = useState<ThemeMode | null>(null);
-
-   useEffect(() => {
-      const timeoutId = window.setTimeout(() => {
-         const initialTheme = getInitialTheme();
-         setTheme(initialTheme);
-         document.documentElement.dataset.theme = initialTheme;
-      }, 0);
-
-      return () => window.clearTimeout(timeoutId);
-   }, []);
-
-   useEffect(() => {
-      if (theme) {
-         document.documentElement.dataset.theme = theme;
-      }
-   }, [theme]);
+   const theme = useSyncExternalStore(subscribe, getInitialTheme, () => null);
 
    const toggleTheme = () => {
       if (!theme) return;
       const nextTheme = theme === "dark" ? "light" : "dark";
-      setTheme(nextTheme);
       document.documentElement.dataset.theme = nextTheme;
-      window.localStorage.setItem("theme-mode", nextTheme);
+      window.dispatchEvent(new Event("theme-change"));
+      try {
+         window.localStorage.setItem("theme-mode", nextTheme);
+      } catch {
+         // Theme switching still works when browser storage is unavailable.
+      }
    };
 
    if (!theme) return null;

@@ -1,5 +1,6 @@
 "use client";
 
+import { getLocalDateString } from "@/lib/localDate";
 import { useEffect, useMemo, useState } from "react";
 import {
    PiFloppyDiskLight,
@@ -103,7 +104,7 @@ const debtorLabels = [
 const studentLabels = ["Active students", "Archive students", "Finished students"];
 
 function today() {
-   return new Date().toISOString().slice(0, 10);
+   return getLocalDateString();
 }
 
 function toNumber(value: string) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { getLocalDateString } from "@/lib/localDate";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
    PiChartLineUpLight,
@@ -61,11 +62,9 @@ type MetricForm = {
    note: string;
 };
 
-const monthBounds = getMonthBounds();
-
 const EMPTY_FORM: MetricForm = {
    branchId: "",
-   metricDate: new Date().toISOString().slice(0, 10),
+   metricDate: "",
    leadsCount: "0",
    trialLessonsCount: "0",
    conversionsCount: "0",
@@ -106,10 +105,10 @@ export default function MetricsManager() {
    const [cashierDebtorMetrics, setCashierDebtorMetrics] = useState<
       CashierDebtorMetricView[]
    >([]);
-   const [periodStart, setPeriodStart] = useState(monthBounds.periodStart);
-   const [periodEnd, setPeriodEnd] = useState(monthBounds.periodEnd);
+   const [periodStart, setPeriodStart] = useState(() => getMonthBounds().periodStart);
+   const [periodEnd, setPeriodEnd] = useState(() => getMonthBounds().periodEnd);
    const [branchFilter, setBranchFilter] = useState("all");
-   const [form, setForm] = useState<MetricForm>(EMPTY_FORM);
+   const [form, setForm] = useState<MetricForm>(() => ({ ...EMPTY_FORM, metricDate: getLocalDateString() }));
    const [loading, setLoading] = useState(true);
    const [saving, setSaving] = useState(false);
    const [error, setError] = useState<string | null>(null);

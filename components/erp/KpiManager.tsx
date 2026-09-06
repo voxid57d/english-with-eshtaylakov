@@ -1,5 +1,6 @@
 "use client";
 
+import { getLocalDateString } from "@/lib/localDate";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
    PiChartLineUpLight,
@@ -55,8 +56,6 @@ type BranchOption = {
    name: string;
 };
 
-const monthBounds = getMonthBounds();
-
 const EMPTY_DEFINITION_FORM = {
    id: "",
    name: "",
@@ -71,14 +70,14 @@ const EMPTY_TARGET_FORM = {
    ownerType: "staff",
    staffUserId: "",
    branchId: "",
-   periodStart: monthBounds.periodStart,
-   periodEnd: monthBounds.periodEnd,
+   periodStart: "",
+   periodEnd: "",
    targetValue: "",
 };
 
 const EMPTY_PROGRESS_FORM = {
    targetId: "",
-   entryDate: new Date().toISOString().slice(0, 10),
+   entryDate: "",
    value: "",
    note: "",
 };
@@ -105,8 +104,8 @@ export default function KpiManager() {
    const [staff, setStaff] = useState<StaffOption[]>([]);
    const [branches, setBranches] = useState<BranchOption[]>([]);
    const [definitionForm, setDefinitionForm] = useState(EMPTY_DEFINITION_FORM);
-   const [targetForm, setTargetForm] = useState(EMPTY_TARGET_FORM);
-   const [progressForm, setProgressForm] = useState(EMPTY_PROGRESS_FORM);
+   const [targetForm, setTargetForm] = useState(() => ({ ...EMPTY_TARGET_FORM, ...getMonthBounds() }));
+   const [progressForm, setProgressForm] = useState(() => ({ ...EMPTY_PROGRESS_FORM, entryDate: getLocalDateString() }));
    const [canManage, setCanManage] = useState(false);
    const [loading, setLoading] = useState(true);
    const [saving, setSaving] = useState(false);
@@ -193,6 +192,7 @@ export default function KpiManager() {
       await saveKpi("POST", { action: "target", ...targetForm }, "KPI target created.");
       setTargetForm((current) => ({
          ...EMPTY_TARGET_FORM,
+         ...getMonthBounds(),
          periodStart: current.periodStart,
          periodEnd: current.periodEnd,
       }));
@@ -201,7 +201,7 @@ export default function KpiManager() {
    const submitProgress = async (event: React.FormEvent) => {
       event.preventDefault();
       await saveKpi("POST", { action: "progress", ...progressForm }, "KPI progress saved.");
-      setProgressForm(EMPTY_PROGRESS_FORM);
+      setProgressForm({ ...EMPTY_PROGRESS_FORM, entryDate: getLocalDateString() });
    };
 
    const saveKpi = async (
@@ -279,7 +279,7 @@ export default function KpiManager() {
       );
 
       if (progressForm.targetId === target.id) {
-         setProgressForm(EMPTY_PROGRESS_FORM);
+         setProgressForm({ ...EMPTY_PROGRESS_FORM, entryDate: getLocalDateString() });
       }
    };
 

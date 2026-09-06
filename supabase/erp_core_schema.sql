@@ -126,6 +126,7 @@ create table if not exists public.shifts (
    break_minutes integer not null default 0 check (break_minutes >= 0),
    status public.erp_shift_status not null default 'scheduled',
    approved_by uuid references auth.users(id) on delete set null,
+   attendance_assessed boolean not null default false,
    hourly_rate_override numeric(12, 2),
    extra_hourly_rate_override numeric(12, 2),
    extra_hours_enabled_override boolean,
@@ -488,6 +489,11 @@ where role = 'admin';
 
 alter table if exists public.task_templates
    add column if not exists branch_id uuid references public.branches(id) on delete set null;
+
+-- Preserve existing saved assessments when upgrading an earlier schema.
+alter table public.shifts
+   add column if not exists attendance_assessed boolean not null default true;
+alter table public.shifts alter column attendance_assessed set default false;
 
 alter table if exists public.shifts
    drop constraint if exists shifts_staff_user_id_fkey,

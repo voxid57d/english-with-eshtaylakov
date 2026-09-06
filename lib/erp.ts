@@ -1,3 +1,5 @@
+import { getLocalDateString } from "@/lib/localDate";
+
 export const ERP_STAFF_ROLES = [
    "admin",
    "branch_manager",
@@ -132,6 +134,7 @@ export type Shift = {
    break_minutes: number;
    status: ErpShiftStatus;
    approved_by: string | null;
+   attendance_assessed: boolean;
    hourly_rate_override: number | null;
    extra_hourly_rate_override: number | null;
    extra_hours_enabled_override: boolean | null;
@@ -334,9 +337,11 @@ export function isDateString(value: string) {
    return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-export function getMonthBounds(anchor = new Date()) {
-   const start = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
-   const end = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0));
+export function getMonthBounds(anchor: Date | string = getLocalDateString()) {
+   const dateValue = typeof anchor === "string" ? anchor : getLocalDateString(anchor);
+   const date = new Date(`${dateValue}T00:00:00.000Z`);
+   const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+   const end = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
 
    return {
       periodStart: start.toISOString().slice(0, 10),
@@ -344,10 +349,9 @@ export function getMonthBounds(anchor = new Date()) {
    };
 }
 
-export function getWeekBounds(anchor = new Date()) {
-   const date = new Date(
-      Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate()),
-   );
+export function getWeekBounds(anchor: Date | string = getLocalDateString()) {
+   const dateValue = typeof anchor === "string" ? anchor : getLocalDateString(anchor);
+   const date = new Date(`${dateValue}T00:00:00.000Z`);
    const day = date.getUTCDay();
    const mondayOffset = day === 0 ? -6 : 1 - day;
    const start = new Date(date);

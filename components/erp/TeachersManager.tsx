@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocalToday } from "@/lib/useLocalToday";
+import { getLocalDateString } from "@/lib/localDate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
    PiArchiveLight,
@@ -12,7 +14,7 @@ import {
    PiUsersThreeLight,
 } from "react-icons/pi";
 import { useSearchParams } from "next/navigation";
-import { ERP_WEEKDAYS } from "@/lib/erp";
+import { ERP_WEEKDAYS, getWeekBounds } from "@/lib/erp";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 
 type TeacherView = {
@@ -144,7 +146,7 @@ const EMPTY_GROUP_FORM: GroupForm = {
    levelId: "",
    lmsGroupName: "",
    lmsGroupId: "",
-   startsOn: new Date().toISOString().slice(0, 10),
+   startsOn: "",
    endsOn: "",
    startsAt: "09:00",
    endsAt: "10:30",
@@ -171,14 +173,6 @@ function addDays(dateValue: string, days: number) {
    const date = new Date(`${dateValue}T00:00:00.000Z`);
    date.setUTCDate(date.getUTCDate() + days);
    return date.toISOString().slice(0, 10);
-}
-
-function formatLocalDate(date: Date) {
-   const year = date.getFullYear();
-   const month = String(date.getMonth() + 1).padStart(2, "0");
-   const day = String(date.getDate()).padStart(2, "0");
-
-   return `${year}-${month}-${day}`;
 }
 
 function formatDateForDisplay(value: string) {
@@ -220,10 +214,7 @@ function parseDisplayDate(value: string) {
 }
 
 function getWeekStart(anchor = new Date()) {
-   const date = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate()));
-   const day = date.getUTCDay();
-   date.setUTCDate(date.getUTCDate() + (day === 0 ? -6 : 1 - day));
-   return date.toISOString().slice(0, 10);
+   return getWeekBounds(anchor).weekStart;
 }
 
 function getWeekday(dateValue: string) {
@@ -406,10 +397,10 @@ export default function TeachersManager() {
    const [selectedTeacherId, setSelectedTeacherId] = useState("");
    const [teacherForm, setTeacherForm] = useState<TeacherForm>(EMPTY_TEACHER_FORM);
    const [levelForm, setLevelForm] = useState<LevelForm>(EMPTY_LEVEL_FORM);
-   const [groupForm, setGroupForm] = useState<GroupForm>(EMPTY_GROUP_FORM);
+   const [groupForm, setGroupForm] = useState<GroupForm>(() => ({ ...EMPTY_GROUP_FORM, startsOn: getLocalDateString() }));
    const [showArchivedGroups, setShowArchivedGroups] = useState(false);
    const [weekStart, setWeekStart] = useState(getWeekStart());
-   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+   const [month, setMonth] = useState(getLocalDateString().slice(0, 7));
    const [coverDraft, setCoverDraft] = useState<CoverDraft | null>(null);
    const [holidayDate, setHolidayDate] = useState<string | null>(null);
    const [loading, setLoading] = useState(true);
@@ -419,7 +410,7 @@ export default function TeachersManager() {
 
    const activeTeachers = useMemo(() => teachers.filter((teacher) => teacher.active), [teachers]);
    const selectedTeacher = teachers.find((teacher) => teacher.id === selectedTeacherId) || activeTeachers[0] || teachers[0];
-   const today = useMemo(() => formatLocalDate(new Date()), []);
+   const today = useLocalToday();
    const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
    const monthDays = useMemo(() => getMonthDays(month), [month]);
    const holidayDates = useMemo(() => new Set(holidays.map((holiday) => holiday.holidayDate)), [holidays]);
@@ -646,7 +637,7 @@ export default function TeachersManager() {
    const submitGroup = async (event: React.FormEvent) => {
       event.preventDefault();
       if (await saveEntity("group", groupForm, groupForm.id ? "PATCH" : "POST")) {
-         setGroupForm(EMPTY_GROUP_FORM);
+         setGroupForm({ ...EMPTY_GROUP_FORM, startsOn: getLocalDateString() });
       }
    };
 
@@ -1090,7 +1081,7 @@ export default function TeachersManager() {
                               Save group
                            </button>
                            {groupForm.id && (
-                              <button type="button" onClick={() => setGroupForm(EMPTY_GROUP_FORM)} className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800">
+                              <button type="button" onClick={() => setGroupForm({ ...EMPTY_GROUP_FORM, startsOn: getLocalDateString() })} className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800">
                                  Cancel
                               </button>
                            )}
@@ -1642,7 +1633,7 @@ export default function TeachersManager() {
          )}
 
          {holidayDate && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm">
+            <div className="app-backdrop fixed inset-0 z-50 flex items-center justify-center px-4 py-6 backdrop-blur-sm">
                <div className="w-full max-w-sm rounded-lg border border-slate-800 bg-slate-950 p-5 shadow-2xl">
                   <h2 className="text-lg font-semibold text-white">Holiday day</h2>
                   <p className="mt-2 text-sm leading-6 text-slate-400">
@@ -1679,7 +1670,7 @@ export default function TeachersManager() {
          )}
 
          {coverDraft && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm">
+            <div className="app-backdrop fixed inset-0 z-50 flex items-center justify-center px-4 py-6 backdrop-blur-sm">
                <form onSubmit={saveCover} className="w-full max-w-lg rounded-lg border border-slate-800 bg-slate-950 p-5 shadow-2xl">
                   <div className="flex items-start justify-between gap-4">
                      <div>

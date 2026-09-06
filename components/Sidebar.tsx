@@ -270,7 +270,7 @@ function Sidebar({ isOpenOnMobile, closeMobile }: SidebarProps) {
                   ? "pointer-events-auto opacity-100"
                   : "pointer-events-none opacity-0"
             }`}>
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeMobile} />
+            <div className="app-backdrop absolute inset-0 backdrop-blur-sm" onClick={closeMobile} />
 
             <aside
                className={`relative z-50 h-full w-64 border-r border-slate-800 bg-slate-950 p-5 shadow-2xl shadow-black/60 transform transition-transform duration-300 ${

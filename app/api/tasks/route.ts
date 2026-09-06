@@ -1,3 +1,4 @@
+import { getLocalDateString } from "@/lib/localDate";
 import { NextResponse } from "next/server";
 import { requireAuthenticatedUser } from "@/lib/serverAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -64,7 +65,7 @@ export async function GET(req: Request) {
 
       const url = new URL(req.url);
       const view = url.searchParams.get("view") === "monthly" ? "monthly" : "daily";
-      const requestedDate = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
+      const requestedDate = url.searchParams.get("date") || getLocalDateString();
       const assignee = url.searchParams.get("assignee") || "all";
 
       if (!isDate(requestedDate)) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
    PiBriefcaseLight,
    PiCalendarBlankLight,
@@ -17,6 +17,11 @@ import {
    type ErpShiftStatus,
    type ErpStaffRole,
 } from "@/lib/erp";
+import { createLatestRequest, removeSavedDrafts } from "@/lib/shiftDrafts";
+import { installUnsavedChangesGuard } from "@/lib/unsavedChanges";
+import { getLocalDateString } from "@/lib/localDate";
+import { useLocalToday } from "@/lib/useLocalToday";
+import { attendanceLabel, summarizeAttendance } from "@/lib/shiftCalculations";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 
 type ShiftView = {
@@ -32,6 +37,7 @@ type ShiftView = {
    endsAt: string;
    breakMinutes: number;
    status: ErpShiftStatus;
+   isAssessed: boolean;
    statusLabel: string;
    salaryTier: string;
    staffActive: boolean;
@@ -137,6 +143,7 @@ type ShiftForm = {
    endsAt: string;
    breakMinutes: number;
    status: ErpShiftStatus;
+   isAssessed: boolean;
    uniformOk: boolean;
    lateMinutes: number;
    lateCountsPenalty: boolean;
@@ -158,15 +165,8 @@ type WorkingHourForm = {
    note: string;
 };
 
-function getLocalDateString(date = new Date()) {
-   const year = date.getFullYear();
-   const month = String(date.getMonth() + 1).padStart(2, "0");
-   const day = String(date.getDate()).padStart(2, "0");
-   return `${year}-${month}-${day}`;
-}
-
 function getWeekBoundsForLocalDate(dateValue = getLocalDateString()) {
-   return getWeekBounds(new Date(`${dateValue}T00:00:00.000Z`));
+   return getWeekBounds(dateValue);
 }
 
 function addMonths(monthValue: string, months: number) {
@@ -175,18 +175,16 @@ function addMonths(monthValue: string, months: number) {
    return date.toISOString().slice(0, 7);
 }
 
-const weekBounds = getWeekBoundsForLocalDate();
-const currentPayrollMonth = getLocalDateString().slice(0, 7);
-
 const EMPTY_FORM: ShiftForm = {
    id: "",
    staffUserId: "",
    branchId: "",
-   shiftDate: getLocalDateString(),
+   shiftDate: "",
    startsAt: "09:00",
    endsAt: "18:00",
    breakMinutes: 60,
    status: "scheduled",
+   isAssessed: false,
    uniformOk: true,
    lateMinutes: 0,
    lateCountsPenalty: false,
@@ -223,14 +221,9 @@ function getErpWeekday(dateValue: string) {
    return day === 0 ? 7 : day;
 }
 
-function attendanceLabel(absenceReason: ShiftView["absenceReason"]) {
-   if (absenceReason === "asked") return "Asked";
-   if (absenceReason === "no_reason") return "No reason";
-   if (absenceReason === "sick_leave") return "Sick leave";
-   return "Came";
-}
-
-function attendanceClass(absenceReason: ShiftView["absenceReason"]) {
+function attendanceClass(shift: ShiftView) {
+   if (!shift.isAssessed) return "border-slate-700 bg-slate-800/50 text-slate-300";
+   const { absenceReason } = shift;
    if (absenceReason === "no_reason") {
       return "border-red-500/30 bg-red-500/10 text-red-200";
    }
@@ -249,22 +242,28 @@ export default function ShiftsManager() {
    const [staff, setStaff] = useState<StaffOption[]>([]);
    const [branches, setBranches] = useState<BranchOption[]>([]);
    const [monthlySummaries, setMonthlySummaries] = useState<MonthlySummary[]>([]);
-   const [shiftDrafts, setShiftDrafts] = useState<Record<string, Partial<ShiftView>>>({});
+   const [shiftDrafts, setShiftDrafts] = useState<Record<string, ShiftView>>({});
    const [canManage, setCanManage] = useState(false);
-   const [weekStart, setWeekStart] = useState(weekBounds.weekStart);
-   const [weekEnd, setWeekEnd] = useState(weekBounds.weekEnd);
+   const [weekStart, setWeekStart] = useState(() => getWeekBoundsForLocalDate().weekStart);
+   const [weekEnd, setWeekEnd] = useState(() => getWeekBoundsForLocalDate().weekEnd);
    const [selectedDate, setSelectedDate] = useState(getLocalDateString());
-   const [payrollMonth, setPayrollMonth] = useState(currentPayrollMonth);
+   const [payrollMonth, setPayrollMonth] = useState(() => getLocalDateString().slice(0, 7));
    const [ratingSort, setRatingSort] = useState<RatingSort>({
       key: "penalties",
       direction: "desc",
    });
    const [branchFilter, setBranchFilter] = useState("all");
-   const [form, setForm] = useState<ShiftForm>(EMPTY_FORM);
+   const [form, setForm] = useState<ShiftForm>(() => ({ ...EMPTY_FORM, shiftDate: getLocalDateString() }));
    const [workingHourForm, setWorkingHourForm] = useState<WorkingHourForm>(
       EMPTY_WORKING_HOUR_FORM,
    );
    const [shiftModalOpen, setShiftModalOpen] = useState(false);
+   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+   const [originalForm, setOriginalForm] = useState<ShiftForm | null>(null);
+   const [originalWorkingHourForm, setOriginalWorkingHourForm] = useState(EMPTY_WORKING_HOUR_FORM);
+   const latestLoad = useRef(createLatestRequest());
+   const reloadCurrentView = useRef<() => Promise<void>>(async () => {});
+   const mounted = useRef(false);
    const [expandedTemplateStaffIds, setExpandedTemplateStaffIds] = useState<string[]>([]);
    const [loading, setLoading] = useState(true);
    const [saving, setSaving] = useState(false);
@@ -272,7 +271,24 @@ export default function ShiftsManager() {
    const [success, setSuccess] = useState<string | null>(null);
 
    const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
-   const today = useMemo(() => getLocalDateString(), []);
+   const today = useLocalToday();
+   const pendingDraftCount = Object.keys(shiftDrafts).length;
+   const formDirty = shiftModalOpen && JSON.stringify(form) !== JSON.stringify(originalForm);
+   const workingHoursDirty = JSON.stringify(workingHourForm) !== JSON.stringify(originalWorkingHourForm);
+   const hasUnsavedChanges = pendingDraftCount > 0 || formDirty || workingHoursDirty || saving;
+
+   useEffect(() => {
+      mounted.current = true;
+      return () => { mounted.current = false; };
+   }, []);
+
+   useEffect(() => {
+      if (hasUnsavedChanges) {
+         return installUnsavedChangesGuard(saving
+            ? "Shift changes are still saving. Leave anyway? The save may continue after you leave."
+            : undefined);
+      }
+   }, [hasUnsavedChanges, saving]);
 
    const scheduledShifts = useMemo(() => {
       const savedByStaffDate = new Map(
@@ -314,6 +330,7 @@ export default function ShiftsManager() {
                endsAt: workingHour.endsAt,
                breakMinutes: workingHour.breakMinutes,
                status: "scheduled",
+               isAssessed: false,
                statusLabel: ERP_SHIFT_STATUS_LABELS.scheduled,
                salaryTier: staffMember?.salaryTier || "default",
                staffActive: true,
@@ -331,14 +348,7 @@ export default function ShiftsManager() {
                         Number(workingHour.startsAt.slice(3, 5))) -
                      workingHour.breakMinutes,
                ),
-               finalWorkMinutes: Math.max(
-                  0,
-                  (Number(workingHour.endsAt.slice(0, 2)) * 60 +
-                     Number(workingHour.endsAt.slice(3, 5))) -
-                     (Number(workingHour.startsAt.slice(0, 2)) * 60 +
-                        Number(workingHour.startsAt.slice(3, 5))) -
-                     workingHour.breakMinutes,
-               ),
+               finalWorkMinutes: 0,
                penaltyCount: 0,
                penaltyAmount: 0,
                hourlyRate: null,
@@ -365,14 +375,7 @@ export default function ShiftsManager() {
       const selectedDayShifts = scheduledShifts.filter(
          (shift) => shift.shiftDate === selectedDate,
       );
-      const came = selectedDayShifts.filter((shift) => !shift.absenceReason).length;
-      const absent = selectedDayShifts.length - came;
-
-      return {
-         total: selectedDayShifts.length,
-         came,
-         absent,
-      };
+      return summarizeAttendance(selectedDayShifts);
    }, [scheduledShifts, selectedDate]);
 
    const monthlyDashboard = useMemo(
@@ -505,21 +508,25 @@ export default function ShiftsManager() {
    }, [staff, workingHours]);
 
    const loadShifts = useCallback(async () => {
+      const request = latestLoad.current.begin();
       try {
          setLoading(true);
          setError(null);
          const token = await getSupabaseAccessToken();
+         if (!request.isCurrent()) return;
          const [response, workingHoursResponse] = await Promise.all([
             fetch(
             `/api/erp/shifts?weekStart=${weekStart}&weekEnd=${weekEnd}&payrollMonth=${payrollMonth}&branchId=${branchFilter}`,
             {
                headers: { Authorization: `Bearer ${token}` },
                cache: "no-store",
+               signal: request.signal,
             },
             ),
             fetch("/api/erp/working-hours", {
                headers: { Authorization: `Bearer ${token}` },
                cache: "no-store",
+               signal: request.signal,
             }),
          ]);
          const payload = await response.json();
@@ -533,26 +540,30 @@ export default function ShiftsManager() {
             throw new Error(workingHoursPayload.error || "Failed to load working hours.");
          }
 
+         if (!request.isCurrent()) return;
          setShifts(payload.shifts || []);
          setStaff(payload.staff || []);
          setBranches(payload.branches || []);
          setMonthlySummaries(payload.monthlySummaries || []);
          setCanManage(Boolean(payload.canManage));
          setWorkingHours(workingHoursPayload.workingHours || []);
-         setShiftDrafts({});
       } catch (requestError) {
+         if (!request.isCurrent()) return;
          setError(
             requestError instanceof Error
                ? requestError.message
                : "Failed to load shifts.",
          );
       } finally {
-         setLoading(false);
+         if (request.isCurrent()) setLoading(false);
       }
    }, [branchFilter, payrollMonth, weekEnd, weekStart]);
 
    useEffect(() => {
+      reloadCurrentView.current = loadShifts;
+      const requests = latestLoad.current;
       void loadShifts();
+      return () => requests.cancel();
    }, [loadShifts]);
 
    const changeSelectedDate = (dateValue: string) => {
@@ -590,14 +601,17 @@ export default function ShiftsManager() {
    };
 
    const resetForm = () => {
-      setForm(EMPTY_FORM);
+      if (formDirty && !window.confirm("Discard your unsaved hour changes?")) return;
+      setEditingShiftId(null);
+      setOriginalForm(null);
+      setForm({ ...EMPTY_FORM, shiftDate: getLocalDateString() });
       setShiftModalOpen(false);
       setError(null);
       setSuccess(null);
    };
 
    const editShift = (shift: ShiftView) => {
-      setForm({
+      const nextForm: ShiftForm = {
          id: shift.isGenerated ? "" : shift.id,
          staffUserId: shift.staffUserId,
          branchId: shift.branchId,
@@ -606,6 +620,7 @@ export default function ShiftsManager() {
          endsAt: shift.endsAt,
          breakMinutes: shift.breakMinutes,
          status: shift.status,
+         isAssessed: shift.isAssessed,
          uniformOk: shift.uniformOk,
          lateMinutes: shift.lateMinutes,
          lateCountsPenalty: shift.lateCountsPenalty,
@@ -613,7 +628,10 @@ export default function ShiftsManager() {
          absenceReason: shift.absenceReason,
          actualWorkMinutes: null,
          note: shift.note || "",
-      });
+      };
+      setForm(nextForm);
+      setOriginalForm(nextForm);
+      setEditingShiftId(shift.id);
       setShiftModalOpen(true);
       setError(null);
       setSuccess(null);
@@ -621,12 +639,14 @@ export default function ShiftsManager() {
 
    const resetWorkingHourForm = () => {
       setWorkingHourForm(EMPTY_WORKING_HOUR_FORM);
+      setOriginalWorkingHourForm(EMPTY_WORKING_HOUR_FORM);
       setError(null);
       setSuccess(null);
    };
 
    const editWorkingHour = (workingHour: WorkingHourView) => {
-      setWorkingHourForm({
+      if (workingHoursDirty && !window.confirm("Discard your unsaved working-hour changes?")) return;
+      const nextForm: WorkingHourForm = {
          id: workingHour.id,
          staffUserId: workingHour.staffUserId,
          branchId: workingHour.branchId || "",
@@ -636,7 +656,9 @@ export default function ShiftsManager() {
          breakMinutes: workingHour.breakMinutes,
          active: workingHour.active,
          note: workingHour.note || "",
-      });
+      };
+      setWorkingHourForm(nextForm);
+      setOriginalWorkingHourForm(nextForm);
       setError(null);
       setSuccess(null);
    };
@@ -680,22 +702,24 @@ export default function ShiftsManager() {
    };
 
    const updateShiftDraft = (shiftId: string, updates: Partial<ShiftView>) => {
+      if (!canManage || saving || loading) return;
       const currentShift = scheduledShifts.find((shift) => shift.id === shiftId);
       if (!currentShift) return;
 
       const applyUpdate = (shift: ShiftView): ShiftView => {
          const nextShift = { ...shift, ...updates };
-         if (nextShift.absenceReason) {
+         if (!nextShift.isAssessed) nextShift.absenceReason = null;
+         if (!nextShift.isAssessed || nextShift.absenceReason) {
             nextShift.uniformOk = true;
             nextShift.lateMinutes = 0;
             nextShift.lateCountsPenalty = false;
             nextShift.workQuality = "normal";
          }
          const lateDeductedMinutes = Math.floor(nextShift.lateMinutes / 60) * 60;
-         const finalWorkMinutes = nextShift.absenceReason
+         const finalWorkMinutes = !nextShift.isAssessed || nextShift.absenceReason
             ? 0
             : Math.max(0, nextShift.scheduledWorkMinutes - lateDeductedMinutes);
-         const penaltyCount = nextShift.absenceReason
+         const penaltyCount = !nextShift.isAssessed ? 0 : nextShift.absenceReason
             ? nextShift.absenceReason === "no_reason"
                ? 1
                : 0
@@ -721,6 +745,8 @@ export default function ShiftsManager() {
    };
 
    const saveDailyAssessments = async () => {
+      if (saving || !canManage || pendingDraftCount === 0) return;
+      const savedDrafts = { ...shiftDrafts };
       try {
          setSaving(true);
          setError(null);
@@ -734,7 +760,7 @@ export default function ShiftsManager() {
             },
             body: JSON.stringify({
                action: "bulkAssessments",
-               shifts: dailyShifts.map((shift) => ({
+               shifts: Object.values(savedDrafts).map((shift) => ({
                   ...shift,
                   uniformOk: shift.absenceReason ? true : shift.uniformOk,
                   lateMinutes: shift.absenceReason ? 0 : shift.lateMinutes,
@@ -751,8 +777,11 @@ export default function ShiftsManager() {
             throw new Error(payload.error || "Failed to save daily checklist.");
          }
 
-         setSuccess("Daily checklist saved.");
-         await loadShifts();
+         if (!mounted.current) return;
+         setShiftDrafts((current) => removeSavedDrafts(current, savedDrafts));
+         const savedCount = Object.keys(savedDrafts).length;
+         setSuccess(`${savedCount} shift change${savedCount === 1 ? "" : "s"} saved.`);
+         await reloadCurrentView.current();
       } catch (requestError) {
          setError(
             requestError instanceof Error
@@ -765,7 +794,9 @@ export default function ShiftsManager() {
    };
 
    const submitShift = async (event: React.FormEvent) => {
+      const savedDrafts = editingShiftId && shiftDrafts[editingShiftId] ? { [editingShiftId]: shiftDrafts[editingShiftId] } : {};
       event.preventDefault();
+      if (saving) return;
 
       try {
          setSaving(true);
@@ -790,10 +821,14 @@ export default function ShiftsManager() {
             throw new Error(payload.error || "Failed to save shift.");
          }
 
+         if (!mounted.current) return;
+         setShiftDrafts((current) => removeSavedDrafts(current, savedDrafts));
+         setEditingShiftId(null);
+         setOriginalForm(null);
          setSuccess(form.id ? "Shift updated." : "Shift created.");
-         setForm(EMPTY_FORM);
+         setForm({ ...EMPTY_FORM, shiftDate: getLocalDateString() });
          setShiftModalOpen(false);
-         await loadShifts();
+         await reloadCurrentView.current();
       } catch (requestError) {
          setError(
             requestError instanceof Error
@@ -807,6 +842,7 @@ export default function ShiftsManager() {
 
    const submitWorkingHour = async (event: React.FormEvent) => {
       event.preventDefault();
+      if (saving) return;
 
       try {
          setSaving(true);
@@ -844,6 +880,7 @@ export default function ShiftsManager() {
                  } saved.`,
          );
          setWorkingHourForm(EMPTY_WORKING_HOUR_FORM);
+         setOriginalWorkingHourForm(EMPTY_WORKING_HOUR_FORM);
       } catch (requestError) {
          setError(
             requestError instanceof Error
@@ -868,7 +905,7 @@ export default function ShiftsManager() {
                 : "border-slate-800 bg-slate-950/30";
 
       return (
-         <div key={shift.id} className={`rounded-lg border p-3 ${penaltyTone}`}>
+         <fieldset key={shift.id} disabled={!canManage || saving || loading} className={`min-w-0 rounded-lg border p-3 ${penaltyTone}`}>
             <div className="flex items-start justify-between gap-3">
                <div className="min-w-0">
                   <p className="break-words text-base font-semibold leading-5 text-white">
@@ -882,9 +919,9 @@ export default function ShiftsManager() {
                   <span
                      className={[
                         "rounded-lg border px-2 py-1 text-xs",
-                        attendanceClass(shift.absenceReason),
+                        attendanceClass(shift),
                      ].join(" ")}>
-                     {attendanceLabel(shift.absenceReason)}
+                     {attendanceLabel(shift)}
                   </span>
                   <span className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300">
                      {summary ? `${summary.salary.toLocaleString()} sum` : "0 sum"}
@@ -914,7 +951,7 @@ export default function ShiftsManager() {
                )}
             </div>
 
-            {!isAbsentState && (
+            {shift.isAssessed && !isAbsentState && (
                <>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                      <label className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-slate-200">
@@ -979,14 +1016,16 @@ export default function ShiftsManager() {
                <label className="block">
                   <span className="text-xs text-slate-400">State</span>
                   <select
-                     value={shift.absenceReason || ""}
+                     value={shift.isAssessed ? shift.absenceReason || "" : "not_assessed"}
                      onChange={(event) =>
                         updateShiftDraft(shift.id, {
-                           absenceReason:
+                           isAssessed: event.target.value !== "not_assessed",
+                           absenceReason: event.target.value === "not_assessed" ? null :
                               (event.target.value as ShiftView["absenceReason"]) || null,
                         })
                      }
                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400">
+                     <option value="not_assessed">Not assessed</option>
                      <option value="">Came</option>
                      <option value="asked">Asked</option>
                      <option value="no_reason">No reason</option>
@@ -1002,7 +1041,7 @@ export default function ShiftsManager() {
                className="mt-3 w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
                placeholder="Quick comment"
             />
-         </div>
+         </fieldset>
       );
    };
 
@@ -1047,7 +1086,7 @@ export default function ShiftsManager() {
                      <input
                         type="month"
                         value={payrollMonth}
-                        onChange={(event) => setPayrollMonth(event.target.value || currentPayrollMonth)}
+                        onChange={(event) => setPayrollMonth(event.target.value || getLocalDateString().slice(0, 7))}
                         className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
                      />
                      <button
@@ -1081,7 +1120,7 @@ export default function ShiftsManager() {
                      </p>
                   </div>
                </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                      <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3">
                         <p className="text-xs text-slate-500">Day shifts</p>
                         <p className="mt-1 text-2xl font-semibold text-white">{summary.total}</p>
@@ -1089,6 +1128,10 @@ export default function ShiftsManager() {
                      <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3">
                         <p className="text-xs text-slate-500">Came</p>
                         <p className="mt-1 text-2xl font-semibold text-white">{summary.came}</p>
+                     </div>
+                     <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3">
+                        <p className="text-xs text-slate-500">Not assessed</p>
+                        <p className="mt-1 text-2xl font-semibold text-white">{summary.notAssessed}</p>
                      </div>
                      <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-4 py-3">
                         <p className="text-xs text-slate-500">Absent</p>
@@ -1109,6 +1152,26 @@ export default function ShiftsManager() {
                ].join(" ")}>
                {error || success}
             </div>
+         )}
+
+         {pendingDraftCount > 0 && (
+            <section aria-label="Unsaved shift changes" className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-slate-950 p-4 shadow-lg">
+               <div>
+                  <p role="status" className="text-sm font-semibold text-amber-200">{pendingDraftCount} unsaved shift change{pendingDraftCount === 1 ? "" : "s"}</p>
+                  <p className="mt-1 text-xs text-slate-400">Includes edits on other dates and branches. Unassessed shifts do not count toward pay.</p>
+               </div>
+               <div className="flex gap-2">
+                  <button type="button" disabled={saving} onClick={() => {
+                     if (window.confirm("Discard all unsaved shift changes, including other dates and branches?")) {
+                        setShiftDrafts({});
+                        setSuccess(null);
+                     }
+                  }} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800 disabled:opacity-60">Discard all</button>
+                  <button type="button" disabled={saving || loading || !canManage} onClick={() => void saveDailyAssessments()} className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
+                     <PiFloppyDiskLight size={18} />{saving ? "Saving..." : "Save all changes"}
+                  </button>
+               </div>
+            </section>
          )}
 
          <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-1">
@@ -1461,19 +1524,6 @@ export default function ShiftsManager() {
                   </div>
                </div>
 
-               {canManage && dailyShifts.length > 0 && (
-                  <div className="mt-4 flex justify-end">
-                     <button
-                        type="button"
-                        onClick={() => void saveDailyAssessments()}
-                        disabled={saving}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
-                        <PiFloppyDiskLight size={18} />
-                        {saving ? "Saving..." : "Save daily checklist"}
-                     </button>
-                  </div>
-               )}
-
                {loading ? (
                   <p className="mt-4 text-sm text-slate-500">Loading daily shifts...</p>
                ) : dailyShifts.length === 0 ? (
@@ -1564,7 +1614,7 @@ export default function ShiftsManager() {
          )}
 
          {shiftModalOpen && canManage && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm">
+            <div className="app-backdrop fixed inset-0 z-50 flex items-center justify-center px-4 py-6 backdrop-blur-sm">
                <form
                   onSubmit={submitShift}
                   className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-800 bg-slate-950 p-5 shadow-2xl">
