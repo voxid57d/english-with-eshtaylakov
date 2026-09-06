@@ -91,6 +91,22 @@ type MonthlySummary = {
    badQuality: number;
 };
 
+type RatingSortKey =
+   | "staffName"
+   | "staffRoleLabel"
+   | "workedHours"
+   | "goodQuality"
+   | "normalQuality"
+   | "badQuality"
+   | "penalties"
+   | "penaltyAmount"
+   | "salary";
+
+type RatingSort = {
+   key: RatingSortKey;
+   direction: "asc" | "desc";
+};
+
 type BranchOption = {
    id: string;
    name: string;
@@ -231,6 +247,10 @@ export default function ShiftsManager() {
    const [weekEnd, setWeekEnd] = useState(weekBounds.weekEnd);
    const [selectedDate, setSelectedDate] = useState(getLocalDateString());
    const [payrollMonth, setPayrollMonth] = useState(currentPayrollMonth);
+   const [ratingSort, setRatingSort] = useState<RatingSort>({
+      key: "penalties",
+      direction: "desc",
+   });
    const [branchFilter, setBranchFilter] = useState("all");
    const [form, setForm] = useState<ShiftForm>(EMPTY_FORM);
    const [workingHourForm, setWorkingHourForm] = useState<WorkingHourForm>(
@@ -415,6 +435,27 @@ export default function ShiftsManager() {
          });
    }, [branchFilter, monthlySummaries, scheduledShifts, staff]);
 
+   const sortedRatingRows = useMemo(() => {
+      const direction = ratingSort.direction === "asc" ? 1 : -1;
+      const stringKeys: RatingSortKey[] = ["staffName", "staffRoleLabel"];
+
+      return [...ratingRows].sort((left, right) => {
+         if (stringKeys.includes(ratingSort.key)) {
+            const leftValue = String(left[ratingSort.key] || "");
+            const rightValue = String(right[ratingSort.key] || "");
+            const result = leftValue.localeCompare(rightValue);
+            return result === 0
+               ? left.staffName.localeCompare(right.staffName)
+               : result * direction;
+         }
+
+         const result = Number(left[ratingSort.key]) - Number(right[ratingSort.key]);
+         return result === 0
+            ? left.staffName.localeCompare(right.staffName)
+            : result * direction;
+      });
+   }, [ratingRows, ratingSort]);
+
    const workingHourGroups = useMemo<WorkingHourGroup[]>(() => {
       const groups = new Map<string, WorkingHourGroup>();
 
@@ -521,6 +562,14 @@ export default function ShiftsManager() {
 
    const movePayrollMonth = (months: number) => {
       setPayrollMonth((current) => addMonths(current, months));
+   };
+
+   const changeRatingSort = (key: RatingSortKey) => {
+      setRatingSort((current) => ({
+         key,
+         direction:
+            current.key === key && current.direction === "desc" ? "asc" : "desc",
+      }));
    };
 
    const showDailyShifts = () => {
@@ -946,6 +995,24 @@ export default function ShiftsManager() {
                placeholder="Quick comment"
             />
          </div>
+      );
+   };
+
+   const renderRatingSortHeader = (key: RatingSortKey, label: string) => {
+      const active = ratingSort.key === key;
+      const arrow = active ? (ratingSort.direction === "desc" ? "↓" : "↑") : "";
+
+      return (
+         <button
+            type="button"
+            onClick={() => changeRatingSort(key)}
+            className={[
+               "inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.14em] transition hover:text-white",
+               active ? "text-emerald-300" : "text-slate-500",
+            ].join(" ")}>
+            <span>{label}</span>
+            <span className="w-3 text-left">{arrow}</span>
+         </button>
       );
    };
 
@@ -1435,27 +1502,19 @@ export default function ShiftsManager() {
                         <table className="w-full min-w-[920px] text-left text-sm">
                            <thead className="bg-slate-950 text-xs uppercase tracking-[0.14em] text-slate-500">
                               <tr>
-                                 <th className="px-4 py-3">Worker</th>
-                                 <th className="px-4 py-3">Role</th>
-                                 <th className="px-4 py-3">Worked</th>
-                                 <th className="px-4 py-3">Good</th>
-                                 <th className="px-4 py-3">Normal</th>
-                                 <th className="px-4 py-3">Bad</th>
-                                 <th className="px-4 py-3">Penalties</th>
-                                 <th className="px-4 py-3">Penalty sum</th>
-                                 <th className="px-4 py-3">Salary</th>
+                                 <th className="px-4 py-3">{renderRatingSortHeader("staffName", "Worker")}</th>
+                                 <th className="px-4 py-3">{renderRatingSortHeader("staffRoleLabel", "Role")}</th>
+                                 <th className="px-4 py-3">{renderRatingSortHeader("workedHours", "Worked")}</th>
+                                 <th className="px-4 py-3">{renderRatingSortHeader("goodQuality", "Good")}</th>
+                                 <th className="px-4 py-3">{renderRatingSortHeader("normalQuality", "Normal")}</th>
+                                 <th className="px-4 py-3">{renderRatingSortHeader("badQuality", "Bad")}</th>
+                                 <th className="px-4 py-3">{renderRatingSortHeader("penalties", "Penalties")}</th>
+                                 <th className="px-4 py-3">{renderRatingSortHeader("penaltyAmount", "Penalty sum")}</th>
+                                 <th className="px-4 py-3">{renderRatingSortHeader("salary", "Salary")}</th>
                               </tr>
                            </thead>
                            <tbody className="divide-y divide-slate-800">
-                              {[...ratingRows]
-                                 .sort((left, right) => {
-                                    if (right.penalties !== left.penalties) {
-                                       return right.penalties - left.penalties;
-                                    }
-
-                                    return right.workedHours - left.workedHours;
-                                 })
-                                 .map((row) => (
+                              {sortedRatingRows.map((row) => (
                                     <tr key={row.staffUserId} className="bg-slate-950/30">
                                        <td className="px-4 py-3 font-medium text-white">
                                           {row.staffName}
