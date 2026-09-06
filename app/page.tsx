@@ -8,12 +8,15 @@ import { PiArrowRightLight, PiBriefcaseLight, PiChartLineUpLight, PiTargetLight 
 import { supabase } from "@/lib/supabaseClient";
 import BrandLogo from "@/components/BrandLogo";
 import PageShellWithFooter from "@/components/PageShellWithFooter";
+import { isErpModuleVisible } from "@/lib/erpVisibility";
 
 const highlights = [
-   { label: "Tasks", icon: PiBriefcaseLight },
-   { label: "KPI", icon: PiTargetLight },
-   { label: "Metrics", icon: PiChartLineUpLight },
-];
+   { label: "Tasks", icon: PiBriefcaseLight, module: "tasks" },
+   { label: "KPI", icon: PiTargetLight, module: "kpi" },
+   { label: "Metrics", icon: PiChartLineUpLight, module: "metrics" },
+] as const;
+
+const visibleHighlights = highlights.filter((item) => isErpModuleVisible(item.module));
 
 export default function HomePage() {
    const [user, setUser] = useState<User | null>(null);
@@ -83,8 +86,8 @@ export default function HomePage() {
                   </Link>
                </div>
 
-               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                  {highlights.map((item) => {
+               <div className="grid grid-cols-1 gap-3">
+                  {visibleHighlights.map((item) => {
                      const Icon = item.icon;
 
                      return (

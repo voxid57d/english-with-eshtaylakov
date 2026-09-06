@@ -18,6 +18,7 @@ import {
 } from "react-icons/pi";
 import type { IconType } from "react-icons";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
+import { isErpModuleVisible } from "@/lib/erpVisibility";
 
 type ErpModule =
    | "overview"
@@ -120,9 +121,11 @@ function Sidebar({ isOpenOnMobile, closeMobile }: SidebarProps) {
       };
    }, []);
 
-   const filteredLinks = visibleModules
-      ? links.filter((link) => visibleModules.has(link.module))
-      : links;
+   const filteredLinks = links.filter(
+      (link) =>
+         isErpModuleVisible(link.module) &&
+         (!visibleModules || visibleModules.has(link.module)),
+   );
 
    const navLinks = (
       <nav className={collapsed ? "space-y-2" : "space-y-2"}>

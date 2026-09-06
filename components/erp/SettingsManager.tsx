@@ -17,6 +17,7 @@ import {
    type ErpStaffRole,
 } from "@/lib/erp";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
+import { isErpModuleVisible } from "@/lib/erpVisibility";
 
 type PermissionRow = {
    role: ErpStaffRole;
@@ -616,7 +617,7 @@ export default function SettingsManager() {
                            </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800">
-                           {ERP_MODULES.map((module) => (
+                           {ERP_MODULES.filter(isErpModuleVisible).map((module) => (
                               <tr key={module} className="bg-slate-950/30">
                                  <td className="px-4 py-3 font-medium text-white">
                                     {moduleLabel(module)}
