@@ -90,8 +90,11 @@
 .financeApp[data-finance-theme="dark"] .categoryGroupTitle > span,
 .financeApp[data-finance-theme="dark"] .modalHeader button { background: #273129; }
 .financeApp[data-finance-theme="dark"] .categoryCard:hover { background: #202a24; }
+.financeApp[data-finance-theme="dark"] .childCategoryCard:hover { background: #202a24; }
+.financeApp[data-finance-theme="dark"] .categoryTree { border-color: #2c3931; }
 .financeApp[data-finance-theme="dark"] .typePicker,
 .financeApp[data-finance-theme="dark"] .amountCurrency { background: #202a24; }
+.financeApp[data-finance-theme="dark"] .parentCategoryPreview { background: #141b17; }
 .financeApp[data-finance-theme="dark"] .primaryButton,
 .financeApp[data-finance-theme="dark"] .addButton { border-color: #8bc29d; background: #8bc29d; color: #102016; }
 .financeApp[data-finance-theme="dark"] .primaryButton:hover,
@@ -333,7 +336,19 @@
 .categoryCard { display: grid; grid-template-columns: 36px 1fr 28px; align-items: center; gap: 10px; border-radius: 10px; padding: 7px; }
 .categoryCard:hover { background: #f7f6f1; }
 .categoryCard b { font-size: 11px; }
+.categoryTree { border-bottom: 1px solid #eceae4; padding: 2px 0 6px; }
+.categoryTree:last-child { border-bottom: 0; }
+.categoryTree .categoryCard { grid-template-columns: 36px 1fr 28px 28px; }
+.addSubcategoryButton { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--green); font-size: 17px; }
+.addSubcategoryButton:hover:not(:disabled) { background: var(--green-soft); }
+.addSubcategoryButton:disabled { cursor: not-allowed; opacity: .4; }
+.childCategoryCard { position: relative; display: grid; grid-template-columns: 20px 30px 1fr 28px; align-items: center; gap: 8px; border-radius: 9px; margin-left: 18px; padding: 5px 7px; }
+.childCategoryCard:hover { background: #f7f6f1; }
+.childCategoryCard .categoryGlyph { width: 30px; height: 30px; border-radius: 8px; font-size: 13px; }
+.childCategoryCard b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.childLine { position: absolute; top: -10px; left: 2px; width: 13px; height: 28px; border-bottom: 1px solid var(--line); border-left: 1px solid var(--line); border-bottom-left-radius: 7px; }
 .categoryCard.inactive { opacity: .45; }
+.childCategoryCard.inactive { opacity: .45; }
 .categoryEmpty { margin: 16px 8px; color: var(--muted); font-size: 10px; }
 
 .toast { position: fixed; z-index: 50; right: 24px; bottom: 24px; display: flex; max-width: 380px; align-items: center; gap: 15px; border: 1px solid #e0bbb5; border-radius: 10px; background: #fff5f2; padding: 12px 14px; color: var(--red); box-shadow: 0 12px 35px rgba(50,30,25,.14); font-size: 11px; }
@@ -369,6 +384,11 @@
 .rateHint,
 .planExplanation { margin: -9px 0 0; color: var(--muted); font-size: 9px; }
 .planExplanation { border-left: 2px solid #b7c7bc; padding: 2px 0 2px 9px; }
+.parentCategoryPreview { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; background: #faf9f5; padding: 9px; }
+.parentCategoryPreview small,
+.parentCategoryPreview b { display: block; }
+.parentCategoryPreview small { color: var(--muted); font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.parentCategoryPreview b { margin-top: 3px; font-size: 11px; }
 .formActions { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 17px; }
 .iconChoices { display: grid; grid-template-columns: repeat(12,1fr); gap: 5px; }
 .iconChoices button { aspect-ratio: 1; border: 1px solid var(--line); border-radius: 8px; background: #faf9f5; color: var(--muted); }

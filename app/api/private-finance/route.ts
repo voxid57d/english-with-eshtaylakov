@@ -27,6 +27,7 @@ type AccountRow = {
 
 type CategoryRow = {
    id: string;
+   parent_category_id: string | null;
    name: string;
    entry_type: FinanceEntryType;
    color: string;
@@ -45,8 +46,6 @@ type TransactionRow = {
    entry_date: string;
    note: string | null;
    created_at: string;
-   finance_categories?: { name: string; color: string; icon: string } | null;
-   finance_accounts?: { name: string } | null;
 };
 
 type TransferRow = {
@@ -137,6 +136,7 @@ async function getUsdRate() {
 function mapCategory(row: CategoryRow) {
    return {
       id: row.id,
+      parentCategoryId: row.parent_category_id,
       name: row.name,
       entryType: row.entry_type,
       color: row.color,
@@ -158,15 +158,26 @@ function mapAccount(row: AccountRow, balance?: number) {
    };
 }
 
-function mapTransaction(row: TransactionRow) {
+function mapTransaction(
+   row: TransactionRow,
+   categories: Map<string, CategoryRow>,
+   accountNames: Map<string, string>,
+) {
+   const category = categories.get(row.category_id);
+   const parent = category?.parent_category_id
+      ? categories.get(category.parent_category_id)
+      : null;
+
    return {
       id: row.id,
       accountId: row.account_id,
-      accountName: row.finance_accounts?.name || "Unassigned",
+      accountName: row.account_id ? accountNames.get(row.account_id) || "Account" : "Unassigned",
       categoryId: row.category_id,
-      categoryName: row.finance_categories?.name || "Category",
-      categoryColor: row.finance_categories?.color || "#657568",
-      categoryIcon: row.finance_categories?.icon || "circle",
+      categoryName: category?.name || "Category",
+      categoryColor: category?.color || "#657568",
+      categoryIcon: category?.icon || "circle",
+      parentCategoryId: parent?.id || null,
+      parentCategoryName: parent?.name || null,
       entryType: row.entry_type,
       amount: Number(row.amount),
       currency: row.currency,
@@ -207,7 +218,7 @@ function mapBudget(row: BudgetRow) {
 async function getOwnedCategory(userId: string, categoryId: string) {
    const { data, error } = await supabaseAdmin
       .from("finance_categories")
-      .select("id, name, entry_type, color, icon, active")
+      .select("id, parent_category_id, name, entry_type, color, icon, active")
       .eq("id", categoryId)
       .eq("owner_user_id", userId)
       .single();
@@ -249,14 +260,15 @@ export async function GET(req: Request) {
                .order("name"),
             supabaseAdmin
                .from("finance_categories")
-               .select("id, name, entry_type, color, icon, active")
+               .select("id, parent_category_id, name, entry_type, color, icon, active")
                .eq("owner_user_id", user.id)
                .order("entry_type")
+               .order("parent_category_id", { ascending: true })
                .order("name"),
             supabaseAdmin
                .from("finance_transactions")
                .select(
-                  "id, account_id, category_id, entry_type, amount, currency, exchange_rate_to_uzs, entry_date, note, created_at, finance_categories(name, color, icon), finance_accounts(name)",
+                  "id, account_id, category_id, entry_type, amount, currency, exchange_rate_to_uzs, entry_date, note, created_at",
                )
                .eq("owner_user_id", user.id)
                .gte("entry_date", period.start)
@@ -308,6 +320,8 @@ export async function GET(req: Request) {
 
       const accountRows = (accountResult.data || []) as AccountRow[];
       const accountNames = new Map(accountRows.map((account) => [account.id, account.name]));
+      const categoryRows = (categoryResult.data || []) as CategoryRow[];
+      const categories = new Map(categoryRows.map((category) => [category.id, category]));
       const balances = new Map(
          accountRows.map((account) => [account.id, Number(account.opening_balance)]),
       );
@@ -341,9 +355,9 @@ export async function GET(req: Request) {
          user: { id: user.id, email: user.email || null },
          period,
          accounts: accountRows.map((account) => mapAccount(account, balances.get(account.id))),
-         categories: ((categoryResult.data || []) as CategoryRow[]).map(mapCategory),
+         categories: categoryRows.map(mapCategory),
          transactions: ((transactionResult.data || []) as unknown as TransactionRow[]).map(
-            mapTransaction,
+            (transaction) => mapTransaction(transaction, categories, accountNames),
          ),
          transfers: ((transferResult.data || []) as TransferRow[]).map((transfer) =>
             mapTransfer(transfer, accountNames),
@@ -400,18 +414,30 @@ export async function POST(req: Request) {
          if (!isFinanceEntryType(body.entryType)) {
             throw new Error("Valid category type is required.");
          }
+         const parentCategoryId = cleanFinanceText(body.parentCategoryId, 60) || null;
+         if (parentCategoryId) {
+            const parent = await getOwnedCategory(user.id, parentCategoryId);
+            if (!parent.active) throw new Error("Choose an active parent category.");
+            if (parent.entry_type !== body.entryType) {
+               throw new Error("A subcategory must use its parent category type.");
+            }
+            if (parent.parent_category_id) {
+               throw new Error("Only one subcategory level is supported.");
+            }
+         }
          const color = CATEGORY_COLORS.includes(body.color) ? body.color : "#657568";
          const icon = cleanFinanceText(body.icon, 40) || "circle";
          const { data, error } = await supabaseAdmin
             .from("finance_categories")
             .insert({
                owner_user_id: user.id,
+               parent_category_id: parentCategoryId,
                name,
                entry_type: body.entryType,
                color,
                icon,
             })
-            .select("id, name, entry_type, color, icon, active")
+            .select("id, parent_category_id, name, entry_type, color, icon, active")
             .single();
          if (error || !data) {
             if (error?.code === "23505") throw new Error("This category already exists.");
@@ -449,12 +475,16 @@ export async function POST(req: Request) {
                note: cleanFinanceText(body.note) || null,
             })
             .select(
-               "id, account_id, category_id, entry_type, amount, currency, exchange_rate_to_uzs, entry_date, note, created_at, finance_categories(name, color, icon), finance_accounts(name)",
+               "id, account_id, category_id, entry_type, amount, currency, exchange_rate_to_uzs, entry_date, note, created_at",
             )
             .single();
          if (error || !data) throw new Error("Failed to save transaction.");
          return NextResponse.json({
-            transaction: mapTransaction(data as unknown as TransactionRow),
+            transaction: mapTransaction(
+               data as unknown as TransactionRow,
+               new Map([[category.id, category]]),
+               new Map([[account.id, account.name]]),
+            ),
          });
       }
 
@@ -517,6 +547,9 @@ export async function POST(req: Request) {
          const category = await getOwnedCategory(user.id, categoryId);
          if (category.entry_type === "income") {
             throw new Error("Budgets can be set for expenses and savings.");
+         }
+         if (category.parent_category_id) {
+            throw new Error("Set budgets on the parent category so every subcategory rolls up.");
          }
          if (!isMonthStart(body.monthStart)) throw new Error("Valid budget month is required.");
          if (!isFinanceCurrency(body.currency)) throw new Error("Valid currency is required.");
@@ -588,7 +621,7 @@ export async function PATCH(req: Request) {
          .update({ name, color, active: body.active !== false })
          .eq("id", id)
          .eq("owner_user_id", user.id)
-         .select("id, name, entry_type, color, icon, active")
+         .select("id, parent_category_id, name, entry_type, color, icon, active")
          .single();
       if (error || !data) {
          if (error?.code === "23505") throw new Error("This category already exists.");

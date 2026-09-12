@@ -35,6 +35,7 @@ import styles from "./private-finance.module.css";
 
 type Category = {
    id: string;
+   parentCategoryId: string | null;
    name: string;
    entryType: FinanceEntryType;
    color: string;
@@ -50,6 +51,8 @@ type FinanceTransaction = {
    categoryName: string;
    categoryColor: string;
    categoryIcon: string;
+   parentCategoryId: string | null;
+   parentCategoryName: string | null;
    entryType: FinanceEntryType;
    amount: number;
    currency: FinanceCurrency;
@@ -203,6 +206,7 @@ export default function PrivateFinanceApp() {
    const [payload, setPayload] = useState<FinancePayload | null>(null);
    const [view, setView] = useState<View>("overview");
    const [modal, setModal] = useState<Modal>(null);
+   const [categoryParent, setCategoryParent] = useState<Category | null>(null);
    const [month, setMonth] = useState(currentMonth);
    const [displayCurrency, setDisplayCurrency] = useState<FinanceCurrency>("UZS");
    const [filter, setFilter] = useState<FinanceEntryType | "all">("all");
@@ -520,7 +524,14 @@ export default function PrivateFinanceApp() {
             {view === "categories" && (
                <Categories
                   categories={payload.categories}
-                  onAdd={() => setModal("category")}
+                  onAdd={() => {
+                     setCategoryParent(null);
+                     setModal("category");
+                  }}
+                  onAddSubcategory={(parent) => {
+                     setCategoryParent(parent);
+                     setModal("category");
+                  }}
                   onToggle={async (category) => {
                      try {
                         await request("PATCH", { action: "category", ...category, active: !category.active });
@@ -561,8 +572,12 @@ export default function PrivateFinanceApp() {
          )}
          {modal === "category" && (
             <CategoryModal
+               parentCategory={categoryParent}
                request={request}
-               close={() => setModal(null)}
+               close={() => {
+                  setModal(null);
+                  setCategoryParent(null);
+               }}
                refresh={loadData}
                showMessage={setMessage}
             />
@@ -759,11 +774,18 @@ function Overview({
    onViewAll: () => void;
 }) {
    const expenseByCategory = categories
-      .filter((category) => category.entryType === "expense")
+      .filter(
+         (category) =>
+            category.entryType === "expense" && category.parentCategoryId === null,
+      )
       .map((category) => ({
          ...category,
          total: transactions
-            .filter((transaction) => transaction.categoryId === category.id)
+            .filter(
+               (transaction) =>
+                  transaction.categoryId === category.id ||
+                  transaction.parentCategoryId === category.id,
+            )
             .reduce((sum, transaction) => sum + toUzs(transaction), 0),
       }))
       .filter((category) => category.total > 0)
@@ -835,7 +857,7 @@ function TransactionList({
             return (
                <div key={transaction.id} className={styles.transactionRow}>
                   <span className={styles.categoryGlyph} style={{ background: `${transaction.categoryColor}1A`, color: transaction.categoryColor }}>{CATEGORY_ICONS[transaction.categoryIcon] || "●"}</span>
-                  <div className={styles.transactionName}><b>{transaction.categoryName}</b><small>{transaction.accountName} · {transaction.note || meta.shortLabel} · {shortDate(transaction.entryDate)}</small></div>
+                  <div className={styles.transactionName}><b>{transaction.parentCategoryName ? `${transaction.parentCategoryName} · ${transaction.categoryName}` : transaction.categoryName}</b><small>{transaction.accountName} · {transaction.note || meta.shortLabel} · {shortDate(transaction.entryDate)}</small></div>
                   <div className={`${styles.transactionAmount} ${styles[`amount_${transaction.entryType}`]}`}><b>{meta.sign}{displayMoney(toUzs(transaction))}</b>{transaction.currency === "USD" && <small>${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(transaction.amount)} original</small>}</div>
                   {onDelete && <button className={styles.iconButton} onClick={() => onDelete(transaction.id)} title="Delete transaction"><PiTrashLight /></button>}
                </div>
@@ -898,7 +920,11 @@ function Plans({
    const items = budgets.map((budget) => {
       const category = categories.find((item) => item.id === budget.categoryId);
       const actual = transactions
-         .filter((transaction) => transaction.categoryId === budget.categoryId)
+         .filter(
+            (transaction) =>
+               transaction.categoryId === budget.categoryId ||
+               transaction.parentCategoryId === budget.categoryId,
+         )
          .reduce((sum, transaction) => sum + toUzs(transaction), 0);
       const planned = planToUzs(budget);
       return { budget, category, actual, planned, progress: planned ? (actual / planned) * 100 : 0 };
@@ -941,10 +967,12 @@ function Plans({
 function Categories({
    categories,
    onAdd,
+   onAddSubcategory,
    onToggle,
 }: {
    categories: Category[];
    onAdd: () => void;
+   onAddSubcategory: (parent: Category) => void;
    onToggle: (category: Category) => void;
 }) {
    return (
@@ -955,17 +983,32 @@ function Categories({
                const meta = TYPE_META[type];
                const Icon = meta.icon;
                const items = categories.filter((category) => category.entryType === type);
+               const parents = items.filter((category) => category.parentCategoryId === null);
                return (
                   <section className={styles.categoryGroup} key={type}>
-                     <div className={styles.categoryGroupTitle}><span><Icon /></span><div><h2>{meta.label}</h2><small>{items.length} categories</small></div></div>
+                     <div className={styles.categoryGroupTitle}><span><Icon /></span><div><h2>{meta.label}</h2><small>{parents.length} categories · {items.length - parents.length} subcategories</small></div></div>
                      <div className={styles.categoryCards}>
-                        {items.map((category) => (
-                           <div className={`${styles.categoryCard} ${!category.active ? styles.inactive : ""}`} key={category.id}>
-                              <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}>{CATEGORY_ICONS[category.icon] || "●"}</span>
-                              <b>{category.name}</b>
-                              <button className={styles.iconButton} onClick={() => onToggle(category)} title={category.active ? "Archive category" : "Restore category"}><PiArchiveLight /></button>
-                           </div>
-                        ))}
+                        {parents.map((category) => {
+                           const children = items.filter((item) => item.parentCategoryId === category.id);
+                           return (
+                              <div className={styles.categoryTree} key={category.id}>
+                                 <div className={`${styles.categoryCard} ${!category.active ? styles.inactive : ""}`}>
+                                    <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}>{CATEGORY_ICONS[category.icon] || "●"}</span>
+                                    <b>{category.name}</b>
+                                    <button className={styles.addSubcategoryButton} onClick={() => onAddSubcategory(category)} disabled={!category.active} title={category.active ? "Add subcategory" : "Restore this category first"}><PiPlusLight /></button>
+                                    <button className={styles.iconButton} onClick={() => onToggle(category)} title={category.active ? "Archive category" : "Restore category"}><PiArchiveLight /></button>
+                                 </div>
+                                 {children.map((child) => (
+                                    <div className={`${styles.childCategoryCard} ${!child.active ? styles.inactive : ""}`} key={child.id}>
+                                       <span className={styles.childLine} />
+                                       <span className={styles.categoryGlyph} style={{ background: `${child.color}1A`, color: child.color }}>{CATEGORY_ICONS[child.icon] || "●"}</span>
+                                       <b>{child.name}</b>
+                                       <button className={styles.iconButton} onClick={() => onToggle(child)} title={child.active ? "Archive subcategory" : "Restore subcategory"}><PiArchiveLight /></button>
+                                    </div>
+                                 ))}
+                              </div>
+                           );
+                        })}
                         {!items.length && <p className={styles.categoryEmpty}>No {meta.label.toLowerCase()} categories yet.</p>}
                      </div>
                   </section>
@@ -1031,17 +1074,38 @@ function TransactionModal({ accounts, categories, rate, request, close, refresh,
    const [type, setType] = useState<FinanceEntryType>("expense");
    const accountOptions = accounts.filter((account) => account.active);
    const [accountId, setAccountId] = useState(accountOptions[0]?.id || "");
-   const [categoryId, setCategoryId] = useState("");
+   const [parentCategoryId, setParentCategoryId] = useState("");
+   const [subcategoryId, setSubcategoryId] = useState("");
    const [amount, setAmount] = useState("");
    const [date, setDate] = useState(getLocalDateString);
    const [note, setNote] = useState("");
    const [saving, setSaving] = useState(false);
-   const options = categories.filter((category) => category.entryType === type && category.active);
+   const parentOptions = categories.filter(
+      (category) =>
+         category.entryType === type &&
+         category.active &&
+         category.parentCategoryId === null,
+   );
+   const subcategoryOptions = categories.filter(
+      (category) =>
+         category.entryType === type &&
+         category.active &&
+         category.parentCategoryId === parentCategoryId,
+   );
    const selectedAccount = accountOptions.find((account) => account.id === accountId);
+   const categoryId = subcategoryId || parentCategoryId;
 
    useEffect(() => {
-      if (!options.some((category) => category.id === categoryId)) setCategoryId(options[0]?.id || "");
-   }, [categoryId, options]);
+      if (!parentOptions.some((category) => category.id === parentCategoryId)) {
+         setParentCategoryId(parentOptions[0]?.id || "");
+      }
+   }, [parentCategoryId, parentOptions]);
+
+   useEffect(() => {
+      if (!subcategoryOptions.some((category) => category.id === subcategoryId)) {
+         setSubcategoryId("");
+      }
+   }, [subcategoryId, subcategoryOptions]);
 
    const submit = async (event: React.FormEvent) => {
       event.preventDefault();
@@ -1060,8 +1124,9 @@ function TransactionModal({ accounts, categories, rate, request, close, refresh,
             <TypePicker value={type} onChange={setType} />
             <label><span>Account</span><select value={accountId} onChange={(event) => setAccountId(event.target.value)} required><option value="">Choose an account</option>{accountOptions.map((account) => <option value={account.id} key={account.id}>{account.name} · {account.currency} · {nativeMoney(account.balance, account.currency)}</option>)}</select></label>
             {!accountOptions.length && <button type="button" className={styles.inlineNotice} disabled>Create an account before adding transactions</button>}
-            <label><span>Category</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required><option value="">Choose a category</option>{options.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
-            {!options.length && <button type="button" className={styles.inlineNotice} disabled>Add a {TYPE_META[type].shortLabel.toLowerCase()} category first</button>}
+            <label><span>Category</span><select value={parentCategoryId} onChange={(event) => setParentCategoryId(event.target.value)} required><option value="">Choose a category</option>{parentOptions.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
+            {!parentOptions.length && <button type="button" className={styles.inlineNotice} disabled>Add a {TYPE_META[type].shortLabel.toLowerCase()} category first</button>}
+            {subcategoryOptions.length > 0 && <label><span>Subcategory <em>optional</em></span><select value={subcategoryId} onChange={(event) => setSubcategoryId(event.target.value)}><option value="">No subcategory</option>{subcategoryOptions.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>}
             <div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{selectedAccount?.currency || "—"}</div></div>
             {selectedAccount?.currency === "USD" && <p className={styles.rateHint}>Saved using 1 USD = {new Intl.NumberFormat("en-US").format(rate)} UZS</p>}
             <div className={styles.formGrid}><label><span>Date</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="A short reminder" /></label></div>
@@ -1176,28 +1241,31 @@ function TransferModal({ accounts, request, close, refresh, showMessage }: {
    );
 }
 
-function CategoryModal({ request, close, refresh, showMessage }: {
+function CategoryModal({ parentCategory, request, close, refresh, showMessage }: {
+   parentCategory: Category | null;
    request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
    close: () => void;
    refresh: () => Promise<void>;
    showMessage: (message: string) => void;
 }) {
-   const [type, setType] = useState<FinanceEntryType>("expense");
+   const [type, setType] = useState<FinanceEntryType>(parentCategory?.entryType || "expense");
    const [name, setName] = useState("");
    const [color, setColor] = useState(COLORS[0]);
    const [icon, setIcon] = useState("circle");
    const [saving, setSaving] = useState(false);
    const submit = async (event: React.FormEvent) => {
       event.preventDefault();
-      try { setSaving(true); await request("POST", { action: "category", entryType: type, name, color, icon }); close(); await refresh(); }
+      try { setSaving(true); await request("POST", { action: "category", parentCategoryId: parentCategory?.id || null, entryType: type, name, color, icon }); close(); await refresh(); }
       catch (error) { showMessage(error instanceof Error ? error.message : "Could not create category."); }
       finally { setSaving(false); }
    };
    return (
-      <ModalShell title="New category" description="Create a label that feels natural to you." close={close}>
+      <ModalShell title={parentCategory ? "New subcategory" : "New category"} description={parentCategory ? "This will roll up into " + parentCategory.name + "." : "Create a label that feels natural to you."} close={close}>
          <form onSubmit={submit} className={styles.form}>
-            <TypePicker value={type} onChange={setType} />
-            <label><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} placeholder={type === "expense" ? "e.g. Groceries" : type === "income" ? "e.g. Salary" : "e.g. Emergency fund"} autoFocus required /></label>
+            {parentCategory ? (
+               <div className={styles.parentCategoryPreview}><span className={styles.categoryGlyph} style={{ background: parentCategory.color + "1A", color: parentCategory.color }}>{CATEGORY_ICONS[parentCategory.icon] || "●"}</span><div><small>Parent category</small><b>{parentCategory.name}</b></div></div>
+            ) : <TypePicker value={type} onChange={setType} />}
+            <label><span>{parentCategory ? "Subcategory name" : "Name"}</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} placeholder={parentCategory ? (type === "expense" ? "e.g. Burgers" : "e.g. Material Design salary") : type === "expense" ? "e.g. Food" : type === "income" ? "e.g. Salary" : "e.g. Emergency fund"} autoFocus required /></label>
             <fieldset><legend>Icon</legend><div className={styles.iconChoices}>{Object.entries(CATEGORY_ICONS).map(([key, glyph]) => <button type="button" key={key} className={icon === key ? styles.choiceActive : ""} onClick={() => setIcon(key)}>{glyph}</button>)}</div></fieldset>
             <fieldset><legend>Color</legend><div className={styles.colorChoices}>{COLORS.map((item) => <button type="button" key={item} className={color === item ? styles.choiceActive : ""} style={{ background: item }} onClick={() => setColor(item)} aria-label={`Choose ${item}`} />)}</div></fieldset>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving}>{saving ? "Creating…" : "Create category"}</button></div>
@@ -1214,7 +1282,12 @@ function BudgetModal({ categories, month, request, close, refresh, showMessage }
    refresh: () => Promise<void>;
    showMessage: (message: string) => void;
 }) {
-   const options = categories.filter((category) => category.active && category.entryType !== "income");
+   const options = categories.filter(
+      (category) =>
+         category.active &&
+         category.entryType !== "income" &&
+         category.parentCategoryId === null,
+   );
    const [categoryId, setCategoryId] = useState(options[0]?.id || "");
    const [amount, setAmount] = useState("");
    const [currency, setCurrency] = useState<FinanceCurrency>("UZS");

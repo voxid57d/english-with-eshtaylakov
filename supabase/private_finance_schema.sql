@@ -43,6 +43,7 @@ create unique index if not exists finance_accounts_owner_name_key
 create table if not exists public.finance_categories (
    id uuid primary key default gen_random_uuid(),
    owner_user_id uuid not null references auth.users(id) on delete cascade,
+   parent_category_id uuid references public.finance_categories(id) on delete restrict,
    name text not null check (char_length(btrim(name)) between 1 and 80),
    entry_type public.finance_entry_type not null,
    color text not null default '#657568' check (color ~ '^#[0-9A-Fa-f]{6}$'),
@@ -52,8 +53,20 @@ create table if not exists public.finance_categories (
    updated_at timestamptz not null default now()
 );
 
-create unique index if not exists finance_categories_owner_type_name_key
-   on public.finance_categories(owner_user_id, entry_type, lower(name));
+-- Existing installations may already have finance_categories.
+alter table if exists public.finance_categories
+   add column if not exists parent_category_id uuid
+      references public.finance_categories(id) on delete restrict;
+
+-- A child name may be reused under a different parent (for example, "Other").
+drop index if exists public.finance_categories_owner_type_name_key;
+create unique index if not exists finance_categories_owner_parent_type_name_key
+   on public.finance_categories(
+      owner_user_id,
+      entry_type,
+      coalesce(parent_category_id, '00000000-0000-0000-0000-000000000000'::uuid),
+      lower(name)
+   );
 
 create table if not exists public.finance_transactions (
    id uuid primary key default gen_random_uuid(),
@@ -134,10 +147,54 @@ begin
 end;
 $$;
 
+create or replace function public.validate_finance_category_parent()
+returns trigger
+language plpgsql
+as $$
+declare
+   parent_owner_id uuid;
+   parent_entry_type public.finance_entry_type;
+   parent_parent_id uuid;
+begin
+   if new.parent_category_id is null then
+      return new;
+   end if;
+
+   select owner_user_id, entry_type, parent_category_id
+   into parent_owner_id, parent_entry_type, parent_parent_id
+   from public.finance_categories
+   where id = new.parent_category_id;
+
+   if parent_owner_id is null then
+      raise exception 'Parent finance category does not exist.';
+   end if;
+
+   if parent_owner_id <> new.owner_user_id then
+      raise exception 'Parent finance category must have the same owner.';
+   end if;
+
+   if parent_entry_type <> new.entry_type then
+      raise exception 'Parent and subcategory must have the same entry type.';
+   end if;
+
+   if parent_parent_id is not null then
+      raise exception 'Finance categories support one subcategory level only.';
+   end if;
+
+   return new;
+end;
+$$;
+
 drop trigger if exists finance_categories_updated_at on public.finance_categories;
 create trigger finance_categories_updated_at
 before update on public.finance_categories
 for each row execute function public.set_private_finance_updated_at();
+
+drop trigger if exists finance_categories_validate_parent on public.finance_categories;
+create trigger finance_categories_validate_parent
+before insert or update of owner_user_id, parent_category_id, entry_type
+on public.finance_categories
+for each row execute function public.validate_finance_category_parent();
 
 drop trigger if exists finance_accounts_updated_at on public.finance_accounts;
 create trigger finance_accounts_updated_at
