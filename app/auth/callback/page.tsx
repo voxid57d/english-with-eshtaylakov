@@ -23,6 +23,13 @@ function getCallbackError(url: URL) {
    );
 }
 
+function getSafeNextPath(url: URL) {
+   const nextPath = url.searchParams.get("next");
+   return nextPath?.startsWith("/") && !nextPath.startsWith("//")
+      ? nextPath
+      : "/dashboard";
+}
+
 export default function AuthCallbackPage() {
    const router = useRouter();
    const [error, setError] = useState<string | null>(null);
@@ -34,6 +41,7 @@ export default function AuthCallbackPage() {
          try {
             const url = new URL(window.location.href);
             const callbackError = getCallbackError(url);
+            const nextPath = getSafeNextPath(url);
 
             if (callbackError) {
                throw new Error(callbackError);
@@ -52,7 +60,7 @@ export default function AuthCallbackPage() {
             }
 
             if (isActive) {
-               router.replace("/dashboard");
+               router.replace(nextPath);
             }
          } catch (callbackError) {
             console.error(callbackError);
