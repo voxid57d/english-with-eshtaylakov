@@ -10,9 +10,11 @@ import {
    PiChartDonutLight,
    PiHouseLineLight,
    PiLockKeyLight,
+   PiMoonLight,
    PiPiggyBankLight,
    PiPlusLight,
    PiSignOutLight,
+   PiSunLight,
    PiTagLight,
    PiTrashLight,
    PiTrendDownLight,
@@ -109,6 +111,7 @@ type FinancePayload = {
 type View = "overview" | "accounts" | "transactions" | "plans" | "categories";
 type Modal = "transaction" | "transfer" | "account" | "category" | "budget" | null;
 type AccessState = "loading" | "ready" | "signed-out" | "denied" | "error";
+type FinanceTheme = "light" | "dark";
 
 const TYPE_META: Record<
    FinanceEntryType,
@@ -205,6 +208,35 @@ export default function PrivateFinanceApp() {
    const [filter, setFilter] = useState<FinanceEntryType | "all">("all");
    const [busy, setBusy] = useState(false);
    const [message, setMessage] = useState<string | null>(null);
+   const [financeTheme, setFinanceTheme] = useState<FinanceTheme>("light");
+
+   useEffect(() => {
+      try {
+         const savedTheme = window.localStorage.getItem("private-finance-theme");
+         const nextTheme =
+            savedTheme === "light" || savedTheme === "dark"
+               ? savedTheme
+               : document.documentElement.dataset.theme === "dark"
+                 ? "dark"
+                 : "light";
+         setFinanceTheme(nextTheme);
+      } catch {
+         // The default light theme remains available when storage is unavailable.
+      }
+   }, []);
+
+   const toggleFinanceTheme = () => {
+      const nextTheme: FinanceTheme = financeTheme === "dark" ? "light" : "dark";
+      setFinanceTheme(nextTheme);
+      document.documentElement.dataset.theme = nextTheme;
+      window.dispatchEvent(new Event("theme-change"));
+      try {
+         window.localStorage.setItem("private-finance-theme", nextTheme);
+         window.localStorage.setItem("theme-mode", nextTheme);
+      } catch {
+         // Switching still works for the current visit.
+      }
+   };
 
    const loadData = useCallback(async () => {
       try {
@@ -313,7 +345,15 @@ export default function PrivateFinanceApp() {
 
    if (access !== "ready" || !payload) {
       return (
-         <main className={styles.gate}>
+         <main className={styles.gate} data-finance-theme={financeTheme}>
+            <button
+               type="button"
+               className={styles.gateThemeButton}
+               onClick={toggleFinanceTheme}
+               aria-label={financeTheme === "dark" ? "Switch to day mode" : "Switch to night mode"}
+               title={financeTheme === "dark" ? "Day mode" : "Night mode"}>
+               {financeTheme === "dark" ? <PiSunLight /> : <PiMoonLight />}
+            </button>
             <section className={styles.gateCard}>
                <div className={styles.gateIcon}><PiLockKeyLight /></div>
                <p className={styles.eyebrow}>Private space</p>
@@ -348,7 +388,7 @@ export default function PrivateFinanceApp() {
    );
 
    return (
-      <div className={styles.financeApp}>
+      <div className={styles.financeApp} data-finance-theme={financeTheme}>
          <aside className={styles.sidebar}>
             <div className={styles.brand}>
                <span className={styles.brandMark}><PiWalletLight /></span>
@@ -389,6 +429,14 @@ export default function PrivateFinanceApp() {
                         <button key={currency} className={displayCurrency === currency ? styles.currencyActive : ""} onClick={() => setDisplayCurrency(currency)}>{currency}</button>
                      ))}
                   </div>
+                  <button
+                     type="button"
+                     className={styles.themeButton}
+                     onClick={toggleFinanceTheme}
+                     aria-label={financeTheme === "dark" ? "Switch to day mode" : "Switch to night mode"}
+                     title={financeTheme === "dark" ? "Day mode" : "Night mode"}>
+                     {financeTheme === "dark" ? <PiSunLight /> : <PiMoonLight />}
+                  </button>
                   <button className={styles.transferButton} onClick={() => setModal("transfer")}><PiArrowsLeftRightLight /> Transfer</button>
                   <button className={styles.addButton} onClick={() => setModal("transaction")}><PiPlusLight /> Add transaction</button>
                </div>
