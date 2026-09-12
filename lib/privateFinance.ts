@@ -2,9 +2,17 @@ import { requireAuthenticatedUser } from "@/lib/serverAuth";
 
 export const FINANCE_ENTRY_TYPES = ["expense", "income", "savings"] as const;
 export const FINANCE_CURRENCIES = ["UZS", "USD"] as const;
+export const FINANCE_ACCOUNT_TYPES = [
+   "cash",
+   "bank_card",
+   "savings",
+   "person",
+   "other",
+] as const;
 
 export type FinanceEntryType = (typeof FINANCE_ENTRY_TYPES)[number];
 export type FinanceCurrency = (typeof FINANCE_CURRENCIES)[number];
+export type FinanceAccountType = (typeof FINANCE_ACCOUNT_TYPES)[number];
 
 export function isFinanceEntryType(value: unknown): value is FinanceEntryType {
    return FINANCE_ENTRY_TYPES.includes(value as FinanceEntryType);
@@ -12,6 +20,10 @@ export function isFinanceEntryType(value: unknown): value is FinanceEntryType {
 
 export function isFinanceCurrency(value: unknown): value is FinanceCurrency {
    return FINANCE_CURRENCIES.includes(value as FinanceCurrency);
+}
+
+export function isFinanceAccountType(value: unknown): value is FinanceAccountType {
+   return FINANCE_ACCOUNT_TYPES.includes(value as FinanceAccountType);
 }
 
 export function cleanFinanceText(value: unknown, maxLength = 240) {

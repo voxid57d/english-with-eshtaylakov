@@ -24,7 +24,11 @@ import type { IconType } from "react-icons";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { getLocalDateString } from "@/lib/localDate";
 import { supabase } from "@/lib/supabaseClient";
-import type { FinanceCurrency, FinanceEntryType } from "@/lib/privateFinance";
+import type {
+   FinanceAccountType,
+   FinanceCurrency,
+   FinanceEntryType,
+} from "@/lib/privateFinance";
 import styles from "./private-finance.module.css";
 
 type Category = {
@@ -38,6 +42,8 @@ type Category = {
 
 type FinanceTransaction = {
    id: string;
+   accountId: string | null;
+   accountName: string;
    categoryId: string;
    categoryName: string;
    categoryColor: string;
@@ -47,6 +53,31 @@ type FinanceTransaction = {
    currency: FinanceCurrency;
    exchangeRateToUzs: number;
    entryDate: string;
+   note: string | null;
+};
+
+type Account = {
+   id: string;
+   name: string;
+   accountType: FinanceAccountType;
+   currency: FinanceCurrency;
+   openingBalance: number;
+   balance: number;
+   color: string;
+   active: boolean;
+};
+
+type Transfer = {
+   id: string;
+   fromAccountId: string;
+   fromAccountName: string;
+   toAccountId: string;
+   toAccountName: string;
+   fromAmount: number;
+   toAmount: number;
+   fromCurrency: FinanceCurrency;
+   toCurrency: FinanceCurrency;
+   transferDate: string;
    note: string | null;
 };
 
@@ -67,14 +98,16 @@ type ExchangeRate = {
 
 type FinancePayload = {
    user: { id: string; email: string | null };
+   accounts: Account[];
    categories: Category[];
    transactions: FinanceTransaction[];
+   transfers: Transfer[];
    budgets: Budget[];
    exchangeRate: ExchangeRate;
 };
 
-type View = "overview" | "transactions" | "plans" | "categories";
-type Modal = "transaction" | "category" | "budget" | null;
+type View = "overview" | "accounts" | "transactions" | "plans" | "categories";
+type Modal = "transaction" | "transfer" | "account" | "category" | "budget" | null;
 type AccessState = "loading" | "ready" | "signed-out" | "denied" | "error";
 
 const TYPE_META: Record<
@@ -112,8 +145,17 @@ const COLORS = [
    "#657568",
 ];
 
+const ACCOUNT_META: Record<FinanceAccountType, { label: string; glyph: string }> = {
+   cash: { label: "Cash", glyph: "◫" },
+   bank_card: { label: "Bank card", glyph: "▰" },
+   savings: { label: "Savings account", glyph: "◎" },
+   person: { label: "Person wallet", glyph: "☺" },
+   other: { label: "Other", glyph: "◇" },
+};
+
 const NAV_ITEMS: Array<{ id: View; label: string; icon: IconType }> = [
    { id: "overview", label: "Overview", icon: PiHouseLineLight },
+   { id: "accounts", label: "Accounts", icon: PiWalletLight },
    { id: "transactions", label: "Transactions", icon: PiArrowsLeftRightLight },
    { id: "plans", label: "Plans & goals", icon: PiChartDonutLight },
    { id: "categories", label: "Categories", icon: PiTagLight },
@@ -140,6 +182,13 @@ function shortDate(date: string) {
    return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(
       new Date(`${date}T00:00:00`),
    );
+}
+
+function nativeMoney(amount: number, currency: FinanceCurrency) {
+   const formatted = new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: currency === "USD" ? 2 : 0,
+   }).format(amount);
+   return currency === "USD" ? `$${formatted}` : `${formatted} UZS`;
 }
 
 function initials(email: string | null) {
@@ -340,6 +389,7 @@ export default function PrivateFinanceApp() {
                         <button key={currency} className={displayCurrency === currency ? styles.currencyActive : ""} onClick={() => setDisplayCurrency(currency)}>{currency}</button>
                      ))}
                   </div>
+                  <button className={styles.transferButton} onClick={() => setModal("transfer")}><PiArrowsLeftRightLight /> Transfer</button>
                   <button className={styles.addButton} onClick={() => setModal("transaction")}><PiPlusLight /> Add transaction</button>
                </div>
             </header>
@@ -356,6 +406,7 @@ export default function PrivateFinanceApp() {
             {view === "overview" && (
                <Overview
                   totals={totals}
+                  accounts={payload.accounts}
                   transactions={recent}
                   categories={payload.categories}
                   budgets={payload.budgets}
@@ -363,7 +414,29 @@ export default function PrivateFinanceApp() {
                   toUzs={toUzs}
                   planToUzs={planToUzs}
                   onAdd={() => setModal("transaction")}
+                  onTransfer={() => setModal("transfer")}
+                  onViewAccounts={() => setView("accounts")}
                   onViewAll={() => setView("transactions")}
+               />
+            )}
+            {view === "accounts" && (
+               <Accounts
+                  accounts={payload.accounts}
+                  transfers={payload.transfers}
+                  rate={rate}
+                  onAdd={() => setModal("account")}
+                  onTransfer={() => setModal("transfer")}
+                  onToggle={async (account) => {
+                     try {
+                        await request("PATCH", { action: "account", ...account, active: !account.active });
+                        await loadData();
+                     } catch (error) { setMessage(error instanceof Error ? error.message : "Update failed."); }
+                  }}
+                  onDeleteTransfer={async (id) => {
+                     if (!window.confirm("Delete this transfer?")) return;
+                     try { await request("DELETE", { action: "transfer", id }); await loadData(); }
+                     catch (error) { setMessage(error instanceof Error ? error.message : "Delete failed."); }
+                  }}
                />
             )}
             {view === "transactions" && (
@@ -412,8 +485,26 @@ export default function PrivateFinanceApp() {
 
          {modal === "transaction" && (
             <TransactionModal
+               accounts={payload.accounts}
                categories={payload.categories}
                rate={rate}
+               request={request}
+               close={() => setModal(null)}
+               refresh={loadData}
+               showMessage={setMessage}
+            />
+         )}
+         {modal === "transfer" && (
+            <TransferModal
+               accounts={payload.accounts}
+               request={request}
+               close={() => setModal(null)}
+               refresh={loadData}
+               showMessage={setMessage}
+            />
+         )}
+         {modal === "account" && (
+            <AccountModal
                request={request}
                close={() => setModal(null)}
                refresh={loadData}
@@ -490,8 +581,111 @@ function SummaryCard({
    );
 }
 
+function AccountStrip({
+   accounts,
+   onTransfer,
+   onViewAll,
+}: {
+   accounts: Account[];
+   onTransfer: () => void;
+   onViewAll: () => void;
+}) {
+   const active = accounts.filter((account) => account.active);
+   if (!active.length) return null;
+
+   return (
+      <section className={styles.accountStrip}>
+         <div className={styles.accountStripHeading}>
+            <span>Accounts</span>
+            <div>
+               {active.length > 1 && <button className={styles.textButton} onClick={onTransfer}><PiArrowsLeftRightLight /> Transfer</button>}
+               <button className={styles.textButton} onClick={onViewAll}>Manage</button>
+            </div>
+         </div>
+         <div className={styles.accountStripCards}>
+            {active.slice(0, 4).map((account) => (
+               <button key={account.id} className={styles.miniAccount} onClick={onViewAll}>
+                  <i style={{ background: account.color }}>{ACCOUNT_META[account.accountType].glyph}</i>
+                  <span><small>{account.name}</small><b>{nativeMoney(account.balance, account.currency)}</b></span>
+               </button>
+            ))}
+         </div>
+      </section>
+   );
+}
+
+function Accounts({
+   accounts,
+   transfers,
+   rate,
+   onAdd,
+   onTransfer,
+   onToggle,
+   onDeleteTransfer,
+}: {
+   accounts: Account[];
+   transfers: Transfer[];
+   rate: number;
+   onAdd: () => void;
+   onTransfer: () => void;
+   onToggle: (account: Account) => void;
+   onDeleteTransfer: (id: string) => void;
+}) {
+   const activeAccounts = accounts.filter((account) => account.active);
+   const totalUzs = activeAccounts.reduce(
+      (sum, account) => sum + account.balance * (account.currency === "USD" ? rate : 1),
+      0,
+   );
+
+   return (
+      <div className={styles.content}>
+         <PageHeading eyebrow="Your money locations" title="Accounts & wallets" description="See where your money lives, including cash, cards, savings, and family wallets." action={onAdd} actionLabel="New account" />
+         <div className={styles.accountsToolbar}>
+            <div><small>Total across active accounts</small><strong>{nativeMoney(totalUzs, "UZS")}</strong></div>
+            <button className={styles.primaryButton} onClick={onTransfer} disabled={activeAccounts.length < 2}><PiArrowsLeftRightLight /> Move money</button>
+         </div>
+
+         {accounts.length ? (
+            <section className={styles.accountsGrid}>
+               {accounts.map((account) => (
+                  <article className={`${styles.accountCard} ${!account.active ? styles.inactive : ""}`} key={account.id}>
+                     <div className={styles.accountCardTop}>
+                        <span style={{ background: account.color }}>{ACCOUNT_META[account.accountType].glyph}</span>
+                        <button className={styles.iconButton} onClick={() => onToggle(account)} title={account.active ? "Archive account" : "Restore account"}><PiArchiveLight /></button>
+                     </div>
+                     <small>{ACCOUNT_META[account.accountType].label} · {account.currency}</small>
+                     <h2>{account.name}</h2>
+                     <strong>{nativeMoney(account.balance, account.currency)}</strong>
+                     <p>Opening balance: {nativeMoney(account.openingBalance, account.currency)}</p>
+                  </article>
+               ))}
+            </section>
+         ) : (
+            <section className={styles.panel}><EmptyState icon={PiWalletLight} title="Add where your money lives" text="Start with cash, a bank card, or a wallet for your wife." action={onAdd} actionLabel="Create first account" /></section>
+         )}
+
+         <section className={styles.panel}>
+            <div className={styles.panelHeader}><div><p className={styles.eyebrow}>Money movement</p><h2>Transfers this month</h2></div></div>
+            {transfers.length ? (
+               <div className={styles.transactionList}>
+                  {transfers.map((transfer) => (
+                     <div className={styles.transferRow} key={transfer.id}>
+                        <span className={styles.transferGlyph}><PiArrowsLeftRightLight /></span>
+                        <div className={styles.transactionName}><b>{transfer.fromAccountName} → {transfer.toAccountName}</b><small>{transfer.note || "Transfer"} · {shortDate(transfer.transferDate)}</small></div>
+                        <div className={styles.transactionAmount}><b>{nativeMoney(transfer.fromAmount, transfer.fromCurrency)}</b>{transfer.fromCurrency !== transfer.toCurrency && <small>Received {nativeMoney(transfer.toAmount, transfer.toCurrency)}</small>}</div>
+                        <button className={styles.iconButton} onClick={() => onDeleteTransfer(transfer.id)} title="Delete transfer"><PiTrashLight /></button>
+                     </div>
+                  ))}
+               </div>
+            ) : <EmptyState icon={PiArrowsLeftRightLight} title="No transfers this month" text="Moving money between accounts will appear here." action={activeAccounts.length < 2 ? onAdd : onTransfer} actionLabel={activeAccounts.length < 2 ? "Add another account" : "Make a transfer"} />}
+         </section>
+      </div>
+   );
+}
+
 function Overview({
    totals,
+   accounts,
    transactions,
    categories,
    budgets,
@@ -499,9 +693,12 @@ function Overview({
    toUzs,
    planToUzs,
    onAdd,
+   onTransfer,
+   onViewAccounts,
    onViewAll,
 }: {
    totals: { expense: number; income: number; savings: number; available: number };
+   accounts: Account[];
    transactions: FinanceTransaction[];
    categories: Category[];
    budgets: Budget[];
@@ -509,6 +706,8 @@ function Overview({
    toUzs: (transaction: FinanceTransaction) => number;
    planToUzs: (budget: Budget) => number;
    onAdd: () => void;
+   onTransfer: () => void;
+   onViewAccounts: () => void;
    onViewAll: () => void;
 }) {
    const expenseByCategory = categories
@@ -529,6 +728,7 @@ function Overview({
    return (
       <div className={styles.content}>
          <PageHeading eyebrow="Monthly snapshot" title="Good to see you." description="A calm view of what came in, went out, and moved toward your goals." />
+         <AccountStrip accounts={accounts} onTransfer={onTransfer} onViewAll={onViewAccounts} />
          <section className={styles.summaryGrid}>
             <SummaryCard label="Available" value={displayMoney(totals.available, true)} note="Income after spending & savings" icon={PiWalletLight} tone="ink" />
             <SummaryCard label="Income" value={displayMoney(totals.income, true)} note="Received this month" icon={PiTrendUpLight} tone="green" />
@@ -587,7 +787,7 @@ function TransactionList({
             return (
                <div key={transaction.id} className={styles.transactionRow}>
                   <span className={styles.categoryGlyph} style={{ background: `${transaction.categoryColor}1A`, color: transaction.categoryColor }}>{CATEGORY_ICONS[transaction.categoryIcon] || "●"}</span>
-                  <div className={styles.transactionName}><b>{transaction.categoryName}</b><small>{transaction.note || meta.shortLabel} · {shortDate(transaction.entryDate)}</small></div>
+                  <div className={styles.transactionName}><b>{transaction.categoryName}</b><small>{transaction.accountName} · {transaction.note || meta.shortLabel} · {shortDate(transaction.entryDate)}</small></div>
                   <div className={`${styles.transactionAmount} ${styles[`amount_${transaction.entryType}`]}`}><b>{meta.sign}{displayMoney(toUzs(transaction))}</b>{transaction.currency === "USD" && <small>${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(transaction.amount)} original</small>}</div>
                   {onDelete && <button className={styles.iconButton} onClick={() => onDelete(transaction.id)} title="Delete transaction"><PiTrashLight /></button>}
                </div>
@@ -771,7 +971,8 @@ function TypePicker({ value, onChange }: { value: FinanceEntryType; onChange: (v
    );
 }
 
-function TransactionModal({ categories, rate, request, close, refresh, showMessage }: {
+function TransactionModal({ accounts, categories, rate, request, close, refresh, showMessage }: {
+   accounts: Account[];
    categories: Category[];
    rate: number;
    request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
@@ -780,13 +981,15 @@ function TransactionModal({ categories, rate, request, close, refresh, showMessa
    showMessage: (message: string) => void;
 }) {
    const [type, setType] = useState<FinanceEntryType>("expense");
+   const accountOptions = accounts.filter((account) => account.active);
+   const [accountId, setAccountId] = useState(accountOptions[0]?.id || "");
    const [categoryId, setCategoryId] = useState("");
    const [amount, setAmount] = useState("");
-   const [currency, setCurrency] = useState<FinanceCurrency>("UZS");
    const [date, setDate] = useState(getLocalDateString);
    const [note, setNote] = useState("");
    const [saving, setSaving] = useState(false);
    const options = categories.filter((category) => category.entryType === type && category.active);
+   const selectedAccount = accountOptions.find((account) => account.id === accountId);
 
    useEffect(() => {
       if (!options.some((category) => category.id === categoryId)) setCategoryId(options[0]?.id || "");
@@ -796,7 +999,7 @@ function TransactionModal({ categories, rate, request, close, refresh, showMessa
       event.preventDefault();
       try {
          setSaving(true);
-         await request("POST", { action: "transaction", categoryId, amount, currency, entryDate: date, note, exchangeRateToUzs: rate });
+         await request("POST", { action: "transaction", accountId, categoryId, amount, entryDate: date, note, exchangeRateToUzs: rate });
          close();
          await refresh();
       } catch (error) { showMessage(error instanceof Error ? error.message : "Could not save transaction."); }
@@ -807,12 +1010,119 @@ function TransactionModal({ categories, rate, request, close, refresh, showMessa
       <ModalShell title="Add transaction" description="Record a movement in a few seconds." close={close}>
          <form onSubmit={submit} className={styles.form}>
             <TypePicker value={type} onChange={setType} />
+            <label><span>Account</span><select value={accountId} onChange={(event) => setAccountId(event.target.value)} required><option value="">Choose an account</option>{accountOptions.map((account) => <option value={account.id} key={account.id}>{account.name} · {account.currency} · {nativeMoney(account.balance, account.currency)}</option>)}</select></label>
+            {!accountOptions.length && <button type="button" className={styles.inlineNotice} disabled>Create an account before adding transactions</button>}
             <label><span>Category</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required><option value="">Choose a category</option>{options.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
             {!options.length && <button type="button" className={styles.inlineNotice} disabled>Add a {TYPE_META[type].shortLabel.toLowerCase()} category first</button>}
-            <div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.currencySelect}>{(["UZS", "USD"] as const).map((item) => <button type="button" key={item} className={currency === item ? styles.currencyActive : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div></div>
-            {currency === "USD" && <p className={styles.rateHint}>Saved using 1 USD = {new Intl.NumberFormat("en-US").format(rate)} UZS</p>}
+            <div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{selectedAccount?.currency || "—"}</div></div>
+            {selectedAccount?.currency === "USD" && <p className={styles.rateHint}>Saved using 1 USD = {new Intl.NumberFormat("en-US").format(rate)} UZS</p>}
             <div className={styles.formGrid}><label><span>Date</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="A short reminder" /></label></div>
-            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !categoryId}>{saving ? "Saving…" : "Save transaction"}</button></div>
+            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !accountId || !categoryId}>{saving ? "Saving…" : "Save transaction"}</button></div>
+         </form>
+      </ModalShell>
+   );
+}
+
+function AccountModal({ request, close, refresh, showMessage }: {
+   request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
+   close: () => void;
+   refresh: () => Promise<void>;
+   showMessage: (message: string) => void;
+}) {
+   const [name, setName] = useState("");
+   const [accountType, setAccountType] = useState<FinanceAccountType>("cash");
+   const [currency, setCurrency] = useState<FinanceCurrency>("UZS");
+   const [openingBalance, setOpeningBalance] = useState("0");
+   const [color, setColor] = useState(COLORS[4]);
+   const [saving, setSaving] = useState(false);
+
+   const submit = async (event: React.FormEvent) => {
+      event.preventDefault();
+      try {
+         setSaving(true);
+         await request("POST", { action: "account", name, accountType, currency, openingBalance, color });
+         close();
+         await refresh();
+      } catch (error) {
+         showMessage(error instanceof Error ? error.message : "Could not create account.");
+      } finally {
+         setSaving(false);
+      }
+   };
+
+   return (
+      <ModalShell title="New account" description="Add a place or person that can hold money." close={close}>
+         <form onSubmit={submit} className={styles.form}>
+            <label><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} placeholder={accountType === "person" ? "e.g. Wife's wallet" : "e.g. Cash or Visa card"} autoFocus required /></label>
+            <label><span>Account type</span><select value={accountType} onChange={(event) => setAccountType(event.target.value as FinanceAccountType)}>{(Object.entries(ACCOUNT_META) as Array<[FinanceAccountType, { label: string; glyph: string }]>).map(([type, meta]) => <option value={type} key={type}>{meta.label}</option>)}</select></label>
+            {accountType === "person" && <p className={styles.planExplanation}>Use this for money held and spent by your wife or another family member.</p>}
+            <fieldset><legend>Currency</legend><div className={styles.typePicker}>{(["UZS", "USD"] as const).map((item) => <button type="button" key={item} className={currency === item ? styles.typeActive : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div></fieldset>
+            <label><span>Current opening balance</span><input type="number" step="0.01" inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} required /></label>
+            <fieldset><legend>Color</legend><div className={styles.colorChoices}>{COLORS.map((item) => <button type="button" key={item} className={color === item ? styles.choiceActive : ""} style={{ background: item }} onClick={() => setColor(item)} aria-label={`Choose ${item}`} />)}</div></fieldset>
+            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving}>{saving ? "Creating…" : "Create account"}</button></div>
+         </form>
+      </ModalShell>
+   );
+}
+
+function TransferModal({ accounts, request, close, refresh, showMessage }: {
+   accounts: Account[];
+   request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
+   close: () => void;
+   refresh: () => Promise<void>;
+   showMessage: (message: string) => void;
+}) {
+   const options = accounts.filter((account) => account.active);
+   const [fromAccountId, setFromAccountId] = useState(options[0]?.id || "");
+   const [toAccountId, setToAccountId] = useState(options[1]?.id || "");
+   const [fromAmount, setFromAmount] = useState("");
+   const [toAmount, setToAmount] = useState("");
+   const [date, setDate] = useState(getLocalDateString);
+   const [note, setNote] = useState("");
+   const [saving, setSaving] = useState(false);
+   const fromAccount = options.find((account) => account.id === fromAccountId);
+   const toAccount = options.find((account) => account.id === toAccountId);
+   const isCrossCurrency =
+      Boolean(fromAccount && toAccount) && fromAccount?.currency !== toAccount?.currency;
+
+   const submit = async (event: React.FormEvent) => {
+      event.preventDefault();
+      try {
+         setSaving(true);
+         await request("POST", {
+            action: "transfer",
+            fromAccountId,
+            toAccountId,
+            fromAmount,
+            toAmount: isCrossCurrency ? toAmount : fromAmount,
+            transferDate: date,
+            note,
+         });
+         close();
+         await refresh();
+      } catch (error) {
+         showMessage(error instanceof Error ? error.message : "Could not save transfer.");
+      } finally {
+         setSaving(false);
+      }
+   };
+
+   return (
+      <ModalShell title="Move money" description="Transfers change account balances, not your income or expenses." close={close}>
+         <form onSubmit={submit} className={styles.form}>
+            {options.length < 2 && <div className={styles.inlineNotice}>Create at least two active accounts before making a transfer.</div>}
+            <div className={styles.transferAccounts}>
+               <label><span>From</span><select value={fromAccountId} onChange={(event) => setFromAccountId(event.target.value)} required><option value="">Choose account</option>{options.map((account) => <option value={account.id} key={account.id} disabled={account.id === toAccountId}>{account.name} · {account.currency} · {nativeMoney(account.balance, account.currency)}</option>)}</select></label>
+               <span><PiArrowsLeftRightLight /></span>
+               <label><span>To</span><select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)} required><option value="">Choose account</option>{options.map((account) => <option value={account.id} key={account.id} disabled={account.id === fromAccountId}>{account.name} · {account.currency}</option>)}</select></label>
+            </div>
+            <div className={styles.formGrid}>
+               <div className={styles.amountField}><label><span>Amount sent</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={fromAmount} onChange={(event) => setFromAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{fromAccount?.currency || "—"}</div></div>
+               {isCrossCurrency && <div className={styles.amountField}><label><span>Amount received</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={toAmount} onChange={(event) => setToAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{toAccount?.currency}</div></div>}
+            </div>
+            {isCrossCurrency && Number(fromAmount) > 0 && Number(toAmount) > 0 && <p className={styles.rateHint}>Transfer rate: 1 {fromAccount?.currency} = {(Number(toAmount) / Number(fromAmount)).toLocaleString("en-US", { maximumFractionDigits: 4 })} {toAccount?.currency}</p>}
+            <div className={styles.formGrid}><label><span>Date</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="e.g. Weekly household money" /></label></div>
+            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || options.length < 2 || !fromAccountId || !toAccountId}>{saving ? "Moving…" : "Complete transfer"}</button></div>
          </form>
       </ModalShell>
    );

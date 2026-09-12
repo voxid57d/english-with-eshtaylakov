@@ -12,6 +12,34 @@ exception
    when duplicate_object then null;
 end $$;
 
+do $$ begin
+   create type public.finance_account_type as enum (
+      'cash',
+      'bank_card',
+      'savings',
+      'person',
+      'other'
+   );
+exception
+   when duplicate_object then null;
+end $$;
+
+create table if not exists public.finance_accounts (
+   id uuid primary key default gen_random_uuid(),
+   owner_user_id uuid not null references auth.users(id) on delete cascade,
+   name text not null check (char_length(btrim(name)) between 1 and 80),
+   account_type public.finance_account_type not null default 'cash',
+   currency public.finance_currency not null default 'UZS',
+   opening_balance numeric(16, 2) not null default 0,
+   color text not null default '#657568' check (color ~ '^#[0-9A-Fa-f]{6}$'),
+   active boolean not null default true,
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now()
+);
+
+create unique index if not exists finance_accounts_owner_name_key
+   on public.finance_accounts(owner_user_id, lower(name));
+
 create table if not exists public.finance_categories (
    id uuid primary key default gen_random_uuid(),
    owner_user_id uuid not null references auth.users(id) on delete cascade,
@@ -30,6 +58,7 @@ create unique index if not exists finance_categories_owner_type_name_key
 create table if not exists public.finance_transactions (
    id uuid primary key default gen_random_uuid(),
    owner_user_id uuid not null references auth.users(id) on delete cascade,
+   account_id uuid references public.finance_accounts(id) on delete restrict,
    category_id uuid not null references public.finance_categories(id) on delete restrict,
    entry_type public.finance_entry_type not null,
    amount numeric(16, 2) not null check (amount > 0),
@@ -44,10 +73,41 @@ create table if not exists public.finance_transactions (
    )
 );
 
+-- Existing installations may already have finance_transactions.
+alter table if exists public.finance_transactions
+   add column if not exists account_id uuid references public.finance_accounts(id) on delete restrict;
+
 create index if not exists finance_transactions_owner_date_idx
    on public.finance_transactions(owner_user_id, entry_date desc);
 create index if not exists finance_transactions_category_idx
    on public.finance_transactions(category_id, entry_date desc);
+create index if not exists finance_transactions_account_idx
+   on public.finance_transactions(account_id, entry_date desc);
+
+create table if not exists public.finance_transfers (
+   id uuid primary key default gen_random_uuid(),
+   owner_user_id uuid not null references auth.users(id) on delete cascade,
+   from_account_id uuid not null references public.finance_accounts(id) on delete restrict,
+   to_account_id uuid not null references public.finance_accounts(id) on delete restrict,
+   from_amount numeric(16, 2) not null check (from_amount > 0),
+   to_amount numeric(16, 2) not null check (to_amount > 0),
+   from_currency public.finance_currency not null,
+   to_currency public.finance_currency not null,
+   transfer_date date not null default current_date,
+   note text check (note is null or char_length(note) <= 240),
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now(),
+   constraint finance_transfers_different_accounts_check check (
+      from_account_id <> to_account_id
+   )
+);
+
+create index if not exists finance_transfers_owner_date_idx
+   on public.finance_transfers(owner_user_id, transfer_date desc);
+create index if not exists finance_transfers_from_account_idx
+   on public.finance_transfers(from_account_id, transfer_date desc);
+create index if not exists finance_transfers_to_account_idx
+   on public.finance_transfers(to_account_id, transfer_date desc);
 
 create table if not exists public.finance_budgets (
    id uuid primary key default gen_random_uuid(),
@@ -79,9 +139,19 @@ create trigger finance_categories_updated_at
 before update on public.finance_categories
 for each row execute function public.set_private_finance_updated_at();
 
+drop trigger if exists finance_accounts_updated_at on public.finance_accounts;
+create trigger finance_accounts_updated_at
+before update on public.finance_accounts
+for each row execute function public.set_private_finance_updated_at();
+
 drop trigger if exists finance_transactions_updated_at on public.finance_transactions;
 create trigger finance_transactions_updated_at
 before update on public.finance_transactions
+for each row execute function public.set_private_finance_updated_at();
+
+drop trigger if exists finance_transfers_updated_at on public.finance_transfers;
+create trigger finance_transfers_updated_at
+before update on public.finance_transfers
 for each row execute function public.set_private_finance_updated_at();
 
 drop trigger if exists finance_budgets_updated_at on public.finance_budgets;
@@ -90,7 +160,9 @@ before update on public.finance_budgets
 for each row execute function public.set_private_finance_updated_at();
 
 alter table public.finance_categories enable row level security;
+alter table public.finance_accounts enable row level security;
 alter table public.finance_transactions enable row level security;
+alter table public.finance_transfers enable row level security;
 alter table public.finance_budgets enable row level security;
 
 drop policy if exists "Owner manages finance categories" on public.finance_categories;
@@ -99,9 +171,21 @@ on public.finance_categories for all
 using (auth.uid() = owner_user_id)
 with check (auth.uid() = owner_user_id);
 
+drop policy if exists "Owner manages finance accounts" on public.finance_accounts;
+create policy "Owner manages finance accounts"
+on public.finance_accounts for all
+using (auth.uid() = owner_user_id)
+with check (auth.uid() = owner_user_id);
+
 drop policy if exists "Owner manages finance transactions" on public.finance_transactions;
 create policy "Owner manages finance transactions"
 on public.finance_transactions for all
+using (auth.uid() = owner_user_id)
+with check (auth.uid() = owner_user_id);
+
+drop policy if exists "Owner manages finance transfers" on public.finance_transfers;
+create policy "Owner manages finance transfers"
+on public.finance_transfers for all
 using (auth.uid() = owner_user_id)
 with check (auth.uid() = owner_user_id);
 
