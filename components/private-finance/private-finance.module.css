@@ -354,13 +354,13 @@
    .topbar { align-items: stretch; flex-direction: column; gap: 9px; padding: 11px 15px; }
    .monthPicker { justify-content: space-between; }
    .monthPicker span { flex: 1; }
-   .topActions { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto auto; gap: 7px; }
+   .topActions { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 7px; }
    .ratePill { overflow: hidden; }
    .ratePill b { max-width: 88px; overflow: hidden; text-overflow: ellipsis; }
-   .addButton { width: 38px; padding: 0; font-size: 0; }
-   .addButton svg { font-size: 17px; }
-   .transferButton { width: 38px; padding: 0; font-size: 0; }
-   .transferButton svg { font-size: 17px; }
+   .addButton,
+   .transferButton { width: auto; min-height: 38px; padding: 9px 12px; white-space: nowrap; }
+   .addButton { font-size: 12px; }
+   .transferButton { font-size: 11px; }
    .content { padding: 25px 15px; }
    .pageHeading { align-items: start; }
    .pageHeading > .secondaryButton { white-space: nowrap; }
