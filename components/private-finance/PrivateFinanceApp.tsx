@@ -3,22 +3,36 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
    PiArchiveLight,
+   PiAirplaneLight,
    PiArrowsLeftRightLight,
+   PiBankLight,
+   PiBowlFoodLight,
    PiCalendarBlankLight,
    PiCaretLeftLight,
    PiCaretRightLight,
    PiChartDonutLight,
+   PiCircleLight,
+   PiCoinsLight,
+   PiCreditCardLight,
+   PiGiftLight,
+   PiGraduationCapLight,
+   PiHeartLight,
    PiHouseLineLight,
+   PiHouseLight,
    PiLockKeyLight,
-   PiMoonLight,
+   PiMoneyLight,
    PiPiggyBankLight,
+   PiPencilSimpleLight,
    PiPlusLight,
    PiSignOutLight,
-   PiSunLight,
+   PiShoppingBagLight,
+   PiStethoscopeLight,
    PiTagLight,
+   PiTShirtLight,
    PiTrashLight,
    PiTrendDownLight,
    PiTrendUpLight,
+   PiWifiHighLight,
    PiWalletLight,
    PiXLight,
 } from "react-icons/pi";
@@ -114,8 +128,6 @@ type FinancePayload = {
 type View = "overview" | "accounts" | "transactions" | "plans" | "categories";
 type Modal = "transaction" | "transfer" | "account" | "category" | "budget" | null;
 type AccessState = "loading" | "ready" | "signed-out" | "denied" | "error";
-type FinanceTheme = "light" | "dark";
-
 const TYPE_META: Record<
    FinanceEntryType,
    { label: string; shortLabel: string; icon: IconType; sign: string }
@@ -125,20 +137,30 @@ const TYPE_META: Record<
    savings: { label: "Savings", shortLabel: "Saving", icon: PiPiggyBankLight, sign: "↗" },
 };
 
-const CATEGORY_ICONS: Record<string, string> = {
-   circle: "●",
-   home: "⌂",
-   food: "◇",
-   transport: "↗",
-   health: "+",
-   shopping: "□",
-   salary: "↟",
-   gift: "✦",
-   education: "A",
-   travel: "△",
-   emergency: "!",
-   goal: "◎",
+const CATEGORY_ICONS: Record<string, IconType> = {
+   circle: PiCircleLight,
+   home: PiHouseLight,
+   food: PiBowlFoodLight,
+   transport: PiArrowsLeftRightLight,
+   health: PiHeartLight,
+   shopping: PiShoppingBagLight,
+   salary: PiMoneyLight,
+   gift: PiGiftLight,
+   education: PiGraduationCapLight,
+   travel: PiAirplaneLight,
+   emergency: PiStethoscopeLight,
+   goal: PiPiggyBankLight,
+   connectivity: PiWifiHighLight,
+   appearance: PiTShirtLight,
+   debt: PiCreditCardLight,
+   bank: PiBankLight,
+   cash: PiCoinsLight,
 };
+
+function CategoryIcon({ icon }: { icon: string }) {
+   const Icon = CATEGORY_ICONS[icon] || PiCircleLight;
+   return <Icon aria-hidden="true" />;
+}
 
 const COLORS = [
    "#E26D5A",
@@ -207,41 +229,12 @@ export default function PrivateFinanceApp() {
    const [view, setView] = useState<View>("overview");
    const [modal, setModal] = useState<Modal>(null);
    const [categoryParent, setCategoryParent] = useState<Category | null>(null);
+   const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null);
    const [month, setMonth] = useState(currentMonth);
    const [displayCurrency, setDisplayCurrency] = useState<FinanceCurrency>("UZS");
    const [filter, setFilter] = useState<FinanceEntryType | "all">("all");
    const [busy, setBusy] = useState(false);
    const [message, setMessage] = useState<string | null>(null);
-   const [financeTheme, setFinanceTheme] = useState<FinanceTheme>("light");
-
-   useEffect(() => {
-      try {
-         const savedTheme = window.localStorage.getItem("private-finance-theme");
-         const nextTheme =
-            savedTheme === "light" || savedTheme === "dark"
-               ? savedTheme
-               : document.documentElement.dataset.theme === "dark"
-                 ? "dark"
-                 : "light";
-         setFinanceTheme(nextTheme);
-      } catch {
-         // The default light theme remains available when storage is unavailable.
-      }
-   }, []);
-
-   const toggleFinanceTheme = () => {
-      const nextTheme: FinanceTheme = financeTheme === "dark" ? "light" : "dark";
-      setFinanceTheme(nextTheme);
-      document.documentElement.dataset.theme = nextTheme;
-      window.dispatchEvent(new Event("theme-change"));
-      try {
-         window.localStorage.setItem("private-finance-theme", nextTheme);
-         window.localStorage.setItem("theme-mode", nextTheme);
-      } catch {
-         // Switching still works for the current visit.
-      }
-   };
-
    const loadData = useCallback(async () => {
       try {
          setMessage(null);
@@ -326,8 +319,16 @@ export default function PrivateFinanceApp() {
       for (const transaction of payload?.transactions || []) {
          result[transaction.entryType] += toUzs(transaction);
       }
-      return { ...result, available: result.income - result.expense - result.savings };
-   }, [payload?.transactions, toUzs]);
+      const available = (payload?.accounts || []).reduce((sum, account) => {
+         if (account.accountType !== "cash" && account.accountType !== "bank_card") {
+            return sum;
+         }
+         const balanceInUzs =
+            account.balance * (account.currency === "USD" ? rate : 1);
+         return sum + balanceInUzs;
+      }, 0);
+      return { ...result, available };
+   }, [payload?.accounts, payload?.transactions, rate, toUzs]);
 
    const signIn = async () => {
       setBusy(true);
@@ -349,15 +350,7 @@ export default function PrivateFinanceApp() {
 
    if (access !== "ready" || !payload) {
       return (
-         <main className={styles.gate} data-finance-theme={financeTheme}>
-            <button
-               type="button"
-               className={styles.gateThemeButton}
-               onClick={toggleFinanceTheme}
-               aria-label={financeTheme === "dark" ? "Switch to day mode" : "Switch to night mode"}
-               title={financeTheme === "dark" ? "Day mode" : "Night mode"}>
-               {financeTheme === "dark" ? <PiSunLight /> : <PiMoonLight />}
-            </button>
+         <main className={styles.gate}>
             <section className={styles.gateCard}>
                <div className={styles.gateIcon}><PiLockKeyLight /></div>
                <p className={styles.eyebrow}>Private space</p>
@@ -386,13 +379,12 @@ export default function PrivateFinanceApp() {
       );
    }
 
-   const recent = payload.transactions.slice(0, 6);
    const filteredTransactions = payload.transactions.filter(
       (transaction) => filter === "all" || transaction.entryType === filter,
    );
 
    return (
-      <div className={styles.financeApp} data-finance-theme={financeTheme}>
+      <div className={styles.financeApp}>
          <aside className={styles.sidebar}>
             <div className={styles.brand}>
                <span className={styles.brandMark}><PiWalletLight /></span>
@@ -433,14 +425,6 @@ export default function PrivateFinanceApp() {
                         <button key={currency} className={displayCurrency === currency ? styles.currencyActive : ""} onClick={() => setDisplayCurrency(currency)}>{currency}</button>
                      ))}
                   </div>
-                  <button
-                     type="button"
-                     className={styles.themeButton}
-                     onClick={toggleFinanceTheme}
-                     aria-label={financeTheme === "dark" ? "Switch to day mode" : "Switch to night mode"}
-                     title={financeTheme === "dark" ? "Day mode" : "Night mode"}>
-                     {financeTheme === "dark" ? <PiSunLight /> : <PiMoonLight />}
-                  </button>
                   <button className={styles.transferButton} onClick={() => setModal("transfer")}><PiArrowsLeftRightLight /> Transfer</button>
                   <button className={styles.addButton} onClick={() => setModal("transaction")}><PiPlusLight /> Add transaction</button>
                </div>
@@ -459,7 +443,7 @@ export default function PrivateFinanceApp() {
                <Overview
                   totals={totals}
                   accounts={payload.accounts}
-                  transactions={recent}
+                  transactions={payload.transactions}
                   categories={payload.categories}
                   budgets={payload.budgets}
                   displayMoney={displayMoney}
@@ -526,10 +510,21 @@ export default function PrivateFinanceApp() {
                   categories={payload.categories}
                   onAdd={() => {
                      setCategoryParent(null);
+                     setCategoryToEdit(null);
                      setModal("category");
                   }}
                   onAddSubcategory={(parent) => {
                      setCategoryParent(parent);
+                     setCategoryToEdit(null);
+                     setModal("category");
+                  }}
+                  onEdit={(category) => {
+                     setCategoryParent(
+                        category.parentCategoryId
+                           ? payload.categories.find((item) => item.id === category.parentCategoryId) || null
+                           : null,
+                     );
+                     setCategoryToEdit(category);
                      setModal("category");
                   }}
                   onToggle={async (category) => {
@@ -573,10 +568,12 @@ export default function PrivateFinanceApp() {
          {modal === "category" && (
             <CategoryModal
                parentCategory={categoryParent}
+               categoryToEdit={categoryToEdit}
                request={request}
                close={() => {
                   setModal(null);
                   setCategoryParent(null);
+                  setCategoryToEdit(null);
                }}
                refresh={loadData}
                showMessage={setMessage}
@@ -791,6 +788,24 @@ function Overview({
       .filter((category) => category.total > 0)
       .sort((a, b) => b.total - a.total);
    const biggestExpense = Math.max(...expenseByCategory.map((item) => item.total), 1);
+   const incomeByCategory = categories
+      .filter(
+         (category) =>
+            category.entryType === "income" && category.parentCategoryId === null,
+      )
+      .map((category) => ({
+         ...category,
+         total: transactions
+            .filter(
+               (transaction) =>
+                  transaction.categoryId === category.id ||
+                  transaction.parentCategoryId === category.id,
+            )
+            .reduce((sum, transaction) => sum + toUzs(transaction), 0),
+      }))
+      .filter((category) => category.total > 0)
+      .sort((a, b) => b.total - a.total);
+   const biggestIncome = Math.max(...incomeByCategory.map((item) => item.total), 1);
    const planned = budgets
       .filter((budget) => categories.find((category) => category.id === budget.categoryId)?.entryType === "expense")
       .reduce((sum, budget) => sum + planToUzs(budget), 0);
@@ -800,39 +815,61 @@ function Overview({
          <PageHeading eyebrow="Monthly snapshot" title="Good to see you." description="A calm view of what came in, went out, and moved toward your goals." />
          <AccountStrip accounts={accounts} onTransfer={onTransfer} onViewAll={onViewAccounts} />
          <section className={styles.summaryGrid}>
-            <SummaryCard label="Available" value={displayMoney(totals.available, true)} note="Income after spending & savings" icon={PiWalletLight} tone="ink" />
-            <SummaryCard label="Income" value={displayMoney(totals.income, true)} note="Received this month" icon={PiTrendUpLight} tone="green" />
-            <SummaryCard label="Expenses" value={displayMoney(totals.expense, true)} note={planned ? `${Math.round((totals.expense / planned) * 100)}% of planned limits` : "No spending limits yet"} icon={PiTrendDownLight} tone="red" />
-            <SummaryCard label="Saved" value={displayMoney(totals.savings, true)} note={totals.income ? `${Math.round((totals.savings / totals.income) * 100)}% of income` : "Start with your first deposit"} icon={PiPiggyBankLight} tone="blue" />
+            <SummaryCard label="Available" value={displayMoney(totals.available)} note="Cash and bank card balances" icon={PiWalletLight} tone="ink" />
+            <SummaryCard label="Income" value={displayMoney(totals.income)} note="Received this month" icon={PiTrendUpLight} tone="green" />
+            <SummaryCard label="Expenses" value={displayMoney(totals.expense)} note={planned ? `${Math.round((totals.expense / planned) * 100)}% of planned limits` : "No spending limits yet"} icon={PiTrendDownLight} tone="red" />
+            <SummaryCard label="Saved" value={displayMoney(totals.savings)} note={totals.income ? `${Math.round((totals.savings / totals.income) * 100)}% of income` : "Start with your first deposit"} icon={PiPiggyBankLight} tone="blue" />
          </section>
 
          <section className={styles.dashboardGrid}>
-            <article className={styles.panel}>
-               <div className={styles.panelHeader}>
-                  <div><p className={styles.eyebrow}>Spending</p><h2>Where your money went</h2></div>
-                  <span className={styles.panelTotal}>{displayMoney(totals.expense, true)}</span>
-               </div>
-               {expenseByCategory.length ? (
-                  <div className={styles.breakdownList}>
-                     {expenseByCategory.slice(0, 6).map((category) => (
-                        <div key={category.id} className={styles.breakdownRow}>
-                           <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}>{CATEGORY_ICONS[category.icon] || "●"}</span>
-                           <div className={styles.breakdownBody}>
-                              <div><b>{category.name}</b><span>{displayMoney(category.total)}</span></div>
-                              <div className={styles.progressTrack}><span style={{ width: `${(category.total / biggestExpense) * 100}%`, background: category.color }} /></div>
-                           </div>
-                        </div>
-                     ))}
+            <div className={styles.breakdownColumn}>
+               <article className={styles.panel}>
+                  <div className={styles.panelHeader}>
+                     <div><p className={styles.eyebrow}>Spending</p><h2>Where your money went</h2></div>
+                     <span className={styles.panelTotal}>{displayMoney(totals.expense)}</span>
                   </div>
-               ) : <EmptyState icon={PiChartDonutLight} title="Nothing spent yet" text="Your category breakdown will appear here." action={onAdd} actionLabel="Add expense" />}
-            </article>
+                  {expenseByCategory.length ? (
+                     <div className={styles.breakdownList}>
+                        {expenseByCategory.slice(0, 6).map((category) => (
+                           <div key={category.id} className={styles.breakdownRow}>
+                              <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}><CategoryIcon icon={category.icon} /></span>
+                              <div className={styles.breakdownBody}>
+                                 <div><b>{category.name}</b><span>{displayMoney(category.total)}</span></div>
+                                 <div className={styles.progressTrack}><span style={{ width: `${(category.total / biggestExpense) * 100}%`, background: category.color }} /></div>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  ) : <EmptyState icon={PiChartDonutLight} title="Nothing spent yet" text="Your category breakdown will appear here." action={onAdd} actionLabel="Add expense" />}
+               </article>
+
+               <article className={styles.panel}>
+                  <div className={styles.panelHeader}>
+                     <div><p className={styles.eyebrow}>Income</p><h2>Where your money came from</h2></div>
+                     <span className={styles.panelTotal}>{displayMoney(totals.income)}</span>
+                  </div>
+                  {incomeByCategory.length ? (
+                     <div className={styles.breakdownList}>
+                        {incomeByCategory.slice(0, 6).map((category) => (
+                           <div key={category.id} className={styles.breakdownRow}>
+                              <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}><CategoryIcon icon={category.icon} /></span>
+                              <div className={styles.breakdownBody}>
+                                 <div><b>{category.name}</b><span>{displayMoney(category.total)}</span></div>
+                                 <div className={styles.progressTrack}><span style={{ width: `${(category.total / biggestIncome) * 100}%`, background: category.color }} /></div>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  ) : <EmptyState icon={PiTrendUpLight} title="No income yet" text="Income sources will appear here." action={onAdd} actionLabel="Add income" />}
+               </article>
+            </div>
 
             <article className={styles.panel}>
                <div className={styles.panelHeader}>
                   <div><p className={styles.eyebrow}>Activity</p><h2>Recent transactions</h2></div>
                   <button className={styles.textButton} onClick={onViewAll}>View all</button>
                </div>
-               {transactions.length ? <TransactionList transactions={transactions} displayMoney={displayMoney} toUzs={toUzs} /> : <EmptyState icon={PiArrowsLeftRightLight} title="Your ledger is empty" text="Add income or an expense to begin." action={onAdd} actionLabel="Add transaction" />}
+               {transactions.length ? <TransactionList transactions={transactions.slice(0, 6)} displayMoney={displayMoney} toUzs={toUzs} /> : <EmptyState icon={PiArrowsLeftRightLight} title="Your ledger is empty" text="Add income or an expense to begin." action={onAdd} actionLabel="Add transaction" />}
             </article>
          </section>
       </div>
@@ -856,7 +893,7 @@ function TransactionList({
             const meta = TYPE_META[transaction.entryType];
             return (
                <div key={transaction.id} className={styles.transactionRow}>
-                  <span className={styles.categoryGlyph} style={{ background: `${transaction.categoryColor}1A`, color: transaction.categoryColor }}>{CATEGORY_ICONS[transaction.categoryIcon] || "●"}</span>
+                  <span className={styles.categoryGlyph} style={{ background: `${transaction.categoryColor}1A`, color: transaction.categoryColor }}><CategoryIcon icon={transaction.categoryIcon} /></span>
                   <div className={styles.transactionName}><b>{transaction.parentCategoryName ? `${transaction.parentCategoryName} · ${transaction.categoryName}` : transaction.categoryName}</b><small>{transaction.accountName} · {transaction.note || meta.shortLabel} · {shortDate(transaction.entryDate)}</small></div>
                   <div className={`${styles.transactionAmount} ${styles[`amount_${transaction.entryType}`]}`}><b>{meta.sign}{displayMoney(toUzs(transaction))}</b>{transaction.currency === "USD" && <small>${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(transaction.amount)} original</small>}</div>
                   {onDelete && <button className={styles.iconButton} onClick={() => onDelete(transaction.id)} title="Delete transaction"><PiTrashLight /></button>}
@@ -942,7 +979,7 @@ function Plans({
                   return (
                      <article className={styles.planCard} key={budget.id}>
                         <div className={styles.planTop}>
-                           <span className={styles.categoryGlyph} style={{ background: `${category?.color || "#657568"}1A`, color: category?.color || "#657568" }}>{CATEGORY_ICONS[category?.icon || "circle"]}</span>
+                           <span className={styles.categoryGlyph} style={{ background: `${category?.color || "#657568"}1A`, color: category?.color || "#657568" }}><CategoryIcon icon={category?.icon || "circle"} /></span>
                            <div><small>{isGoal ? "Savings goal" : "Spending limit"}</small><h2>{category?.name || "Category"}</h2></div>
                            <button className={styles.iconButton} onClick={() => onDelete(budget.id)} title="Remove plan"><PiTrashLight /></button>
                         </div>
@@ -968,11 +1005,13 @@ function Categories({
    categories,
    onAdd,
    onAddSubcategory,
+   onEdit,
    onToggle,
 }: {
    categories: Category[];
    onAdd: () => void;
    onAddSubcategory: (parent: Category) => void;
+   onEdit: (category: Category) => void;
    onToggle: (category: Category) => void;
 }) {
    return (
@@ -993,16 +1032,18 @@ function Categories({
                            return (
                               <div className={styles.categoryTree} key={category.id}>
                                  <div className={`${styles.categoryCard} ${!category.active ? styles.inactive : ""}`}>
-                                    <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}>{CATEGORY_ICONS[category.icon] || "●"}</span>
+                                    <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}><CategoryIcon icon={category.icon} /></span>
                                     <b>{category.name}</b>
                                     <button className={styles.addSubcategoryButton} onClick={() => onAddSubcategory(category)} disabled={!category.active} title={category.active ? "Add subcategory" : "Restore this category first"}><PiPlusLight /></button>
+                                    <button className={styles.iconButton} onClick={() => onEdit(category)} title="Edit category"><PiPencilSimpleLight /></button>
                                     <button className={styles.iconButton} onClick={() => onToggle(category)} title={category.active ? "Archive category" : "Restore category"}><PiArchiveLight /></button>
                                  </div>
                                  {children.map((child) => (
                                     <div className={`${styles.childCategoryCard} ${!child.active ? styles.inactive : ""}`} key={child.id}>
                                        <span className={styles.childLine} />
-                                       <span className={styles.categoryGlyph} style={{ background: `${child.color}1A`, color: child.color }}>{CATEGORY_ICONS[child.icon] || "●"}</span>
+                                       <span className={styles.categoryGlyph} style={{ background: `${child.color}1A`, color: child.color }}><CategoryIcon icon={child.icon} /></span>
                                        <b>{child.name}</b>
+                                       <button className={styles.iconButton} onClick={() => onEdit(child)} title="Edit subcategory"><PiPencilSimpleLight /></button>
                                        <button className={styles.iconButton} onClick={() => onToggle(child)} title={child.active ? "Archive subcategory" : "Restore subcategory"}><PiArchiveLight /></button>
                                     </div>
                                  ))}
@@ -1241,34 +1282,46 @@ function TransferModal({ accounts, request, close, refresh, showMessage }: {
    );
 }
 
-function CategoryModal({ parentCategory, request, close, refresh, showMessage }: {
+function CategoryModal({ parentCategory, categoryToEdit, request, close, refresh, showMessage }: {
    parentCategory: Category | null;
+   categoryToEdit: Category | null;
    request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
    close: () => void;
    refresh: () => Promise<void>;
    showMessage: (message: string) => void;
 }) {
-   const [type, setType] = useState<FinanceEntryType>(parentCategory?.entryType || "expense");
-   const [name, setName] = useState("");
-   const [color, setColor] = useState(COLORS[0]);
-   const [icon, setIcon] = useState("circle");
+   const isEditing = Boolean(categoryToEdit);
+   const [type, setType] = useState<FinanceEntryType>(categoryToEdit?.entryType || parentCategory?.entryType || "expense");
+   const [name, setName] = useState(categoryToEdit?.name || "");
+   const [color, setColor] = useState(categoryToEdit?.color || COLORS[0]);
+   const [icon, setIcon] = useState(categoryToEdit?.icon || "circle");
    const [saving, setSaving] = useState(false);
    const submit = async (event: React.FormEvent) => {
       event.preventDefault();
-      try { setSaving(true); await request("POST", { action: "category", parentCategoryId: parentCategory?.id || null, entryType: type, name, color, icon }); close(); await refresh(); }
-      catch (error) { showMessage(error instanceof Error ? error.message : "Could not create category."); }
+      try {
+         setSaving(true);
+         await request(
+            isEditing ? "PATCH" : "POST",
+            isEditing
+               ? { action: "category", id: categoryToEdit?.id, name, color, icon, active: categoryToEdit?.active }
+               : { action: "category", parentCategoryId: parentCategory?.id || null, entryType: type, name, color, icon },
+         );
+         close();
+         await refresh();
+      }
+      catch (error) { showMessage(error instanceof Error ? error.message : isEditing ? "Could not update category." : "Could not create category."); }
       finally { setSaving(false); }
    };
    return (
-      <ModalShell title={parentCategory ? "New subcategory" : "New category"} description={parentCategory ? "This will roll up into " + parentCategory.name + "." : "Create a label that feels natural to you."} close={close}>
+      <ModalShell title={isEditing ? parentCategory ? "Edit subcategory" : "Edit category" : parentCategory ? "New subcategory" : "New category"} description={parentCategory ? isEditing ? "Update how this subcategory is shown under " + parentCategory.name + "." : "This will roll up into " + parentCategory.name + "." : isEditing ? "Update this label without changing its transaction history." : "Create a label that feels natural to you."} close={close}>
          <form onSubmit={submit} className={styles.form}>
             {parentCategory ? (
-               <div className={styles.parentCategoryPreview}><span className={styles.categoryGlyph} style={{ background: parentCategory.color + "1A", color: parentCategory.color }}>{CATEGORY_ICONS[parentCategory.icon] || "●"}</span><div><small>Parent category</small><b>{parentCategory.name}</b></div></div>
-            ) : <TypePicker value={type} onChange={setType} />}
+               <div className={styles.parentCategoryPreview}><span className={styles.categoryGlyph} style={{ background: parentCategory.color + "1A", color: parentCategory.color }}><CategoryIcon icon={parentCategory.icon} /></span><div><small>Parent category</small><b>{parentCategory.name}</b></div></div>
+            ) : !isEditing && <TypePicker value={type} onChange={setType} />}
             <label><span>{parentCategory ? "Subcategory name" : "Name"}</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} placeholder={parentCategory ? (type === "expense" ? "e.g. Burgers" : "e.g. Material Design salary") : type === "expense" ? "e.g. Food" : type === "income" ? "e.g. Salary" : "e.g. Emergency fund"} autoFocus required /></label>
-            <fieldset><legend>Icon</legend><div className={styles.iconChoices}>{Object.entries(CATEGORY_ICONS).map(([key, glyph]) => <button type="button" key={key} className={icon === key ? styles.choiceActive : ""} onClick={() => setIcon(key)}>{glyph}</button>)}</div></fieldset>
+            <fieldset><legend>Icon</legend><div className={styles.iconChoices}>{Object.entries(CATEGORY_ICONS).map(([key, Icon]) => <button type="button" key={key} className={icon === key ? styles.choiceActive : ""} onClick={() => setIcon(key)} title={key}><Icon aria-hidden="true" /></button>)}</div></fieldset>
             <fieldset><legend>Color</legend><div className={styles.colorChoices}>{COLORS.map((item) => <button type="button" key={item} className={color === item ? styles.choiceActive : ""} style={{ background: item }} onClick={() => setColor(item)} aria-label={`Choose ${item}`} />)}</div></fieldset>
-            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving}>{saving ? "Creating…" : "Create category"}</button></div>
+            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving}>{saving ? isEditing ? "Saving…" : "Creating…" : isEditing ? "Save changes" : "Create category"}</button></div>
          </form>
       </ModalShell>
    );

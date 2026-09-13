@@ -616,9 +616,10 @@ export async function PATCH(req: Request) {
       const name = cleanFinanceText(body.name, 80);
       if (!id || !name) throw new Error("Category name is required.");
       const color = CATEGORY_COLORS.includes(body.color) ? body.color : "#657568";
+      const icon = cleanFinanceText(body.icon, 40) || "circle";
       const { data, error } = await supabaseAdmin
          .from("finance_categories")
-         .update({ name, color, active: body.active !== false })
+         .update({ name, color, icon, active: body.active !== false })
          .eq("id", id)
          .eq("owner_user_id", user.id)
          .select("id, parent_category_id, name, entry_type, color, icon, active")
