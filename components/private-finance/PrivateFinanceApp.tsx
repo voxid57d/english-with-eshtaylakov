@@ -810,9 +810,8 @@ function Overview({
       .filter((budget) => categories.find((category) => category.id === budget.categoryId)?.entryType === "expense")
       .reduce((sum, budget) => sum + planToUzs(budget), 0);
 
-   return (
+      return (
       <div className={styles.content}>
-         <PageHeading eyebrow="Monthly snapshot" title="Good to see you." description="A calm view of what came in, went out, and moved toward your goals." />
          <AccountStrip accounts={accounts} onTransfer={onTransfer} onViewAll={onViewAccounts} />
          <section className={styles.summaryGrid}>
             <SummaryCard label="Available" value={displayMoney(totals.available)} note="Cash and bank card balances" icon={PiWalletLight} tone="ink" />
