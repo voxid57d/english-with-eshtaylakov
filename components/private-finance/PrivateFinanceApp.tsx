@@ -153,7 +153,7 @@ type FinancePayload = {
 };
 
 type View = "overview" | "accounts" | "transactions" | "debts" | "plans" | "categories";
-type Modal = "transaction" | "transfer" | "account" | "category" | "budget" | "debt" | "debt-payment" | null;
+type Modal = "transaction" | "transfer" | "account" | "category" | "budget" | "debt" | "debt-payment" | "debt-history" | null;
 type AccessState = "loading" | "ready" | "signed-out" | "denied" | "error";
 const TYPE_META: Record<
    FinanceEntryType,
@@ -532,6 +532,7 @@ export default function PrivateFinanceApp() {
                      setDebtToPay(debt);
                      setModal("debt-payment");
                   }}
+                  onViewHistory={() => setModal("debt-history")}
                />
             )}
             {view === "plans" && (
@@ -654,6 +655,13 @@ export default function PrivateFinanceApp() {
                }}
                refresh={loadData}
                showMessage={setMessage}
+            />
+         )}
+         {modal === "debt-history" && (
+            <DebtHistoryModal
+               debts={payload.debts}
+               payments={payload.debtPayments}
+               close={() => setModal(null)}
             />
          )}
       </div>
@@ -815,14 +823,20 @@ function Debts({
    payments,
    onCreate,
    onPay,
+   onViewHistory,
 }: {
    debts: Debt[];
    payments: DebtPayment[];
    onCreate: (direction: FinanceDebtDirection) => void;
    onPay: (debt: Debt) => void;
+   onViewHistory: () => void;
 }) {
-   const receivables = debts.filter((debt) => debt.direction === "receivable");
-   const payables = debts.filter((debt) => debt.direction === "payable");
+   const receivables = debts.filter(
+      (debt) => debt.direction === "receivable" && debt.remainingAmount > 0.005,
+   );
+   const payables = debts.filter(
+      (debt) => debt.direction === "payable" && debt.remainingAmount > 0.005,
+   );
    const totalByCurrency = (items: Debt[]) =>
       (["UZS", "USD"] as const)
          .map((currency) => ({
@@ -875,6 +889,7 @@ function Debts({
             <section className={styles.panel}><div className={styles.panelHeader}><div><p className={styles.eyebrow}>Receivables</p><h2>People who owe you</h2></div></div>{debtList(receivables, "receivable")}</section>
             <section className={styles.panel}><div className={styles.panelHeader}><div><p className={styles.eyebrow}>Payables</p><h2>Debts you owe</h2></div></div>{debtList(payables, "payable")}</section>
          </div>
+         <div className={styles.debtHistoryAction}><button className={styles.textButton} onClick={onViewHistory}><PiArchiveLight /> Debt history</button></div>
       </div>
    );
 }
@@ -1541,6 +1556,35 @@ function DebtPaymentModal({ debt, accounts, request, close, refresh, showMessage
             <label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="A short reminder" /></label>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !accountId}>{saving ? "Saving…" : "Record payment"}</button></div>
          </form>
+      </ModalShell>
+   );
+}
+
+function DebtHistoryModal({ debts, payments, close }: {
+   debts: Debt[];
+   payments: DebtPayment[];
+   close: () => void;
+}) {
+   const settledDebts = debts.filter((debt) => debt.remainingAmount <= 0.005);
+
+   return (
+      <ModalShell title="Debt history" description="Settled loans and borrowings stay here for your records." close={close}>
+         {settledDebts.length ? (
+            <div className={styles.debtHistoryList}>
+               {settledDebts.map((debt) => {
+                  const debtPayments = payments.filter((payment) => payment.debtId === debt.id);
+                  return (
+                     <article className={styles.debtHistoryCard} key={debt.id}>
+                        <div><small>{debt.direction === "receivable" ? "Lent money" : "Borrowed money"} · settled</small><h3>{debt.personName}</h3></div>
+                        <p>{nativeMoney(debt.principalAmount, debt.currency)} · {shortDate(debt.issuedOn)} · {debt.accountName}</p>
+                        {debtPayments.map((payment) => <p className={styles.debtHistoryPayment} key={payment.id}>{debt.direction === "receivable" ? "Received" : "Repaid"} {nativeMoney(payment.amount, debt.currency)} into {payment.accountName} · {shortDate(payment.paymentDate)}{payment.note ? ` · ${payment.note}` : ""}</p>)}
+                     </article>
+                  );
+               })}
+            </div>
+         ) : (
+            <EmptyState icon={PiArchiveLight} title="No settled debts yet" text="Fully repaid debts will be kept here." action={close} actionLabel="Close" />
+         )}
       </ModalShell>
    );
 }

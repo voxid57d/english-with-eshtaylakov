@@ -165,11 +165,13 @@
 .miniAccount b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .miniAccount small { color: var(--muted); font-size: 8px; }
 .miniAccount b { margin-top: 3px; font-size: 10px; }
-.summaryCard { position: relative; overflow: hidden; min-height: 152px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); padding: 19px; }
+.summaryCard { position: relative; overflow: hidden; min-height: 152px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); padding: 19px; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.summaryCard:hover { z-index: 1; transform: translateY(-3px); border-color: #cdd6cf; box-shadow: 0 12px 24px rgba(36,49,40,.08); }
 .summaryCard > p { margin: 4px 0 12px; color: var(--muted); font-size: 11px; }
 .summaryCard > strong { display: block; overflow: hidden; color: var(--ink); font-family: Georgia, serif; font-size: clamp(20px,2vw,27px); font-weight: 500; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
 .summaryCard > small { display: block; margin-top: 12px; color: var(--muted); font-size: 10px; }
-.summaryIcon { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 9px; font-size: 17px; }
+.summaryIcon { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 9px; font-size: 17px; transition: transform .2s ease; }
+.summaryCard:hover .summaryIcon { transform: scale(1.06) rotate(-2deg); }
 .tone_green .summaryIcon { background: var(--green-soft); color: var(--green); }
 .tone_red .summaryIcon { background: var(--red-soft); color: var(--red); }
 .tone_blue .summaryIcon { background: var(--blue-soft); color: var(--blue); }
@@ -300,6 +302,15 @@
 .debtCard .debtNote { color: var(--ink); }
 .debtPaymentHint { display: block; margin-top: 8px; color: var(--muted); font-size: 9px; }
 .debtCard .secondaryButton { margin-top: 12px; }
+.debtHistoryAction { display: flex; justify-content: center; margin-top: 18px; }
+.debtHistoryAction .textButton { padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.debtHistoryAction .textButton:hover { border-color: #b9c5bc; background: var(--green-soft); }
+.debtHistoryList { display: flex; flex-direction: column; gap: 10px; }
+.debtHistoryCard { border: 1px solid var(--line); border-radius: 11px; background: #faf9f5; padding: 13px; }
+.debtHistoryCard small { color: var(--muted); font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.debtHistoryCard h3 { margin: 4px 0 0; font-size: 14px; }
+.debtHistoryCard > p { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.debtHistoryCard .debtHistoryPayment { color: var(--ink); }
 
 .toast { position: fixed; z-index: 50; right: 24px; bottom: 24px; display: flex; max-width: 380px; align-items: center; gap: 15px; border: 1px solid #e0bbb5; border-radius: 10px; background: #fff5f2; padding: 12px 14px; color: var(--red); box-shadow: 0 12px 35px rgba(50,30,25,.14); font-size: 11px; }
 .toast button { display: grid; border: 0; background: transparent; color: inherit; }
@@ -422,4 +433,11 @@
    .modalBackdrop { align-items: end; padding: 0; }
    .modal { width: 100%; max-height: min(88dvh, 760px); border-bottom-right-radius: 0; border-bottom-left-radius: 0; padding: 20px 16px max(20px, env(safe-area-inset-bottom)); }
    .iconButton { width: 36px; height: 36px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+   .summaryCard,
+   .summaryIcon { transition: none; }
+   .summaryCard:hover,
+   .summaryCard:hover .summaryIcon { transform: none; }
 }
