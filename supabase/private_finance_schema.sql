@@ -24,6 +24,12 @@ exception
    when duplicate_object then null;
 end $$;
 
+do $$ begin
+   create type public.finance_debt_direction as enum ('receivable', 'payable');
+exception
+   when duplicate_object then null;
+end $$;
+
 create table if not exists public.finance_accounts (
    id uuid primary key default gen_random_uuid(),
    owner_user_id uuid not null references auth.users(id) on delete cascade,
@@ -122,6 +128,41 @@ create index if not exists finance_transfers_from_account_idx
 create index if not exists finance_transfers_to_account_idx
    on public.finance_transfers(to_account_id, transfer_date desc);
 
+create table if not exists public.finance_debts (
+   id uuid primary key default gen_random_uuid(),
+   owner_user_id uuid not null references auth.users(id) on delete cascade,
+   person_name text not null check (char_length(btrim(person_name)) between 1 and 80),
+   direction public.finance_debt_direction not null,
+   account_id uuid not null references public.finance_accounts(id) on delete restrict,
+   principal_amount numeric(16, 2) not null check (principal_amount > 0),
+   currency public.finance_currency not null,
+   issued_on date not null default current_date,
+   due_on date,
+   note text check (note is null or char_length(note) <= 240),
+   created_at timestamptz not null default now(),
+   updated_at timestamptz not null default now(),
+   constraint finance_debts_due_date_check check (due_on is null or due_on >= issued_on)
+);
+
+create index if not exists finance_debts_owner_direction_idx
+   on public.finance_debts(owner_user_id, direction, issued_on desc);
+
+create table if not exists public.finance_debt_payments (
+   id uuid primary key default gen_random_uuid(),
+   owner_user_id uuid not null references auth.users(id) on delete cascade,
+   debt_id uuid not null references public.finance_debts(id) on delete restrict,
+   account_id uuid not null references public.finance_accounts(id) on delete restrict,
+   amount numeric(16, 2) not null check (amount > 0),
+   payment_date date not null default current_date,
+   note text check (note is null or char_length(note) <= 240),
+   created_at timestamptz not null default now()
+);
+
+create index if not exists finance_debt_payments_debt_date_idx
+   on public.finance_debt_payments(debt_id, payment_date desc);
+create index if not exists finance_debt_payments_owner_date_idx
+   on public.finance_debt_payments(owner_user_id, payment_date desc);
+
 create table if not exists public.finance_budgets (
    id uuid primary key default gen_random_uuid(),
    owner_user_id uuid not null references auth.users(id) on delete cascade,
@@ -216,11 +257,19 @@ create trigger finance_budgets_updated_at
 before update on public.finance_budgets
 for each row execute function public.set_private_finance_updated_at();
 
+drop trigger if exists finance_debts_updated_at on public.finance_debts;
+create trigger finance_debts_updated_at
+before update on public.finance_debts
+for each row
+execute function public.set_private_finance_updated_at();
+
 alter table public.finance_categories enable row level security;
 alter table public.finance_accounts enable row level security;
 alter table public.finance_transactions enable row level security;
 alter table public.finance_transfers enable row level security;
 alter table public.finance_budgets enable row level security;
+alter table public.finance_debts enable row level security;
+alter table public.finance_debt_payments enable row level security;
 
 drop policy if exists "Owner manages finance categories" on public.finance_categories;
 create policy "Owner manages finance categories"
@@ -249,6 +298,18 @@ with check (auth.uid() = owner_user_id);
 drop policy if exists "Owner manages finance budgets" on public.finance_budgets;
 create policy "Owner manages finance budgets"
 on public.finance_budgets for all
+using (auth.uid() = owner_user_id)
+with check (auth.uid() = owner_user_id);
+
+drop policy if exists "Owner manages finance debts" on public.finance_debts;
+create policy "Owner manages finance debts"
+on public.finance_debts for all
+using (auth.uid() = owner_user_id)
+with check (auth.uid() = owner_user_id);
+
+drop policy if exists "Owner manages finance debt payments" on public.finance_debt_payments;
+create policy "Owner manages finance debt payments"
+on public.finance_debt_payments for all
 using (auth.uid() = owner_user_id)
 with check (auth.uid() = owner_user_id);
 

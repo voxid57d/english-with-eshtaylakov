@@ -4,6 +4,7 @@ import {
    cleanFinanceText,
    isFinanceAccountType,
    isFinanceCurrency,
+   isFinanceDebtDirection,
    isFinanceEntryType,
    isIsoDate,
    isMonthStart,
@@ -12,6 +13,7 @@ import {
    requirePrivateFinanceUser,
    type FinanceAccountType,
    type FinanceCurrency,
+   type FinanceDebtDirection,
    type FinanceEntryType,
 } from "@/lib/privateFinance";
 
@@ -74,6 +76,29 @@ type BudgetRow = {
    month_start: string;
    amount: number | string;
    currency: FinanceCurrency;
+};
+
+type DebtRow = {
+   id: string;
+   person_name: string;
+   direction: FinanceDebtDirection;
+   account_id: string;
+   principal_amount: number | string;
+   currency: FinanceCurrency;
+   issued_on: string;
+   due_on: string | null;
+   note: string | null;
+   created_at: string;
+};
+
+type DebtPaymentRow = {
+   id: string;
+   debt_id: string;
+   account_id: string;
+   amount: number | string;
+   payment_date: string;
+   note: string | null;
+   created_at: string;
 };
 
 const CATEGORY_COLORS = [
@@ -215,6 +240,49 @@ function mapBudget(row: BudgetRow) {
    };
 }
 
+function mapDebt(
+   row: DebtRow,
+   accountNames: Map<string, string>,
+   paidAmount: number,
+) {
+   return {
+      id: row.id,
+      personName: row.person_name,
+      direction: row.direction,
+      accountId: row.account_id,
+      accountName: accountNames.get(row.account_id) || "Account",
+      principalAmount: Number(row.principal_amount),
+      remainingAmount: Math.max(0, Number(row.principal_amount) - paidAmount),
+      currency: row.currency,
+      issuedOn: row.issued_on,
+      dueOn: row.due_on,
+      note: row.note,
+   };
+}
+
+function mapDebtPayment(row: DebtPaymentRow, accountNames: Map<string, string>) {
+   return {
+      id: row.id,
+      debtId: row.debt_id,
+      accountId: row.account_id,
+      accountName: accountNames.get(row.account_id) || "Account",
+      amount: Number(row.amount),
+      paymentDate: row.payment_date,
+      note: row.note,
+   };
+}
+
+async function getOwnedDebt(userId: string, debtId: string) {
+   const { data, error } = await supabaseAdmin
+      .from("finance_debts")
+      .select("id, person_name, direction, account_id, principal_amount, currency, issued_on, due_on, note, created_at")
+      .eq("id", debtId)
+      .eq("owner_user_id", userId)
+      .single();
+   if (error || !data) throw new Error("Choose a valid debt.");
+   return data as DebtRow;
+}
+
 async function getOwnedCategory(userId: string, categoryId: string) {
    const { data, error } = await supabaseAdmin
       .from("finance_categories")
@@ -250,6 +318,8 @@ export async function GET(req: Request) {
          budgetResult,
          balanceTransactionResult,
          balanceTransferResult,
+         debtResult,
+         debtPaymentResult,
          exchangeRate,
       ] = await Promise.all([
             supabaseAdmin
@@ -301,6 +371,18 @@ export async function GET(req: Request) {
                   "id, from_account_id, to_account_id, from_amount, to_amount, from_currency, to_currency, transfer_date, note, created_at",
                )
                .eq("owner_user_id", user.id),
+            supabaseAdmin
+               .from("finance_debts")
+               .select("id, person_name, direction, account_id, principal_amount, currency, issued_on, due_on, note, created_at")
+               .eq("owner_user_id", user.id)
+               .order("issued_on", { ascending: false })
+               .order("created_at", { ascending: false }),
+            supabaseAdmin
+               .from("finance_debt_payments")
+               .select("id, debt_id, account_id, amount, payment_date, note, created_at")
+               .eq("owner_user_id", user.id)
+               .order("payment_date", { ascending: false })
+               .order("created_at", { ascending: false }),
             getUsdRate(),
          ]);
 
@@ -311,7 +393,9 @@ export async function GET(req: Request) {
          transferResult.error ||
          budgetResult.error ||
          balanceTransactionResult.error ||
-         balanceTransferResult.error
+         balanceTransferResult.error ||
+         debtResult.error ||
+         debtPaymentResult.error
       ) {
          throw new Error(
             "Finance storage is not ready. Apply supabase/private_finance_schema.sql first.",
@@ -322,6 +406,15 @@ export async function GET(req: Request) {
       const accountNames = new Map(accountRows.map((account) => [account.id, account.name]));
       const categoryRows = (categoryResult.data || []) as CategoryRow[];
       const categories = new Map(categoryRows.map((category) => [category.id, category]));
+      const debtRows = (debtResult.data || []) as DebtRow[];
+      const debtPaymentRows = (debtPaymentResult.data || []) as DebtPaymentRow[];
+      const paidByDebt = new Map<string, number>();
+      for (const payment of debtPaymentRows) {
+         paidByDebt.set(
+            payment.debt_id,
+            (paidByDebt.get(payment.debt_id) || 0) + Number(payment.amount),
+         );
+      }
       const balances = new Map(
          accountRows.map((account) => [account.id, Number(account.opening_balance)]),
       );
@@ -351,6 +444,26 @@ export async function GET(req: Request) {
          }
       }
 
+      for (const debt of debtRows) {
+         if (!balances.has(debt.account_id)) continue;
+         const direction = debt.direction === "receivable" ? -1 : 1;
+         balances.set(
+            debt.account_id,
+            (balances.get(debt.account_id) || 0) +
+               direction * Number(debt.principal_amount),
+         );
+      }
+
+      for (const payment of debtPaymentRows) {
+         const debt = debtRows.find((item) => item.id === payment.debt_id);
+         if (!debt || !balances.has(payment.account_id)) continue;
+         const direction = debt.direction === "receivable" ? 1 : -1;
+         balances.set(
+            payment.account_id,
+            (balances.get(payment.account_id) || 0) + direction * Number(payment.amount),
+         );
+      }
+
       return NextResponse.json({
          user: { id: user.id, email: user.email || null },
          period,
@@ -363,6 +476,12 @@ export async function GET(req: Request) {
             mapTransfer(transfer, accountNames),
          ),
          budgets: ((budgetResult.data || []) as BudgetRow[]).map(mapBudget),
+         debts: debtRows.map((debt) =>
+            mapDebt(debt, accountNames, paidByDebt.get(debt.id) || 0),
+         ),
+         debtPayments: debtPaymentRows.map((payment) =>
+            mapDebtPayment(payment, accountNames),
+         ),
          exchangeRate,
       });
    } catch (error) {
@@ -444,6 +563,84 @@ export async function POST(req: Request) {
             throw new Error("Failed to create category.");
          }
          return NextResponse.json({ category: mapCategory(data as CategoryRow) });
+      }
+
+      if (body?.action === "debt") {
+         const personName = cleanFinanceText(body.personName, 80);
+         const accountId = cleanFinanceText(body.accountId, 60);
+         if (!personName) throw new Error("Person name is required.");
+         if (!isFinanceDebtDirection(body.direction)) {
+            throw new Error("Valid debt direction is required.");
+         }
+         if (!accountId) throw new Error("Choose an account.");
+         if (!isIsoDate(body.issuedOn)) throw new Error("Valid debt date is required.");
+         const dueOn = cleanFinanceText(body.dueOn, 10) || null;
+         if (dueOn && (!isIsoDate(dueOn) || dueOn < body.issuedOn)) {
+            throw new Error("Due date must be on or after the debt date.");
+         }
+         const account = await getOwnedAccount(user.id, accountId);
+         if (!account.active) throw new Error("Choose an active account.");
+         const principalAmount = requirePositiveAmount(body.amount);
+         const note = cleanFinanceText(body.note, 240) || null;
+         const { data, error } = await supabaseAdmin
+            .from("finance_debts")
+            .insert({
+               owner_user_id: user.id,
+               person_name: personName,
+               direction: body.direction,
+               account_id: account.id,
+               principal_amount: principalAmount,
+               currency: account.currency,
+               issued_on: body.issuedOn,
+               due_on: dueOn,
+               note,
+            })
+            .select("id, person_name, direction, account_id, principal_amount, currency, issued_on, due_on, note, created_at")
+            .single();
+         if (error || !data) throw new Error("Failed to record debt.");
+         return NextResponse.json({ debt: mapDebt(data as DebtRow, new Map([[account.id, account.name]]), 0) });
+      }
+
+      if (body?.action === "debt-payment") {
+         const debtId = cleanFinanceText(body.debtId, 60);
+         const accountId = cleanFinanceText(body.accountId, 60);
+         if (!debtId) throw new Error("Choose a debt.");
+         if (!accountId) throw new Error("Choose an account.");
+         if (!isIsoDate(body.paymentDate)) throw new Error("Valid payment date is required.");
+         const debt = await getOwnedDebt(user.id, debtId);
+         const account = await getOwnedAccount(user.id, accountId);
+         if (!account.active) throw new Error("Choose an active account.");
+         if (account.currency !== debt.currency) {
+            throw new Error(`Use a ${debt.currency} account for this debt.`);
+         }
+         const amount = requirePositiveAmount(body.amount);
+         const { data: paymentRows, error: paymentError } = await supabaseAdmin
+            .from("finance_debt_payments")
+            .select("amount")
+            .eq("owner_user_id", user.id)
+            .eq("debt_id", debt.id);
+         if (paymentError) throw new Error("Could not verify debt balance.");
+         const remaining =
+            Number(debt.principal_amount) -
+            (paymentRows || []).reduce((sum, payment) => sum + Number(payment.amount), 0);
+         if (amount > remaining) {
+            throw new Error(`Payment cannot exceed the remaining ${debt.currency} ${remaining.toFixed(2)}.`);
+         }
+         const note = cleanFinanceText(body.note, 240) || null;
+         const { data, error } = await supabaseAdmin
+            .from("finance_debt_payments")
+            .insert({
+               owner_user_id: user.id,
+               debt_id: debt.id,
+               account_id: account.id,
+               amount,
+               payment_date: body.paymentDate,
+               note,
+            })
+            .select("id, debt_id, account_id, amount, payment_date, note, created_at")
+            .single();
+         if (error || !data) throw new Error("Failed to record debt payment.");
+         return NextResponse.json({ payment: mapDebtPayment(data as DebtPaymentRow, new Map([[account.id, account.name]])) });
       }
 
       if (body?.action === "transaction") {

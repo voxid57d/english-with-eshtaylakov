@@ -281,6 +281,26 @@
 .childCategoryCard.inactive { opacity: .45; }
 .categoryEmpty { margin: 16px 8px; color: var(--muted); font-size: 10px; }
 
+.debtActions { display: flex; justify-content: flex-end; margin: -58px 154px 22px 0; }
+.debtSummaryGrid,
+.debtColumns { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.debtSummaryGrid { margin-bottom: 14px; }
+.debtSummary { border: 1px solid var(--line); border-radius: 15px; background: var(--surface); padding: 18px; }
+.debtSummary small { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.debtSummary strong { display: block; margin-top: 8px; font-family: Georgia,serif; font-size: 25px; font-weight: 500; }
+.debtSummary p { margin: 7px 0 0; color: var(--muted); font-size: 10px; }
+.debtList { display: flex; flex-direction: column; gap: 10px; }
+.debtCard { border: 1px solid #eceae4; border-radius: 11px; background: #faf9f5; padding: 13px; }
+.debtCardTop { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.debtCardTop small { color: var(--muted); font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.debtCardTop h3 { margin: 3px 0 0; font-size: 14px; }
+.debtCardTop strong { font-family: Georgia,serif; font-size: 16px; font-weight: 500; text-align: right; }
+.debtCard > p { margin: 9px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.debtCard .debtDue { color: var(--red); }
+.debtCard .debtNote { color: var(--ink); }
+.debtPaymentHint { display: block; margin-top: 8px; color: var(--muted); font-size: 9px; }
+.debtCard .secondaryButton { margin-top: 12px; }
+
 .toast { position: fixed; z-index: 50; right: 24px; bottom: 24px; display: flex; max-width: 380px; align-items: center; gap: 15px; border: 1px solid #e0bbb5; border-radius: 10px; background: #fff5f2; padding: 12px 14px; color: var(--red); box-shadow: 0 12px 35px rgba(50,30,25,.14); font-size: 11px; }
 .toast button { display: grid; border: 0; background: transparent; color: inherit; }
 .mobileNav { display: none; }
@@ -371,7 +391,10 @@
    .planGrid,
    .accountsGrid,
    .categoryColumns { grid-template-columns: 1fr; }
-   .mobileNav { position: fixed; inset: auto 0 0; z-index: 40; display: grid; grid-template-columns: repeat(5,1fr); border-top: 1px solid var(--line); background: rgba(255,254,251,.96); padding: 7px 4px max(7px,env(safe-area-inset-bottom)); backdrop-filter: blur(12px); }
+   .debtSummaryGrid,
+   .debtColumns { grid-template-columns: 1fr; }
+   .debtActions { justify-content: flex-start; margin: -16px 0 18px; }
+   .mobileNav { position: fixed; inset: auto 0 0; z-index: 40; display: grid; grid-template-columns: repeat(6,1fr); border-top: 1px solid var(--line); background: rgba(255,254,251,.96); padding: 7px 4px max(7px,env(safe-area-inset-bottom)); backdrop-filter: blur(12px); }
    .mobileNav button { display: flex; min-height: 45px; align-items: center; justify-content: center; flex-direction: column; gap: 3px; border: 0; background: transparent; padding: 3px; color: var(--muted); font-size: 8px; }
    .mobileNav button svg { font-size: 19px; }
    .mobileNav .mobileActive { color: var(--green); font-weight: 800; }

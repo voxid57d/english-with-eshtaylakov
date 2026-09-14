@@ -9,10 +9,12 @@ export const FINANCE_ACCOUNT_TYPES = [
    "person",
    "other",
 ] as const;
+export const FINANCE_DEBT_DIRECTIONS = ["receivable", "payable"] as const;
 
 export type FinanceEntryType = (typeof FINANCE_ENTRY_TYPES)[number];
 export type FinanceCurrency = (typeof FINANCE_CURRENCIES)[number];
 export type FinanceAccountType = (typeof FINANCE_ACCOUNT_TYPES)[number];
+export type FinanceDebtDirection = (typeof FINANCE_DEBT_DIRECTIONS)[number];
 
 export function isFinanceEntryType(value: unknown): value is FinanceEntryType {
    return FINANCE_ENTRY_TYPES.includes(value as FinanceEntryType);
@@ -24,6 +26,10 @@ export function isFinanceCurrency(value: unknown): value is FinanceCurrency {
 
 export function isFinanceAccountType(value: unknown): value is FinanceAccountType {
    return FINANCE_ACCOUNT_TYPES.includes(value as FinanceAccountType);
+}
+
+export function isFinanceDebtDirection(value: unknown): value is FinanceDebtDirection {
+   return FINANCE_DEBT_DIRECTIONS.includes(value as FinanceDebtDirection);
 }
 
 export function cleanFinanceText(value: unknown, maxLength = 240) {

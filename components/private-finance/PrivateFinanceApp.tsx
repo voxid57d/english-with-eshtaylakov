@@ -43,6 +43,7 @@ import { supabase } from "@/lib/supabaseClient";
 import type {
    FinanceAccountType,
    FinanceCurrency,
+   FinanceDebtDirection,
    FinanceEntryType,
 } from "@/lib/privateFinance";
 import styles from "./private-finance.module.css";
@@ -108,6 +109,30 @@ type Budget = {
    currency: FinanceCurrency;
 };
 
+type Debt = {
+   id: string;
+   personName: string;
+   direction: FinanceDebtDirection;
+   accountId: string;
+   accountName: string;
+   principalAmount: number;
+   remainingAmount: number;
+   currency: FinanceCurrency;
+   issuedOn: string;
+   dueOn: string | null;
+   note: string | null;
+};
+
+type DebtPayment = {
+   id: string;
+   debtId: string;
+   accountId: string;
+   accountName: string;
+   amount: number;
+   paymentDate: string;
+   note: string | null;
+};
+
 type ExchangeRate = {
    rate: number;
    date: string | null;
@@ -122,11 +147,13 @@ type FinancePayload = {
    transactions: FinanceTransaction[];
    transfers: Transfer[];
    budgets: Budget[];
+   debts: Debt[];
+   debtPayments: DebtPayment[];
    exchangeRate: ExchangeRate;
 };
 
-type View = "overview" | "accounts" | "transactions" | "plans" | "categories";
-type Modal = "transaction" | "transfer" | "account" | "category" | "budget" | null;
+type View = "overview" | "accounts" | "transactions" | "debts" | "plans" | "categories";
+type Modal = "transaction" | "transfer" | "account" | "category" | "budget" | "debt" | "debt-payment" | null;
 type AccessState = "loading" | "ready" | "signed-out" | "denied" | "error";
 const TYPE_META: Record<
    FinanceEntryType,
@@ -185,6 +212,7 @@ const NAV_ITEMS: Array<{ id: View; label: string; icon: IconType }> = [
    { id: "overview", label: "Overview", icon: PiHouseLineLight },
    { id: "accounts", label: "Accounts", icon: PiWalletLight },
    { id: "transactions", label: "Transactions", icon: PiArrowsLeftRightLight },
+   { id: "debts", label: "Debts", icon: PiCoinsLight },
    { id: "plans", label: "Plans & goals", icon: PiChartDonutLight },
    { id: "categories", label: "Categories", icon: PiTagLight },
 ];
@@ -230,6 +258,8 @@ export default function PrivateFinanceApp() {
    const [modal, setModal] = useState<Modal>(null);
    const [categoryParent, setCategoryParent] = useState<Category | null>(null);
    const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null);
+   const [debtDirection, setDebtDirection] = useState<FinanceDebtDirection>("receivable");
+   const [debtToPay, setDebtToPay] = useState<Debt | null>(null);
    const [month, setMonth] = useState(currentMonth);
    const [displayCurrency, setDisplayCurrency] = useState<FinanceCurrency>("UZS");
    const [filter, setFilter] = useState<FinanceEntryType | "all">("all");
@@ -490,6 +520,20 @@ export default function PrivateFinanceApp() {
                   }}
                />
             )}
+            {view === "debts" && (
+               <Debts
+                  debts={payload.debts}
+                  payments={payload.debtPayments}
+                  onCreate={(direction) => {
+                     setDebtDirection(direction);
+                     setModal("debt");
+                  }}
+                  onPay={(debt) => {
+                     setDebtToPay(debt);
+                     setModal("debt-payment");
+                  }}
+               />
+            )}
             {view === "plans" && (
                <Plans
                   budgets={payload.budgets}
@@ -585,6 +629,29 @@ export default function PrivateFinanceApp() {
                month={month}
                request={request}
                close={() => setModal(null)}
+               refresh={loadData}
+               showMessage={setMessage}
+            />
+         )}
+         {modal === "debt" && (
+            <DebtModal
+               direction={debtDirection}
+               accounts={payload.accounts}
+               request={request}
+               close={() => setModal(null)}
+               refresh={loadData}
+               showMessage={setMessage}
+            />
+         )}
+         {modal === "debt-payment" && debtToPay && (
+            <DebtPaymentModal
+               debt={debtToPay}
+               accounts={payload.accounts}
+               request={request}
+               close={() => {
+                  setModal(null);
+                  setDebtToPay(null);
+               }}
                refresh={loadData}
                showMessage={setMessage}
             />
@@ -739,6 +806,75 @@ function Accounts({
                </div>
             ) : <EmptyState icon={PiArrowsLeftRightLight} title="No transfers this month" text="Moving money between accounts will appear here." action={activeAccounts.length < 2 ? onAdd : onTransfer} actionLabel={activeAccounts.length < 2 ? "Add another account" : "Make a transfer"} />}
          </section>
+      </div>
+   );
+}
+
+function Debts({
+   debts,
+   payments,
+   onCreate,
+   onPay,
+}: {
+   debts: Debt[];
+   payments: DebtPayment[];
+   onCreate: (direction: FinanceDebtDirection) => void;
+   onPay: (debt: Debt) => void;
+}) {
+   const receivables = debts.filter((debt) => debt.direction === "receivable");
+   const payables = debts.filter((debt) => debt.direction === "payable");
+   const totalByCurrency = (items: Debt[]) =>
+      (["UZS", "USD"] as const)
+         .map((currency) => ({
+            currency,
+            total: items
+               .filter((debt) => debt.currency === currency)
+               .reduce((sum, debt) => sum + debt.remainingAmount, 0),
+         }))
+         .filter((item) => item.total > 0)
+         .map((item) => nativeMoney(item.total, item.currency))
+         .join(" · ") || "0 UZS";
+
+   const debtList = (items: Debt[], direction: FinanceDebtDirection) => (
+      items.length ? (
+         <div className={styles.debtList}>
+            {items.map((debt) => {
+               const debtPayments = payments.filter((payment) => payment.debtId === debt.id);
+               const settled = debt.remainingAmount <= 0.005;
+               return (
+                  <article className={styles.debtCard} key={debt.id}>
+                     <div className={styles.debtCardTop}>
+                        <div><small>{settled ? "Settled" : direction === "receivable" ? "Owes you" : "You owe"}</small><h3>{debt.personName}</h3></div>
+                        <strong>{nativeMoney(debt.remainingAmount, debt.currency)}</strong>
+                     </div>
+                     <p>{nativeMoney(debt.principalAmount, debt.currency)} {direction === "receivable" ? "lent from" : "borrowed into"} {debt.accountName} · {shortDate(debt.issuedOn)}</p>
+                     {debt.dueOn && <p className={styles.debtDue}>Due {shortDate(debt.dueOn)}</p>}
+                     {debt.note && <p className={styles.debtNote}>{debt.note}</p>}
+                     {debtPayments.length > 0 && <small className={styles.debtPaymentHint}>{debtPayments.length} payment{debtPayments.length === 1 ? "" : "s"} recorded</small>}
+                     {!settled && <button className={styles.secondaryButton} onClick={() => onPay(debt)}>{direction === "receivable" ? "Receive repayment" : "Repay debt"}</button>}
+                  </article>
+               );
+            })}
+         </div>
+      ) : (
+         <p className={styles.categoryEmpty}>No {direction === "receivable" ? "money owed to you" : "debts you owe"} yet.</p>
+      )
+   );
+
+   return (
+      <div className={styles.content}>
+         <PageHeading eyebrow="Debt ledger" title="Debts" description="Debt movements change account balances but never count as income or expenses." action={() => onCreate("receivable")} actionLabel="Lend money" />
+         <div className={styles.debtActions}>
+            <button className={styles.secondaryButton} onClick={() => onCreate("payable")}>Borrow money</button>
+         </div>
+         <section className={styles.debtSummaryGrid}>
+            <article className={styles.debtSummary}><small>Owed to you</small><strong>{totalByCurrency(receivables)}</strong><p>Money you have lent out</p></article>
+            <article className={styles.debtSummary}><small>You owe</small><strong>{totalByCurrency(payables)}</strong><p>Money you borrowed</p></article>
+         </section>
+         <div className={styles.debtColumns}>
+            <section className={styles.panel}><div className={styles.panelHeader}><div><p className={styles.eyebrow}>Receivables</p><h2>People who owe you</h2></div></div>{debtList(receivables, "receivable")}</section>
+            <section className={styles.panel}><div className={styles.panelHeader}><div><p className={styles.eyebrow}>Payables</p><h2>Debts you owe</h2></div></div>{debtList(payables, "payable")}</section>
+         </div>
       </div>
    );
 }
@@ -1321,6 +1457,89 @@ function CategoryModal({ parentCategory, categoryToEdit, request, close, refresh
             <fieldset><legend>Icon</legend><div className={styles.iconChoices}>{Object.entries(CATEGORY_ICONS).map(([key, Icon]) => <button type="button" key={key} className={icon === key ? styles.choiceActive : ""} onClick={() => setIcon(key)} title={key}><Icon aria-hidden="true" /></button>)}</div></fieldset>
             <fieldset><legend>Color</legend><div className={styles.colorChoices}>{COLORS.map((item) => <button type="button" key={item} className={color === item ? styles.choiceActive : ""} style={{ background: item }} onClick={() => setColor(item)} aria-label={`Choose ${item}`} />)}</div></fieldset>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving}>{saving ? isEditing ? "Saving…" : "Creating…" : isEditing ? "Save changes" : "Create category"}</button></div>
+         </form>
+      </ModalShell>
+   );
+}
+
+function DebtModal({ direction, accounts, request, close, refresh, showMessage }: {
+   direction: FinanceDebtDirection;
+   accounts: Account[];
+   request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
+   close: () => void;
+   refresh: () => Promise<void>;
+   showMessage: (message: string) => void;
+}) {
+   const options = accounts.filter((account) => account.active);
+   const [personName, setPersonName] = useState("");
+   const [accountId, setAccountId] = useState(options[0]?.id || "");
+   const [amount, setAmount] = useState("");
+   const [issuedOn, setIssuedOn] = useState(getLocalDateString);
+   const [dueOn, setDueOn] = useState("");
+   const [note, setNote] = useState("");
+   const [saving, setSaving] = useState(false);
+   const account = options.find((item) => item.id === accountId);
+   const isReceivable = direction === "receivable";
+
+   const submit = async (event: React.FormEvent) => {
+      event.preventDefault();
+      try {
+         setSaving(true);
+         await request("POST", { action: "debt", direction, personName, accountId, amount, issuedOn, dueOn, note });
+         close();
+         await refresh();
+      } catch (error) { showMessage(error instanceof Error ? error.message : "Could not record debt."); }
+      finally { setSaving(false); }
+   };
+
+   return (
+      <ModalShell title={isReceivable ? "Lend money" : "Borrow money"} description={isReceivable ? "Record money someone owes you. It will not count as an expense." : "Record money you owe someone. It will not count as income."} close={close}>
+         <form onSubmit={submit} className={styles.form}>
+            <label><span>Person</span><input value={personName} onChange={(event) => setPersonName(event.target.value)} maxLength={80} placeholder="e.g. Aziz" autoFocus required /></label>
+            <label><span>{isReceivable ? "Money comes from" : "Money goes into"}</span><select value={accountId} onChange={(event) => setAccountId(event.target.value)} required><option value="">Choose an account</option>{options.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.currency}</option>)}</select></label>
+            <div className={styles.formGrid}><div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{account?.currency || "—"}</div></div><label><span>Date</span><input type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} required /></label></div>
+            <div className={styles.formGrid}><label><span>Due date <em>optional</em></span><input type="date" min={issuedOn} value={dueOn} onChange={(event) => setDueOn(event.target.value)} /></label><label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="A short reminder" /></label></div>
+            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !accountId}>{saving ? "Saving…" : isReceivable ? "Record loan" : "Record borrowing"}</button></div>
+         </form>
+      </ModalShell>
+   );
+}
+
+function DebtPaymentModal({ debt, accounts, request, close, refresh, showMessage }: {
+   debt: Debt;
+   accounts: Account[];
+   request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
+   close: () => void;
+   refresh: () => Promise<void>;
+   showMessage: (message: string) => void;
+}) {
+   const options = accounts.filter((account) => account.active && account.currency === debt.currency);
+   const [accountId, setAccountId] = useState(options[0]?.id || "");
+   const [amount, setAmount] = useState("");
+   const [paymentDate, setPaymentDate] = useState(getLocalDateString);
+   const [note, setNote] = useState("");
+   const [saving, setSaving] = useState(false);
+   const isReceivable = debt.direction === "receivable";
+
+   const submit = async (event: React.FormEvent) => {
+      event.preventDefault();
+      try {
+         setSaving(true);
+         await request("POST", { action: "debt-payment", debtId: debt.id, accountId, amount, paymentDate, note });
+         close();
+         await refresh();
+      } catch (error) { showMessage(error instanceof Error ? error.message : "Could not record payment."); }
+      finally { setSaving(false); }
+   };
+
+   return (
+      <ModalShell title={isReceivable ? "Receive repayment" : "Repay debt"} description={isReceivable ? `${debt.personName} currently owes ${nativeMoney(debt.remainingAmount, debt.currency)}.` : `You currently owe ${debt.personName} ${nativeMoney(debt.remainingAmount, debt.currency)}.`} close={close}>
+         <form onSubmit={submit} className={styles.form}>
+            <div className={styles.parentCategoryPreview}><span className={styles.categoryGlyph}><PiCoinsLight /></span><div><small>{isReceivable ? "Returning to" : "Paid from"}</small><b>{debt.personName} · {nativeMoney(debt.remainingAmount, debt.currency)} remaining</b></div></div>
+            <label><span>{isReceivable ? "Deposit into" : "Pay from"}</span><select value={accountId} onChange={(event) => setAccountId(event.target.value)} required><option value="">Choose a {debt.currency} account</option>{options.map((account) => <option key={account.id} value={account.id}>{account.name} · {nativeMoney(account.balance, account.currency)}</option>)}</select></label>
+            <div className={styles.formGrid}><div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" max={debt.remainingAmount} step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{debt.currency}</div></div><label><span>Date</span><input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} required /></label></div>
+            <label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="A short reminder" /></label>
+            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !accountId}>{saving ? "Saving…" : "Record payment"}</button></div>
          </form>
       </ModalShell>
    );
