@@ -66,6 +66,45 @@ test("growth requires two observations and reports actual observed date ranges",
    assert.equal(growthBetween([point("a", 0), point("b", 50)]).percent, null);
 });
 
+test("daily total audience sums platforms for the exact date and preserves missing versus zero", () => {
+   const centres = ["complete", "partial", "zero", "missing"].map((id) => ({ id, name: id, color: "#10b981" }));
+   const platforms = ["telegram", "instagram"].map((id) => ({ id, name: id }));
+   const entry = (centre_id, platform_id, subscribers, entry_date = "2026-09-15") => ({ centre_id, platform_id, subscribers, entry_date });
+   const totals = metrics.dailyAudienceTotals(centres, platforms, [
+      entry("complete", "telegram", 100), entry("complete", "instagram", 200),
+      entry("complete", "telegram", 999, "2026-09-14"), entry("complete", "unknown", 999),
+      entry("partial", "telegram", 50), entry("zero", "telegram", 0), entry("zero", "instagram", 0),
+   ], "2026-09-15");
+   assert.equal(totals[0].value, 300);
+   assert.equal(totals[0].recordedPlatforms, 2);
+   assert.equal(totals[1].value, 50);
+   assert.equal(totals[1].recordedPlatforms, 1);
+   assert.equal(totals[1].totalPlatforms, 2);
+   assert.equal(totals[2].value, 0);
+   assert.equal(totals[3].value, null);
+   assert.equal(totals[3].recordedPlatforms, 0);
+});
+
+test("total audience chart includes all-platform totals and coverage in its export SVG", () => {
+   const Chart = load("components/marketing/MarketingChart.tsx", {
+      react: React, "react/jsx-runtime": jsxRuntime,
+      "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+   }).default;
+   const html = renderToStaticMarkup(React.createElement(Chart, {
+      kind: "total", centres: [{ id: centre_id, name: "IELTS ZONE", color: "#10b981" }],
+      entries: [change(100), { ...change(200), platform_id: "another" }],
+      platforms: [{ id: platform_id, name: "Telegram" }, { id: "another", name: "Instagram" }, { id: "third", name: "YouTube" }],
+      platformId: platform_id, platformName: "Telegram", platformLogo: logo,
+      days: monthDays("2026-09"), date: "2026-09-14", monthLabel: "September 2026",
+   }));
+   assert.match(html, /Total daily audience/);
+   assert.match(html, /All platforms · 2026-09-14/);
+   assert.match(html, /IELTS ZONE: 300/);
+   assert.match(html, /2 \/ 3 platforms recorded · Partial total/);
+   assert.match(html, /audiences may overlap/);
+   assert.doesNotMatch(html, /<image|NaN|Infinity/);
+});
+
 function routeHarness({ deny = false, dbError = null, allowLinkWrites = false, allowPlatformWrites = false } = {}) {
    const calls = [];
    const route = load("app/api/erp/marketing/route.ts", {

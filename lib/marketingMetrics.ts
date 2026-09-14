@@ -69,3 +69,23 @@ export function growthBetween(points: { date: string; value: number | null }[]) 
    const last = recorded[recorded.length - 1];
    return { change: last.value - first.value, percent: first.value === 0 ? null : (last.value - first.value) / first.value * 100, start: first.date, end: last.date };
 }
+
+export function dailyAudienceTotals(centres: MarketingCentre[], platforms: MarketingPlatform[], entries: MarketingEntry[], date: string) {
+   const platformIds = new Set(platforms.map((platform) => platform.id));
+   const observations = new Map<string, Map<string, number>>();
+   for (const entry of entries) {
+      if (entry.entry_date !== date || !platformIds.has(entry.platform_id)) continue;
+      const centre = observations.get(entry.centre_id) || new Map<string, number>();
+      centre.set(entry.platform_id, entry.subscribers);
+      observations.set(entry.centre_id, centre);
+   }
+   return centres.map((centre) => {
+      const values = observations.get(centre.id);
+      return {
+         ...centre,
+         value: values?.size ? [...values.values()].reduce((sum, count) => sum + count, 0) : null,
+         recordedPlatforms: values?.size || 0,
+         totalPlatforms: platformIds.size,
+      };
+   });
+}

@@ -49,11 +49,18 @@ data; an explicit zero is a real observation. Clearing a saved cell removes that
 observation when you save. **Save changes** saves all pending cells across months
 atomically (up to 5,000 cells); unsaved edits stay in this page until saved or left.
 
-**Charts & insights** provides a daily audience bar chart, a monthly line chart,
+**Charts & insights** provides a total daily audience bar chart across all platforms,
+a daily audience bar chart for the selected platform, a monthly line chart,
 and a growth leaderboard for the selected platform. Lines have gaps for missing
 days; growth compares each centre's first and last recorded dates, with those dates
 shown. Percentage growth is unavailable for a zero baseline. Charts preview valid
 unsaved entries, and each exports a standalone JPG at 2× resolution.
+
+Total daily audience sums each centre's recorded counts on the selected date and
+ranks centres by that sum, regardless of the platform filter. Platform coverage
+and partial totals are labeled in the chart and its export; missing observations
+are not treated as zero. These are combined subscriptions, so a person following
+a centre on multiple platforms may be counted more than once.
 
 Marketing data is shared across the staff workspace. Direct anonymous and
 authenticated database access is denied; server routes check ERP permissions and
