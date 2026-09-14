@@ -54,6 +54,7 @@ type ErpMePayload = {
 
 function moduleLabel(module: ErpModule) {
    if (module === "kpi") return "KPI";
+   if (module === "marketing") return "Marketing metrics";
    return module[0].toUpperCase() + module.slice(1);
 }
 

@@ -27,7 +27,7 @@ const DashboardContent = memo(function DashboardContent({
 }: {
    children: React.ReactNode;
 }) {
-   return <section className="flex-1 p-4 md:p-6 space-y-6">{children}</section>;
+   return <section className="min-w-0 flex-1 p-4 md:p-6 space-y-6">{children}</section>;
 });
 
 export default function DashboardLayout({
