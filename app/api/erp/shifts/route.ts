@@ -276,6 +276,13 @@ export async function GET(req: Request) {
       const weekEnd = url.searchParams.get("weekEnd") || fallbackWeek.weekEnd;
       const payrollMonth = url.searchParams.get("payrollMonth") || weekStart.slice(0, 7);
       const branchId = url.searchParams.get("branchId") || "all";
+      // Keep the combined response for existing callers; the UI loads daily data first.
+      const scope = url.searchParams.get("scope") || "all";
+      if (!["all", "daily", "monthly"].includes(scope)) {
+         throw new Error("Invalid shifts scope.");
+      }
+      const includeDaily = scope !== "monthly";
+      const includeMonthly = scope !== "daily";
 
       if (!isDateString(weekStart) || !isDateString(weekEnd)) {
          throw new Error("Valid week dates are required.");
@@ -333,22 +340,23 @@ export async function GET(req: Request) {
          monthShiftQuery = monthShiftQuery.eq("staff_user_id", currentStaff.userId);
       }
 
+      const emptyResult = { data: [], error: null };
       const [shiftResult, staffResult, branchResult, monthShiftResult, compensationResult, penaltyRuleResult] = await Promise.all([
-         shiftQuery,
-         staffQuery,
-         supabaseAdmin
+         includeDaily ? shiftQuery : emptyResult,
+         includeDaily ? staffQuery : emptyResult,
+         includeDaily ? supabaseAdmin
             .from("branches")
             .select("id, name, address, phone, active, created_at, updated_at")
             .eq("active", true)
-            .order("name", { ascending: true }),
-         monthShiftQuery,
-         supabaseAdmin
+            .order("name", { ascending: true }) : emptyResult,
+         includeMonthly ? monthShiftQuery : emptyResult,
+         includeMonthly ? supabaseAdmin
             .from("erp_role_compensation_settings")
-            .select("role, salary_tier, hourly_rate, extra_hours_enabled, extra_hourly_rate, extra_hours_threshold, updated_at"),
-         supabaseAdmin
+            .select("role, salary_tier, hourly_rate, extra_hours_enabled, extra_hourly_rate, extra_hours_threshold, updated_at") : emptyResult,
+         includeMonthly ? supabaseAdmin
             .from("erp_penalty_rules")
             .select("penalty_number, label, amount, active, updated_at")
-            .order("penalty_number", { ascending: true }),
+            .order("penalty_number", { ascending: true }) : emptyResult,
       ]);
 
       if (
@@ -374,12 +382,14 @@ export async function GET(req: Request) {
                   !!shift.staffRole &&
                   (ERP_SHIFT_WORKER_ROLES as readonly string[]).includes(shift.staffRole),
             ),
-         monthlySummaries: summarizeMonthly(
-            (monthShiftResult.data || []) as unknown as ShiftRow[],
-            (compensationResult.data || []) as ErpRoleCompensationSetting[],
-            (penaltyRuleResult.data || []) as ErpPenaltyRule[],
-         ),
-         penaltyRules: (penaltyRuleResult.data || []) as ErpPenaltyRule[],
+         ...(includeMonthly ? {
+            monthlySummaries: summarizeMonthly(
+               (monthShiftResult.data || []) as unknown as ShiftRow[],
+               (compensationResult.data || []) as ErpRoleCompensationSetting[],
+               (penaltyRuleResult.data || []) as ErpPenaltyRule[],
+            ),
+            penaltyRules: (penaltyRuleResult.data || []) as ErpPenaltyRule[],
+         } : {}),
          staff: ((staffResult.data || []) as StaffProfile[]).map((member) => ({
             userId: member.user_id,
             fullName: member.full_name,

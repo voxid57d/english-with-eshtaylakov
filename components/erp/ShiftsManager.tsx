@@ -141,7 +141,7 @@ type ShiftForm = {
    shiftDate: string;
    startsAt: string;
    endsAt: string;
-   breakMinutes: number;
+   breakHours: string;
    status: ErpShiftStatus;
    isAssessed: boolean;
    uniformOk: boolean;
@@ -160,7 +160,7 @@ type WorkingHourForm = {
    weekdays: number[];
    startsAt: string;
    endsAt: string;
-   breakMinutes: number;
+   breakHours: string;
    active: boolean;
    note: string;
 };
@@ -182,7 +182,7 @@ const EMPTY_FORM: ShiftForm = {
    shiftDate: "",
    startsAt: "09:00",
    endsAt: "18:00",
-   breakMinutes: 60,
+   breakHours: "1",
    status: "scheduled",
    isAssessed: false,
    uniformOk: true,
@@ -201,7 +201,7 @@ const EMPTY_WORKING_HOUR_FORM: WorkingHourForm = {
    weekdays: [1],
    startsAt: "09:00",
    endsAt: "18:00",
-   breakMinutes: 60,
+   breakHours: "1",
    active: true,
    note: "",
 };
@@ -236,6 +236,7 @@ function attendanceClass(shift: ShiftView) {
 }
 
 export default function ShiftsManager() {
+   const [summaryOpen, setSummaryOpen] = useState(false);
    const [activeTab, setActiveTab] = useState<"daily-shifts" | "working-hours">("daily-shifts");
    const [shifts, setShifts] = useState<ShiftView[]>([]);
    const [workingHours, setWorkingHours] = useState<WorkingHourView[]>([]);
@@ -262,16 +263,22 @@ export default function ShiftsManager() {
    const [originalForm, setOriginalForm] = useState<ShiftForm | null>(null);
    const [originalWorkingHourForm, setOriginalWorkingHourForm] = useState(EMPTY_WORKING_HOUR_FORM);
    const latestLoad = useRef(createLatestRequest());
+   const latestMonthlyLoad = useRef(createLatestRequest());
    const reloadCurrentView = useRef<() => Promise<void>>(async () => {});
    const mounted = useRef(false);
    const [expandedTemplateStaffIds, setExpandedTemplateStaffIds] = useState<string[]>([]);
    const [loading, setLoading] = useState(true);
+   const [dailyDataKey, setDailyDataKey] = useState<string | null>(null);
+   const [dailyRevision, setDailyRevision] = useState(0);
+   const [monthlyLoading, setMonthlyLoading] = useState(true);
+   const [monthlyError, setMonthlyError] = useState<string | null>(null);
    const [saving, setSaving] = useState(false);
    const [error, setError] = useState<string | null>(null);
    const [success, setSuccess] = useState<string | null>(null);
 
    const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
    const today = useLocalToday();
+   const dailyRequestKey = `${weekStart}:${weekEnd}:${branchFilter}`;
    const pendingDraftCount = Object.keys(shiftDrafts).length;
    const formDirty = shiftModalOpen && JSON.stringify(form) !== JSON.stringify(originalForm);
    const workingHoursDirty = JSON.stringify(workingHourForm) !== JSON.stringify(originalWorkingHourForm);
@@ -509,6 +516,10 @@ export default function ShiftsManager() {
 
    const loadShifts = useCallback(async () => {
       const request = latestLoad.current.begin();
+      latestMonthlyLoad.current.cancel();
+      setDailyDataKey(null);
+      setMonthlyLoading(true);
+      setMonthlyError(null);
       try {
          setLoading(true);
          setError(null);
@@ -516,7 +527,7 @@ export default function ShiftsManager() {
          if (!request.isCurrent()) return;
          const [response, workingHoursResponse] = await Promise.all([
             fetch(
-            `/api/erp/shifts?weekStart=${weekStart}&weekEnd=${weekEnd}&payrollMonth=${payrollMonth}&branchId=${branchFilter}`,
+            `/api/erp/shifts?scope=daily&weekStart=${weekStart}&weekEnd=${weekEnd}&branchId=${branchFilter}`,
             {
                headers: { Authorization: `Bearer ${token}` },
                cache: "no-store",
@@ -544,9 +555,10 @@ export default function ShiftsManager() {
          setShifts(payload.shifts || []);
          setStaff(payload.staff || []);
          setBranches(payload.branches || []);
-         setMonthlySummaries(payload.monthlySummaries || []);
          setCanManage(Boolean(payload.canManage));
          setWorkingHours(workingHoursPayload.workingHours || []);
+         setDailyDataKey(dailyRequestKey);
+         setDailyRevision((revision) => revision + 1);
       } catch (requestError) {
          if (!request.isCurrent()) return;
          setError(
@@ -557,7 +569,7 @@ export default function ShiftsManager() {
       } finally {
          if (request.isCurrent()) setLoading(false);
       }
-   }, [branchFilter, payrollMonth, weekEnd, weekStart]);
+   }, [branchFilter, dailyRequestKey, weekEnd, weekStart]);
 
    useEffect(() => {
       reloadCurrentView.current = loadShifts;
@@ -565,6 +577,44 @@ export default function ShiftsManager() {
       void loadShifts();
       return () => requests.cancel();
    }, [loadShifts]);
+
+   const loadMonthlySummaries = useCallback(async () => {
+      const request = latestMonthlyLoad.current.begin();
+      setMonthlyLoading(true);
+      setMonthlyError(null);
+      try {
+         const token = await getSupabaseAccessToken();
+         if (!request.isCurrent()) return;
+         const response = await fetch(
+            `/api/erp/shifts?scope=monthly&payrollMonth=${payrollMonth}&branchId=${branchFilter}`,
+            {
+               headers: { Authorization: `Bearer ${token}` },
+               cache: "no-store",
+               signal: request.signal,
+            },
+         );
+         const payload = await response.json();
+         if (!response.ok) throw new Error(payload.error || "Failed to load rating list.");
+         if (request.isCurrent()) setMonthlySummaries(payload.monthlySummaries || []);
+      } catch (requestError) {
+         if (request.isCurrent()) {
+            setMonthlyError(requestError instanceof Error ? requestError.message : "Failed to load rating list.");
+         }
+      } finally {
+         if (request.isCurrent()) setMonthlyLoading(false);
+      }
+   }, [branchFilter, payrollMonth]);
+
+   useEffect(() => {
+      const requests = latestMonthlyLoad.current;
+      // Start only after React has committed the daily cards, including after saves.
+      if (loading || dailyDataKey !== dailyRequestKey) return;
+      const timer = window.setTimeout(() => void loadMonthlySummaries(), 0);
+      return () => {
+         window.clearTimeout(timer);
+         requests.cancel();
+      };
+   }, [dailyDataKey, dailyRequestKey, dailyRevision, loading, loadMonthlySummaries]);
 
    const changeSelectedDate = (dateValue: string) => {
       if (!dateValue) return;
@@ -618,7 +668,7 @@ export default function ShiftsManager() {
          shiftDate: shift.shiftDate,
          startsAt: shift.startsAt,
          endsAt: shift.endsAt,
-         breakMinutes: shift.breakMinutes,
+         breakHours: String(shift.breakMinutes / 60),
          status: shift.status,
          isAssessed: shift.isAssessed,
          uniformOk: shift.uniformOk,
@@ -653,7 +703,7 @@ export default function ShiftsManager() {
          weekdays: [workingHour.weekday],
          startsAt: workingHour.startsAt,
          endsAt: workingHour.endsAt,
-         breakMinutes: workingHour.breakMinutes,
+         breakHours: String(workingHour.breakMinutes / 60),
          active: workingHour.active,
          note: workingHour.note || "",
       };
@@ -794,6 +844,7 @@ export default function ShiftsManager() {
    };
 
    const submitShift = async (event: React.FormEvent) => {
+      const { breakHours, ...shiftFields } = form;
       const savedDrafts = editingShiftId && shiftDrafts[editingShiftId] ? { [editingShiftId]: shiftDrafts[editingShiftId] } : {};
       event.preventDefault();
       if (saving) return;
@@ -810,7 +861,8 @@ export default function ShiftsManager() {
                Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-               ...form,
+               ...shiftFields,
+               breakMinutes: Math.round(Number(breakHours) * 60),
                actualWorkMinutes: null,
                status: form.absenceReason ? "absent" : "scheduled",
             }),
@@ -841,6 +893,7 @@ export default function ShiftsManager() {
    };
 
    const submitWorkingHour = async (event: React.FormEvent) => {
+      const { breakHours, ...workingHourFields } = workingHourForm;
       event.preventDefault();
       if (saving) return;
 
@@ -861,7 +914,8 @@ export default function ShiftsManager() {
                Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-               ...workingHourForm,
+               ...workingHourFields,
+               breakMinutes: Math.round(Number(breakHours) * 60),
                weekday: workingHourForm.weekdays[0],
             }),
          });
@@ -924,7 +978,7 @@ export default function ShiftsManager() {
                      {attendanceLabel(shift)}
                   </span>
                   <span className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300">
-                     {summary ? `${summary.salary.toLocaleString()} sum` : "0 sum"}
+                     {monthlyLoading ? "Loading salary..." : monthlyError ? "Salary unavailable" : summary ? `${summary.salary.toLocaleString()} sum` : "0 sum"}
                   </span>
                </div>
             </div>
@@ -935,7 +989,7 @@ export default function ShiftsManager() {
                      {shift.startsAt} - {shift.endsAt}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                     {shift.breakMinutes} min break
+                     {(shift.breakMinutes / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })} h break
                   </p>
                </div>
                {canManage && (
@@ -1065,7 +1119,27 @@ export default function ShiftsManager() {
 
    return (
       <div className="space-y-5">
-         <section className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+         <button
+            type="button"
+            aria-expanded={summaryOpen}
+            aria-controls="shifts-summary"
+            onClick={() => {
+               setSummaryOpen(!summaryOpen);
+               if (!summaryOpen) void loadShifts();
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400">
+            <PiCalendarBlankLight size={18} aria-hidden="true" />
+            Shifts
+            {summaryOpen ? <PiCaretUpLight size={14} aria-hidden="true" /> : <PiCaretDownLight size={14} aria-hidden="true" />}
+         </button>
+         <section id="shifts-summary" aria-label="Shifts summary" aria-busy={loading || monthlyLoading} hidden={!summaryOpen} className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+            {summaryOpen && (error || monthlyError ? (
+               <button type="button" onClick={() => void (error ? loadShifts() : loadMonthlySummaries())} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800">
+                  Retry loading summary
+               </button>
+            ) : loading || monthlyLoading ? (
+               <p role="status" className="text-sm text-slate-500">Loading shifts summary...</p>
+            ) : (
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                <div>
                   <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-300">
@@ -1140,6 +1214,7 @@ export default function ShiftsManager() {
                   </div>
                </div>
             </div>
+            ))}
          </section>
 
          {(error || success) && (
@@ -1311,20 +1386,21 @@ export default function ShiftsManager() {
                            />
                         </label>
                         <label className="block">
-                           <span className="text-sm text-slate-300">Break</span>
+                           <span className="text-sm text-slate-300">Break hours</span>
                            <input
                               type="number"
                               min="0"
-                              step="5"
-                              value={workingHourForm.breakMinutes}
+                              step="any"
+                              value={workingHourForm.breakHours}
                               onChange={(event) =>
                                  setWorkingHourForm((current) => ({
                                     ...current,
-                                    breakMinutes: Number(event.target.value),
+                                    breakHours: event.target.value,
                                  }))
                               }
                               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
                            />
+                           <span className="mt-1 block text-xs text-slate-500">Unpaid break. 0.5 = 30 minutes; 1 = 1 hour.</span>
                         </label>
                      </div>
 
@@ -1464,7 +1540,7 @@ export default function ShiftsManager() {
                                                    </div>
                                                    <p className="mt-3 text-xs text-slate-500">
                                                       {workingHour.branchName || "No branch"} -{" "}
-                                                      {workingHour.breakMinutes} min break
+                                                      {(workingHour.breakMinutes / 60).toLocaleString(undefined, { maximumFractionDigits: 2 })} h break
                                                    </p>
                                                 </button>
                                              );
@@ -1547,8 +1623,15 @@ export default function ShiftsManager() {
                   <span className="text-sm text-slate-500">{payrollMonth}</span>
                </div>
 
-               {loading ? (
-                  <p className="mt-4 text-sm text-slate-500">Loading rating list...</p>
+               {!loading && dailyDataKey !== dailyRequestKey ? (
+                  <p className="mt-4 text-sm text-slate-500">Load daily shifts to view the rating list.</p>
+               ) : monthlyError ? (
+                  <div className="mt-4 text-sm text-slate-400">
+                     <p role="alert">{monthlyError}</p>
+                     <button type="button" onClick={() => void loadMonthlySummaries()} className="mt-2 rounded-lg border border-slate-700 px-3 py-2 text-slate-300 transition hover:bg-slate-800">Retry rating list</button>
+                  </div>
+               ) : loading || monthlyLoading ? (
+                  <p role="status" className="mt-4 text-sm text-slate-500">{loading ? "Rating list will load after daily shifts..." : "Loading rating list..."}</p>
                ) : ratingRows.length === 0 ? (
                   <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/50 p-5 text-center">
                      <PiBriefcaseLight className="mx-auto text-slate-500" size={32} />
@@ -1672,20 +1755,21 @@ export default function ShiftsManager() {
                      </label>
 
                      <label className="block md:col-span-2">
-                        <span className="text-sm text-slate-300">Break minutes</span>
+                        <span className="text-sm text-slate-300">Break hours</span>
                         <input
                            type="number"
                            min="0"
-                           step="5"
-                           value={form.breakMinutes}
+                           step="any"
+                           value={form.breakHours}
                            onChange={(event) =>
                               setForm((current) => ({
                                  ...current,
-                                 breakMinutes: Number(event.target.value),
+                                 breakHours: event.target.value,
                               }))
                            }
                            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
                         />
+                        <span className="mt-1 block text-xs text-slate-500">Unpaid break. 0.5 = 30 minutes; 1 = 1 hour.</span>
                      </label>
                   </div>
 
