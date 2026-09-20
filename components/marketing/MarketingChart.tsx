@@ -10,10 +10,17 @@ const compact = (value: number) => compactFormatter.format(value);
 const emptyPlatforms: MarketingPlatform[] = [];
 const wrap = (text: string, length: number) => text.match(new RegExp(`.{1,${length}}`, "g")) || [text];
 
-export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = emptyPlatforms, days, date, monthLabel }: {
+// Statistics uses the same chart drawing and JPG exporter with its own labels.
+export type ChartPresentation = {
+   title: string; subtitle: string; toolbar: string; axisLabel: string;
+   footer: string; filename: string; emptyMessage: string;
+};
+
+export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = emptyPlatforms, days, date, monthLabel, presentation }: {
    kind: "total" | "daily" | "trend" | "growth"; centres: MarketingCentre[]; entries: MarketingEntry[];
    platformId: string; platformName: string; days: string[]; date: string; monthLabel: string;
    platformLogo?: string | null; platforms?: MarketingPlatform[];
+   presentation?: ChartPresentation;
 }) {
    const svg = useRef<SVGSVGElement>(null);
    const [exporting, setExporting] = useState(false);
@@ -22,10 +29,12 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
    const isDaily = kind === "daily" || kind === "total";
    const totals = useMemo(() => new Map(dailyAudienceTotals(centres, platforms, entries, date).map((centre) => [centre.id, centre])), [centres, platforms, entries, date]);
    const chartPlatform = kind === "total" ? "All platforms" : platformName;
-   const title = kind === "total" ? "Total daily audience" : kind === "daily" ? "Daily audience comparison" : kind === "trend" ? "Audience over time" : "Monthly audience growth";
-   const subtitle = `${chartPlatform} · ${isDaily ? date : monthLabel}`;
+   const title = presentation?.title ?? (kind === "total" ? "Total daily audience" : kind === "daily" ? "Daily audience comparison" : kind === "trend" ? "Audience over time" : "Monthly audience growth");
+   const subtitle = presentation?.subtitle ?? `${chartPlatform} · ${isDaily ? date : monthLabel}`;
    const rows = series.map((centre) => {
-      const growth = growthBetween(centre.points);
+      const rawGrowth = growthBetween(centre.points);
+      const firstValue = centre.points.find((point) => point.value !== null)?.value;
+      const growth = rawGrowth && presentation ? { ...rawGrowth, change: Number(rawGrowth.change.toFixed(2)), percent: firstValue !== undefined && firstValue !== null && firstValue > 0 ? rawGrowth.percent : null } : rawGrowth;
       return { ...centre, growth, coverage: totals.get(centre.id), value: kind === "total" ? totals.get(centre.id)?.value ?? null : kind === "growth" ? growth?.change ?? null : centre.points.find((point) => point.date === date)?.value ?? null };
    }).sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
    const hasData = kind === "trend" ? series.some((centre) => centre.points.some((point) => point.value !== null)) : rows.some((row) => row.value !== null);
@@ -36,7 +45,7 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
    const min = Math.min(0, ...values);
    const max = Math.max(1, ...values);
    const x = (index: number) => 100 + index / Math.max(days.length - 1, 1) * 930;
-   const y = (value: number) => 425 - value / max * 260;
+   const y = (value: number) => 425 - (value - min) / (max - min) * 260;
    const bx = (value: number) => 285 + (value - min) / (max - min) * 610;
 
    async function exportJpg() {
@@ -60,7 +69,7 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
          downloadUrl = URL.createObjectURL(blob);
          const anchor = document.createElement("a");
          anchor.href = downloadUrl;
-         anchor.download = `marketing-${chartPlatform.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${isDaily ? date : days[0].slice(0, 7)}.jpg`;
+         anchor.download = presentation?.filename ?? `marketing-${chartPlatform.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${isDaily ? date : days[0].slice(0, 7)}.jpg`;
          document.body.appendChild(anchor); anchor.click(); anchor.remove();
       } catch (cause) { setError(cause instanceof Error ? cause.message : "JPG export failed. Please retry."); }
       finally {
@@ -71,8 +80,8 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
    }
 
    return <article className={styles.chartCard}>
-      <div className={styles.chartToolbar}><span>{kind === "total" ? "01 / TOTAL DAILY AUDIENCE" : kind === "daily" ? "02 / DAILY SNAPSHOT" : kind === "trend" ? "03 / MONTHLY TREND" : "04 / GROWTH LEADERBOARD"}</span><button disabled={!hasData || exporting} onClick={() => void exportJpg()}>{exporting ? "Exporting…" : "↓ Export JPG"}</button></div>
-      {!hasData ? <div className={styles.chartEmpty}><h3>{title}</h3><p>{kind === "growth" ? "Record at least two dates for a centre to measure growth." : `Add subscriber counts for ${chartPlatform}${isDaily ? ` on ${date}` : " this month"}.`}</p></div> :
+      <div className={styles.chartToolbar}><span>{presentation?.toolbar ?? (kind === "total" ? "01 / TOTAL DAILY AUDIENCE" : kind === "daily" ? "02 / DAILY SNAPSHOT" : kind === "trend" ? "03 / MONTHLY TREND" : "04 / GROWTH LEADERBOARD")}</span><button disabled={!hasData || exporting} onClick={() => void exportJpg()}>{exporting ? "Exporting…" : "↓ Export JPG"}</button></div>
+      {!hasData ? <div className={styles.chartEmpty}><h3>{title}</h3><p>{presentation?.emptyMessage ?? (kind === "growth" ? "Record at least two dates for a centre to measure growth." : `Add subscriber counts for ${chartPlatform}${isDaily ? ` on ${date}` : " this month"}.`)}</p></div> :
          <div className={styles.chartScroll}><svg ref={svg} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}, ${subtitle}`} style={{ width: "100%", height: "auto", minWidth: 600, display: "block", fontFamily: "Arial, Helvetica, sans-serif" }}>
             <title>{`${title} — ${subtitle}`}</title>
             <rect width={width} height={height} rx="18" fill="#0b1220" />
@@ -81,8 +90,8 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
             {kind !== "total" && platformLogo && <image href={platformLogo} x="60" y="73" width="22" height="22" preserveAspectRatio="xMidYMid meet" />}
             <text x={kind !== "total" && platformLogo ? 91 : 60} y="90" fill="#94a3b8" fontSize="15">{subtitle}</text>
             {kind === "trend" ? <>
-               {[0, 1, 2, 3, 4].map((tick) => <g key={tick}><line x1="100" x2="1030" y1={y(max * tick / 4)} y2={y(max * tick / 4)} stroke="#263247" strokeDasharray="4 6" /><text x="84" y={y(max * tick / 4) + 5} textAnchor="end" fill="#94a3b8" fontSize="13">{compact(max * tick / 4)}</text></g>)}
-               <text x="100" y="137" fill="#94a3b8" fontSize="12">SUBSCRIBERS</text>
+               {[0, 1, 2, 3, 4].map((tick) => <g key={tick}><line x1="100" x2="1030" y1={y(min + (max - min) * tick / 4)} y2={y(min + (max - min) * tick / 4)} stroke="#263247" strokeDasharray="4 6" /><text x="84" y={y(min + (max - min) * tick / 4) + 5} textAnchor="end" fill="#94a3b8" fontSize="13">{compact(min + (max - min) * tick / 4)}</text></g>)}
+               <text x="100" y="137" fill="#94a3b8" fontSize="12">{presentation?.axisLabel ?? "SUBSCRIBERS"}</text>
                {days.map((day, index) => (index % 3 === 0 || index === days.length - 1) && <text key={day} x={x(index)} y="451" textAnchor="middle" fill="#94a3b8" fontSize="12">{day.slice(-2)}</text>)}
                {series.map((centre, centreIndex) => {
                   let previous = false;
@@ -106,11 +115,11 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
                   {row.value !== null && <rect x={Math.min(bx(0), bx(row.value))} y={134 + index * 80} width={Math.max(2, Math.abs(bx(row.value) - bx(0)))} height="27" rx="5" fill={row.color}><title>{`${row.name}: ${format(row.value)}`}</title></rect>}
                   <text x="1048" y={153 + index * 80} textAnchor="end" fill={row.value === null ? "#64748b" : "#f8fafc"} fontSize="17" fontWeight="600">{row.value === null ? "No data" : `${kind === "growth" && row.value > 0 ? "+" : ""}${format(row.value)}`}</text>
                   {kind === "total" && row.coverage && <text x="285" y={182 + index * 80} fill={row.coverage.recordedPlatforms < row.coverage.totalPlatforms ? "#fbbf24" : "#94a3b8"} fontSize="12">{row.coverage.recordedPlatforms} / {row.coverage.totalPlatforms} platforms recorded{row.value !== null && row.coverage.recordedPlatforms < row.coverage.totalPlatforms ? " · Partial total" : ""}</text>}
-                  {kind === "growth" && row.growth && <text x="285" y={182 + index * 80} fill="#94a3b8" fontSize="12">{row.growth.start.slice(5)} → {row.growth.end.slice(5)} · {row.growth.percent === null ? "% unavailable (starts at zero)" : `${row.growth.percent > 0 ? "+" : ""}${row.growth.percent.toFixed(2)}%`}</text>}
+                  {kind === "growth" && row.growth && <text x="285" y={182 + index * 80} fill="#94a3b8" fontSize="12">{row.growth.start.slice(5)} → {row.growth.end.slice(5)} · {row.growth.percent === null ? (presentation ? "% unavailable (non-positive baseline)" : "% unavailable (starts at zero)") : `${row.growth.percent > 0 ? "+" : ""}${row.growth.percent.toFixed(2)}%`}</text>}
                </g>)}
             </>}
             <line x1="40" x2="1060" y1={height - 42} y2={height - 42} stroke="#263247" />
-            <text x="40" y={height - 20} fill="#64748b" fontSize="11">MARKETING METRICS / {kind === "total" ? "Sum across platforms; audiences may overlap. Partial totals use recorded counts only." : kind === "trend" ? "Gaps indicate unrecorded days" : kind === "growth" ? "First to last recorded date per centre; periods may differ" : "Recorded counts on the selected date only"}</text>
+            <text x="40" y={height - 20} fill="#64748b" fontSize="11">{presentation ? "STATISTICS" : "MARKETING METRICS"} / {presentation?.footer ?? (kind === "total" ? "Sum across platforms; audiences may overlap. Partial totals use recorded counts only." : kind === "trend" ? "Gaps indicate unrecorded days" : kind === "growth" ? "First to last recorded date per centre; periods may differ" : "Recorded counts on the selected date only")}</text>
             <text x="1060" y={height - 20} textAnchor="end" fill="#94a3b8" fontSize="11">{monthLabel.toUpperCase()}</text>
          </svg></div>}
       {error && <p role="alert" className={styles.error}>{error}</p>}

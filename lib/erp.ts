@@ -46,6 +46,7 @@ export const ERP_MODULES = [
    "teachers",
    "metrics",
    "marketing",
+   "statistics",
    "settings",
 ] as const;
 

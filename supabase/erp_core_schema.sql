@@ -198,6 +198,7 @@ create table if not exists public.erp_role_permissions (
          'teachers',
          'metrics',
          'marketing',
+         'statistics',
          'settings'
       )
    ),
@@ -334,6 +335,7 @@ alter table public.erp_role_permissions
          'teachers',
          'metrics',
          'marketing',
+         'statistics',
          'settings'
       )
    );

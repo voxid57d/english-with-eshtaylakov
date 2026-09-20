@@ -16,6 +16,39 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Statistics
+
+The daily statistics workspace lives at `/dashboard/statistics` and appears as
+**Statistics** in the staff sidebar.
+
+1. Apply `supabase/erp_core_schema.sql` first if the ERP is not installed.
+2. Run `supabase/statistics_schema.sql` in the Supabase SQL editor.
+3. Refresh the dashboard. Admin, branch manager, and sales manager roles have
+   view/manage access by default; configure other roles in Settings.
+
+Use **Categories** to add or edit a name, chart color, and unit (numbers, UZS,
+USD, or percent). Each category is a column and every day of the selected month
+is a row. Enter figures manually or paste a rectangular numeric range from a
+spreadsheet without its headers or date column. Grouped thousands, negative
+numbers, and up to two decimal places are supported. Blank means unrecorded;
+zero is a real observation. Clearing a cell removes it on save.
+
+**Save changes** saves pending entries across months in one transaction (up to
+5,000 cells), preserving edits after a failed request and warning before leaving
+with unsaved entries. Chart previews include valid unsaved figures.
+
+**Charts & insights** reuses the Marketing chart renderer and JPG exporter. Choose
+a unit and select categories for a daily comparison bar chart, monthly line chart,
+and first-to-last change bar chart. Missing days stay as gaps, change charts show
+their actual observed date ranges, and percentages are unavailable for zero or
+negative baselines. Categories with different units are charted separately.
+Figures are not summed across days because balances and cumulative counts can be
+snapshots. Each chart exports as a standalone JPG at 2× resolution.
+
+Statistics is shared across the staff workspace. The API checks Statistics
+permissions; direct anonymous/authenticated database access is denied. Only the
+server service role can execute the atomic save function.
+
 ## Marketing metrics
 
 The staff dashboard section is at `/dashboard/marketing`.

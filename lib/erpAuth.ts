@@ -34,6 +34,7 @@ const FALLBACK_PERMISSIONS: Record<ErpStaffRole, ErpPermissions> = {
       teachers: ["view", "manage"],
       metrics: ["view", "manage"],
       marketing: ["view", "manage"],
+      statistics: ["view", "manage"],
       settings: ["view", "manage"],
    },
    branch_manager: {
@@ -46,6 +47,7 @@ const FALLBACK_PERMISSIONS: Record<ErpStaffRole, ErpPermissions> = {
       teachers: ["view", "manage"],
       metrics: ["view", "manage"],
       marketing: ["view", "manage"],
+      statistics: ["view", "manage"],
       settings: ["view", "manage"],
    },
    sales_manager: {
@@ -58,6 +60,7 @@ const FALLBACK_PERMISSIONS: Record<ErpStaffRole, ErpPermissions> = {
       teachers: ["view", "manage"],
       metrics: ["view", "manage"],
       marketing: ["view", "manage"],
+      statistics: ["view", "manage"],
       settings: [],
    },
    salesman: {
@@ -70,6 +73,7 @@ const FALLBACK_PERMISSIONS: Record<ErpStaffRole, ErpPermissions> = {
       teachers: [],
       metrics: [],
       marketing: [],
+      statistics: [],
       settings: [],
    },
    assistant: {
@@ -82,6 +86,7 @@ const FALLBACK_PERMISSIONS: Record<ErpStaffRole, ErpPermissions> = {
       teachers: [],
       metrics: ["view", "manage"],
       marketing: [],
+      statistics: [],
       settings: [],
    },
    cashier: {
@@ -94,6 +99,7 @@ const FALLBACK_PERMISSIONS: Record<ErpStaffRole, ErpPermissions> = {
       teachers: [],
       metrics: ["view", "manage"],
       marketing: [],
+      statistics: [],
       settings: [],
    },
 };

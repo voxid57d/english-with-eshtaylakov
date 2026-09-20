@@ -3,7 +3,7 @@ begin;
 
 alter table public.erp_role_permissions drop constraint if exists erp_role_permissions_module_check;
 alter table public.erp_role_permissions add constraint erp_role_permissions_module_check
-   check (module in ('overview', 'branches', 'staff', 'tasks', 'kpi', 'shifts', 'teachers', 'metrics', 'marketing', 'settings'));
+   check (module in ('overview', 'branches', 'staff', 'tasks', 'kpi', 'shifts', 'teachers', 'metrics', 'marketing', 'statistics', 'settings'));
 
 insert into public.erp_role_permissions (role, module, can_view, can_manage)
 select role, 'marketing', role::text in ('admin', 'branch_manager', 'sales_manager'),

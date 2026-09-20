@@ -29,6 +29,7 @@ type ErpModule =
    | "teachers"
    | "metrics"
    | "marketing"
+   | "statistics"
    | "settings";
 
 type SidebarLink = {
@@ -60,6 +61,7 @@ const links: SidebarLink[] = [
    },
    { href: "/dashboard/metrics", label: "Metrics", icon: PiChartLineUpLight, module: "metrics" },
    { href: "/dashboard/marketing", label: "Marketing metrics", icon: PiChartLineUpLight, module: "marketing" },
+   { href: "/dashboard/statistics", label: "Statistics", icon: PiChartLineUpLight, module: "statistics" },
    { href: "/dashboard/staff", label: "Staff", icon: PiUsersThreeLight, module: "staff" },
    { href: "/dashboard/branches", label: "Branches", icon: PiMapPinLineLight, module: "branches" },
    { href: "/dashboard/settings", label: "Settings", icon: PiGearSixLight, module: "settings" },
