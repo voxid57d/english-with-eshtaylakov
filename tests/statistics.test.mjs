@@ -155,7 +155,7 @@ test("monthly reads fetch all pages and return numeric values with calendar boun
    assert.equal(response.body.entries.length, 1001);
    assert.equal(response.body.entries[0].value, 12.5);
    assert.ok(calls.some((call) => call.table === "statistics_entries" && call.start === 1000));
-   assert.ok(calls.some((call) => call.op === "gte" && call.value === "2024-02-01"));
+   assert.ok(calls.some((call) => call.op === "gte" && call.value === "2024-01-31"));
    assert.ok(calls.some((call) => call.op === "lte" && call.value === "2024-02-29"));
    assert.equal(response.body.canManage, true);
 });
@@ -165,7 +165,7 @@ const Chart = load("components/marketing/MarketingChart.tsx", {
    "@/lib/marketingMetrics": marketing, "./marketing.module.css": { default: {} },
 }).default;
 const Charts = load("components/statistics/StatisticsCharts.tsx", {
-   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/statistics": statistics,
+   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/statistics": statistics, "@/lib/marketingMetrics": marketing,
    "@/components/marketing/MarketingChart": { default: Chart },
    "@/components/marketing/marketing.module.css": { default: {} }, "./statistics.module.css": { default: {} },
 }).default;
@@ -174,10 +174,10 @@ test("Statistics shares chart rendering but uses category labels and keeps incom
    const html = renderToStaticMarkup(React.createElement(Charts, {
       categories: [categoryA, categoryB, { id: "students", name: "Students", unit: "number", color: "#ff0000" }],
       entries: [entry(23758000), entry(20000000, "2026-09-15"), entry(100, "2026-09-14", "students")],
-      days: marketing.monthDays("2026-09"), date: "2026-09-14", monthLabel: "September 2026", onDateChange: () => {},
+      days: marketing.monthDays("2026-09"), date: "2026-09-15", monthLabel: "September 2026", onDateChange: () => {},
    }));
    assert.equal((html.match(/<svg /g) || []).length, 3);
-   assert.match(html, /Daily category comparison/);
+   assert.match(html, /Daily category change/);
    assert.match(html, /Monthly category trends/);
    assert.match(html, /Change over the month/);
    assert.match(html, /23,758,000/);
@@ -197,4 +197,38 @@ test("shared line plots keep negative values inside the plot and decimals displa
    const growth = renderToStaticMarkup(React.createElement(Chart, { ...props, kind: "growth" }));
    assert.match(growth, /13.75/);
    assert.match(growth, /non-positive baseline/);
+});
+
+test("monthly trends fit selected recorded extrema and show distinct ticks for small changes", () => {
+   const props = { kind: "trend", fitTrend: true, centres: [categoryA], platformId: "stats", platformName: "USD",
+      days: marketing.monthDays("2026-09"), date: "2026-09-14", monthLabel: "September 2026" };
+   const observation = (value, day, id = categoryA.id) => ({ centre_id: id, platform_id: "stats", entry_date: day, subscribers: value });
+   const entries = [observation(1000000, "2026-09-14"), observation(1000001, "2026-09-15"), observation(2000000, "2026-09-14", categoryB.id), observation(1, "2026-08-31")];
+   const render = (extra = {}) => renderToStaticMarkup(React.createElement(Chart, { ...props, entries, ...extra }));
+   const single = render();
+   assert.match(single, /cy="425"/);
+   assert.match(single, /cy="165"/);
+   assert.match(single, />1,000,000.25<\/text>/);
+   assert.match(single, />1,000,001<\/text>/);
+   assert.doesNotMatch(single, />2,000,000<\/text>|>0<\/text>|NaN|Infinity/);
+   const multiple = render({ centres: [categoryA, categoryB] });
+   assert.match(multiple, />2,000,000<\/text>/);
+   assert.match(multiple, /cy="165"/);
+   for (const value of [0, -10.25, 12.5]) {
+      const constant = render({ entries: [observation(value, "2026-09-14")] });
+      assert.match(constant, /cy="295"/);
+      assert.doesNotMatch(constant, /NaN|Infinity/);
+   }
+});
+
+test("statistics retains, updates, and clears the previous month's baseline without importing other months", () => {
+   const original = [entry(100, "2026-08-31"), entry(110, "2026-09-01"), entry(999, "2026-08-30")];
+   const saved = applyStatisticChanges(original, [entry(120, "2026-09-01")], "2026-09");
+   assert.equal(saved.length, 2);
+   assert.equal(saved.find((row) => row.entry_date === "2026-08-31").value, 100);
+   const preview = applyStatisticChanges(saved, [entry(105, "2026-08-31")], "2026-09");
+   assert.equal(preview.find((row) => row.entry_date === "2026-08-31").value, 105);
+   const cleared = applyStatisticChanges(preview, [entry(null, "2026-08-31")], "2026-09");
+   assert.equal(cleared.length, 1);
+   assert.equal(cleared[0].value, 120);
 });

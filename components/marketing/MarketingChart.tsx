@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { dailyAudienceTotals, growthBetween, platformSeries, type MarketingCentre, type MarketingEntry, type MarketingPlatform } from "@/lib/marketingMetrics";
+import { dailyAudienceTotals, dailyChanges, growthBetween, platformSeries, previousDate, trendBounds, type MarketingCentre, type MarketingEntry, type MarketingPlatform } from "@/lib/marketingMetrics";
 import styles from "./marketing.module.css";
 
 const format = (value: number) => value.toLocaleString("en-US");
@@ -16,35 +16,38 @@ export type ChartPresentation = {
    footer: string; filename: string; emptyMessage: string;
 };
 
-export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = emptyPlatforms, days, date, monthLabel, presentation }: {
-   kind: "total" | "daily" | "trend" | "growth"; centres: MarketingCentre[]; entries: MarketingEntry[];
+export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = emptyPlatforms, days, date, monthLabel, presentation, fitTrend = false }: {
+   kind: "total" | "daily" | "change" | "trend" | "growth"; centres: MarketingCentre[]; entries: MarketingEntry[];
    platformId: string; platformName: string; days: string[]; date: string; monthLabel: string;
    platformLogo?: string | null; platforms?: MarketingPlatform[];
-   presentation?: ChartPresentation;
+   presentation?: ChartPresentation; fitTrend?: boolean;
 }) {
    const svg = useRef<SVGSVGElement>(null);
    const [exporting, setExporting] = useState(false);
    const [error, setError] = useState("");
    const series = useMemo(() => platformSeries(centres, entries, platformId, days), [centres, entries, platformId, days]);
-   const isDaily = kind === "daily" || kind === "total";
+   const isDaily = kind === "daily" || kind === "total" || kind === "change";
+   const changes = useMemo(() => new Map(dailyChanges(centres, entries, platformId, date).map((centre) => [centre.id, centre.value])), [centres, entries, platformId, date]);
    const totals = useMemo(() => new Map(dailyAudienceTotals(centres, platforms, entries, date).map((centre) => [centre.id, centre])), [centres, platforms, entries, date]);
    const chartPlatform = kind === "total" ? "All platforms" : platformName;
-   const title = presentation?.title ?? (kind === "total" ? "Total daily audience" : kind === "daily" ? "Daily audience comparison" : kind === "trend" ? "Audience over time" : "Monthly audience growth");
-   const subtitle = presentation?.subtitle ?? `${chartPlatform} · ${isDaily ? date : monthLabel}`;
+   const title = presentation?.title ?? (kind === "total" ? "Total daily audience" : kind === "daily" ? "Daily audience comparison" : kind === "change" ? "Daily audience change" : kind === "trend" ? "Audience over time" : "Monthly audience growth");
+   const subtitle = presentation?.subtitle ?? `${chartPlatform} · ${isDaily ? date : monthLabel}${kind === "change" ? ` vs ${previousDate(date)}` : ""}`;
    const rows = series.map((centre) => {
       const rawGrowth = growthBetween(centre.points);
       const firstValue = centre.points.find((point) => point.value !== null)?.value;
       const growth = rawGrowth && presentation ? { ...rawGrowth, change: Number(rawGrowth.change.toFixed(2)), percent: firstValue !== undefined && firstValue !== null && firstValue > 0 ? rawGrowth.percent : null } : rawGrowth;
-      return { ...centre, growth, coverage: totals.get(centre.id), value: kind === "total" ? totals.get(centre.id)?.value ?? null : kind === "growth" ? growth?.change ?? null : centre.points.find((point) => point.date === date)?.value ?? null };
+      return { ...centre, growth, coverage: totals.get(centre.id), value: kind === "change" ? changes.get(centre.id) ?? null : kind === "total" ? totals.get(centre.id)?.value ?? null : kind === "growth" ? growth?.change ?? null : centre.points.find((point) => point.date === date)?.value ?? null };
    }).sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
    const hasData = kind === "trend" ? series.some((centre) => centre.points.some((point) => point.value !== null)) : rows.some((row) => row.value !== null);
    const width = 1100;
    const legendHeight = Math.ceil(centres.length / 3) * 68;
    const height = kind === "trend" ? 510 + legendHeight : 190 + Math.max(rows.length, 1) * 80;
-   const values = kind === "trend" ? series.flatMap((centre) => centre.points.map((point) => point.value ?? 0)) : rows.map((row) => row.value ?? 0);
-   const min = Math.min(0, ...values);
-   const max = Math.max(1, ...values);
-   const x = (index: number) => 100 + index / Math.max(days.length - 1, 1) * 930;
+   const values = kind === "trend" ? series.flatMap((centre) => centre.points.flatMap((point) => point.value === null ? [] : [point.value])) : rows.map((row) => row.value ?? 0);
+   const { min, max } = kind === "trend" && fitTrend ? trendBounds(values) : { min: Math.min(0, ...values), max: Math.max(1, ...values) };
+   // Exact labels avoid identical compact ticks when the visible range is narrow.
+   const tickLabel = kind === "trend" && fitTrend ? (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 4 }) : compact;
+   const trendLeft = fitTrend ? 190 : 100;
+   const x = (index: number) => trendLeft + index / Math.max(days.length - 1, 1) * (1030 - trendLeft);
    const y = (value: number) => 425 - (value - min) / (max - min) * 260;
    const bx = (value: number) => 285 + (value - min) / (max - min) * 610;
 
@@ -80,8 +83,8 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
    }
 
    return <article className={styles.chartCard}>
-      <div className={styles.chartToolbar}><span>{presentation?.toolbar ?? (kind === "total" ? "01 / TOTAL DAILY AUDIENCE" : kind === "daily" ? "02 / DAILY SNAPSHOT" : kind === "trend" ? "03 / MONTHLY TREND" : "04 / GROWTH LEADERBOARD")}</span><button disabled={!hasData || exporting} onClick={() => void exportJpg()}>{exporting ? "Exporting…" : "↓ Export JPG"}</button></div>
-      {!hasData ? <div className={styles.chartEmpty}><h3>{title}</h3><p>{presentation?.emptyMessage ?? (kind === "growth" ? "Record at least two dates for a centre to measure growth." : `Add subscriber counts for ${chartPlatform}${isDaily ? ` on ${date}` : " this month"}.`)}</p></div> :
+      <div className={styles.chartToolbar}><span>{presentation?.toolbar ?? (kind === "total" ? "01 / TOTAL DAILY AUDIENCE" : kind === "daily" ? "02 / DAILY SNAPSHOT" : kind === "change" ? "03 / DAILY CHANGE" : kind === "trend" ? "04 / MONTHLY TREND" : "05 / GROWTH LEADERBOARD")}</span><button disabled={!hasData || exporting} onClick={() => void exportJpg()}>{exporting ? "Exporting…" : "↓ Export JPG"}</button></div>
+      {!hasData ? <div className={styles.chartEmpty}><h3>{title}</h3><p>{presentation?.emptyMessage ?? (kind === "change" ? `Record counts on both ${previousDate(date)} and ${date} for a centre to see its daily change.` : kind === "growth" ? "Record at least two dates for a centre to measure growth." : `Add subscriber counts for ${chartPlatform}${isDaily ? ` on ${date}` : " this month"}.`)}</p></div> :
          <div className={styles.chartScroll}><svg ref={svg} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}, ${subtitle}`} style={{ width: "100%", height: "auto", minWidth: 600, display: "block", fontFamily: "Arial, Helvetica, sans-serif" }}>
             <title>{`${title} — ${subtitle}`}</title>
             <rect width={width} height={height} rx="18" fill="#0b1220" />
@@ -90,8 +93,8 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
             {kind !== "total" && platformLogo && <image href={platformLogo} x="60" y="73" width="22" height="22" preserveAspectRatio="xMidYMid meet" />}
             <text x={kind !== "total" && platformLogo ? 91 : 60} y="90" fill="#94a3b8" fontSize="15">{subtitle}</text>
             {kind === "trend" ? <>
-               {[0, 1, 2, 3, 4].map((tick) => <g key={tick}><line x1="100" x2="1030" y1={y(min + (max - min) * tick / 4)} y2={y(min + (max - min) * tick / 4)} stroke="#263247" strokeDasharray="4 6" /><text x="84" y={y(min + (max - min) * tick / 4) + 5} textAnchor="end" fill="#94a3b8" fontSize="13">{compact(min + (max - min) * tick / 4)}</text></g>)}
-               <text x="100" y="137" fill="#94a3b8" fontSize="12">{presentation?.axisLabel ?? "SUBSCRIBERS"}</text>
+               {[0, 1, 2, 3, 4].map((tick) => <g key={tick}><line x1={trendLeft} x2="1030" y1={y(min + (max - min) * tick / 4)} y2={y(min + (max - min) * tick / 4)} stroke="#263247" strokeDasharray="4 6" /><text x={trendLeft - 16} y={y(min + (max - min) * tick / 4) + 5} textAnchor="end" fill="#94a3b8" fontSize="13">{tickLabel(min + (max - min) * tick / 4)}</text></g>)}
+               <text x={trendLeft} y="137" fill="#94a3b8" fontSize="12">{presentation?.axisLabel ?? "SUBSCRIBERS"}</text>
                {days.map((day, index) => (index % 3 === 0 || index === days.length - 1) && <text key={day} x={x(index)} y="451" textAnchor="middle" fill="#94a3b8" fontSize="12">{day.slice(-2)}</text>)}
                {series.map((centre, centreIndex) => {
                   let previous = false;
@@ -113,13 +116,13 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
                   <text x="52" y={150 + index * 80} fill="#e2e8f0" fontSize="14">{wrap(row.name, 26).map((line, lineIndex) => <tspan key={lineIndex} x="52" dy={lineIndex ? 16 : 0}>{line}</tspan>)}</text>
                   <rect x="285" y={134 + index * 80} width="610" height="27" rx="6" fill="#131e30" />
                   {row.value !== null && <rect x={Math.min(bx(0), bx(row.value))} y={134 + index * 80} width={Math.max(2, Math.abs(bx(row.value) - bx(0)))} height="27" rx="5" fill={row.color}><title>{`${row.name}: ${format(row.value)}`}</title></rect>}
-                  <text x="1048" y={153 + index * 80} textAnchor="end" fill={row.value === null ? "#64748b" : "#f8fafc"} fontSize="17" fontWeight="600">{row.value === null ? "No data" : `${kind === "growth" && row.value > 0 ? "+" : ""}${format(row.value)}`}</text>
+                  <text x="1048" y={153 + index * 80} textAnchor="end" fill={row.value === null ? "#64748b" : "#f8fafc"} fontSize="17" fontWeight="600">{row.value === null ? "No data" : `${(kind === "growth" || kind === "change") && row.value > 0 ? "+" : ""}${format(row.value)}`}</text>
                   {kind === "total" && row.coverage && <text x="285" y={182 + index * 80} fill={row.coverage.recordedPlatforms < row.coverage.totalPlatforms ? "#fbbf24" : "#94a3b8"} fontSize="12">{row.coverage.recordedPlatforms} / {row.coverage.totalPlatforms} platforms recorded{row.value !== null && row.coverage.recordedPlatforms < row.coverage.totalPlatforms ? " · Partial total" : ""}</text>}
                   {kind === "growth" && row.growth && <text x="285" y={182 + index * 80} fill="#94a3b8" fontSize="12">{row.growth.start.slice(5)} → {row.growth.end.slice(5)} · {row.growth.percent === null ? (presentation ? "% unavailable (non-positive baseline)" : "% unavailable (starts at zero)") : `${row.growth.percent > 0 ? "+" : ""}${row.growth.percent.toFixed(2)}%`}</text>}
                </g>)}
             </>}
             <line x1="40" x2="1060" y1={height - 42} y2={height - 42} stroke="#263247" />
-            <text x="40" y={height - 20} fill="#64748b" fontSize="11">{presentation ? "STATISTICS" : "MARKETING METRICS"} / {presentation?.footer ?? (kind === "total" ? "Sum across platforms; audiences may overlap. Partial totals use recorded counts only." : kind === "trend" ? "Gaps indicate unrecorded days" : kind === "growth" ? "First to last recorded date per centre; periods may differ" : "Recorded counts on the selected date only")}</text>
+            <text x="40" y={height - 20} fill="#64748b" fontSize="11">{presentation ? "STATISTICS" : "MARKETING METRICS"} / {presentation?.footer ?? (kind === "total" ? "Sum across platforms; audiences may overlap. Partial totals use recorded counts only." : kind === "change" ? "Selected day minus previous calendar day; both figures required" : kind === "trend" ? "Gaps indicate unrecorded days" : kind === "growth" ? "First to last recorded date per centre; periods may differ" : "Recorded counts on the selected date only")}</text>
             <text x="1060" y={height - 20} textAnchor="end" fill="#94a3b8" fontSize="11">{monthLabel.toUpperCase()}</text>
          </svg></div>}
       {error && <p role="alert" className={styles.error}>{error}</p>}

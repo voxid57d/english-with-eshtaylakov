@@ -30,6 +30,29 @@ export function entryKey(centreId: string, platformId: string, date: string) {
    return `${centreId}|${platformId}|${date}`;
 }
 
+export function previousDate(date: string) {
+   const previous = new Date(`${date}T00:00:00Z`);
+   previous.setUTCDate(previous.getUTCDate() - 1);
+   return previous.toISOString().slice(0, 10);
+}
+
+// Require both calendar dates; never substitute an earlier observation or zero.
+export function dailyChanges(centres: MarketingCentre[], entries: MarketingEntry[], platformId: string, date: string) {
+   return platformSeries(centres, entries, platformId, [previousDate(date), date]).map((centre) => {
+      const [previous, current] = centre.points;
+      return { ...centre, value: previous.value === null || current.value === null ? null : Number((current.value - previous.value).toFixed(2)) };
+   });
+}
+
+export function trendBounds(values: number[]) {
+   if (!values.length) return { min: 0, max: 1 };
+   const min = values.reduce((a, b) => Math.min(a, b));
+   const max = values.reduce((a, b) => Math.max(a, b));
+   // A constant series needs a nonzero range to draw a horizontal line.
+   const padding = Math.max(Math.abs(min) * 0.01, 1);
+   return min === max ? { min: min - padding, max: max + padding } : { min, max };
+}
+
 // Blank means unrecorded. Only explicit zero means zero subscribers.
 export function parseSubscribers(value: string): number | null {
    const trimmed = value.trim();

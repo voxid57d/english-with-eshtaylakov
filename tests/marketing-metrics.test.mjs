@@ -66,6 +66,47 @@ test("growth requires two observations and reports actual observed date ranges",
    assert.equal(growthBetween([point("a", 0), point("b", 50)]).percent, null);
 });
 
+test("daily changes use the previous calendar day, including leap and year boundaries", () => {
+   assert.equal(metrics.previousDate("2024-03-01"), "2024-02-29");
+   assert.equal(metrics.previousDate("2026-01-01"), "2025-12-31");
+   assert.equal(metrics.previousDate("2100-03-01"), "2100-02-28");
+   const centres = [{ id: centre_id, name: "Centre", color: "#10b981" }];
+   const delta = (entries) => metrics.dailyChanges(centres, entries, platform_id, "2026-09-01")[0].value;
+   assert.equal(delta([change(0, "2026-08-31"), change(10, "2026-09-01")]), 10);
+   assert.equal(delta([change(10, "2026-08-31"), change(0, "2026-09-01")]), -10);
+   assert.equal(delta([change(0, "2026-08-31"), change(0, "2026-09-01")]), 0);
+   assert.equal(delta([change(1.2, "2026-08-31"), change(1.3, "2026-09-01")]), 0.1);
+   assert.equal(delta([change(10, "2026-08-30"), change(20, "2026-09-01")]), null);
+   assert.equal(delta([change(10, "2026-08-31")]), null);
+   assert.equal(delta([change(10, "2026-09-01"), { ...change(1, "2026-08-31"), platform_id: "other" }]), null);
+});
+
+test("daily change exports display signed increases, decreases, zero, and missing pairs", () => {
+   const Chart = load("components/marketing/MarketingChart.tsx", {
+      react: React, "react/jsx-runtime": jsxRuntime,
+      "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+   }).default;
+   const centres = ["up", "down", "zero", "missing"].map((id) => ({ id, name: id, color: "#10b981" }));
+   const entries = centres.flatMap((centre, index) => [
+      { ...change(100, index === 3 ? "2026-08-30" : "2026-08-31"), centre_id: centre.id },
+      { ...change([125, 90, 100, 150][index], "2026-09-01"), centre_id: centre.id },
+   ]);
+   const props = { kind: "change", centres, entries, platformId: platform_id, platformName: "Telegram", platformLogo: logo,
+      days: monthDays("2026-09"), date: "2026-09-01", monthLabel: "September 2026" };
+   const html = renderToStaticMarkup(React.createElement(Chart, props));
+   assert.match(html, /Daily audience change/);
+   assert.match(html, /2026-09-01 vs 2026-08-31/);
+   assert.match(html, />\+25<\/text>/);
+   assert.match(html, />-10<\/text>/);
+   assert.match(html, />0<\/text>/);
+   assert.match(html, />No data<\/text>/);
+   assert.ok(html.includes(`<image href="${logo}"`));
+   assert.doesNotMatch(html, /NaN|Infinity/);
+   const empty = renderToStaticMarkup(React.createElement(Chart, { ...props, entries: entries.filter((entry) => entry.entry_date === "2026-09-01") }));
+   assert.doesNotMatch(empty, /<svg/);
+   assert.match(empty, /Record counts on both 2026-08-31 and 2026-09-01/);
+});
+
 test("daily total audience sums platforms for the exact date and preserves missing versus zero", () => {
    const centres = ["complete", "partial", "zero", "missing"].map((id) => ({ id, name: id, color: "#10b981" }));
    const platforms = ["telegram", "instagram"].map((id) => ({ id, name: id }));
@@ -260,12 +301,12 @@ test("centre checkboxes exclude centres from every chart and export while allowi
    }).default;
    const centres = [{ id: centre_id, name: "Visible centre", color: "#10b981" }, { id: "hidden", name: "Hidden centre", color: "#6366f1" }];
    const platform = { id: platform_id, name: "Telegram" };
-   const props = { centres, platform, platforms: [platform], days: monthDays("2026-09"), date: "2026-09-14", monthLabel: "September 2026", onToggle: () => {},
+   const props = { centres, platform, platforms: [platform], days: monthDays("2026-09"), date: "2026-09-15", monthLabel: "September 2026", onToggle: () => {},
       entries: [change(100), change(120, "2026-09-15"), { ...change(99999), centre_id: "hidden" }, { ...change(199999, "2026-09-15"), centre_id: "hidden" }] };
    const html = renderToStaticMarkup(React.createElement(Charts, { ...props, excluded: new Set(["hidden"]) }));
    assert.equal((html.match(/type="checkbox"/g) || []).length, 2);
    const charts = [...html.matchAll(/<svg[\s\S]*?<\/svg>/g)].map((match) => match[0]);
-   assert.equal(charts.length, 4);
+   assert.equal(charts.length, 5);
    for (const chart of charts) {
       assert.match(chart, /Visible centre/);
       assert.doesNotMatch(chart, /Hidden centre|99,999|199,999/);

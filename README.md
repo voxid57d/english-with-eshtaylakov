@@ -49,10 +49,15 @@ to install the atomic deletion function on an existing database.
 with unsaved entries. Chart previews include valid unsaved figures.
 
 **Charts & insights** reuses the Marketing chart renderer and JPG exporter. Choose
-a unit and select categories for a daily comparison bar chart, monthly line chart,
+a unit and select categories for a daily change bar chart, monthly line chart,
 and first-to-last change bar chart. Missing days stay as gaps, change charts show
 their actual observed date ranges, and percentages are unavailable for zero or
 negative baselines. Categories with different units are charted separately.
+Monthly trends fit the value axis to the lowest and highest recorded figures of
+the selected categories, ignoring missing days; constant series get a small range
+around their value. Daily change subtracts the previous calendar day, including
+the last day of the preceding month. Both dates need figures; missing data stays
+missing, while increases, decreases, and unchanged values are shown explicitly.
 Figures are not summed across days because balances and cumulative counts can be
 snapshots. Each chart exports as a standalone JPG at 2× resolution.
 
@@ -75,7 +80,7 @@ as starter platforms. No competitor counts are prefilled.
 
 When adding or editing a platform, upload a PNG, JPG, or WebP logo (up to 2 MB).
 The form previews the logo and lets you replace or remove it before saving. Logos
-appear before platform names in all three charts and their JPG exports. Uploaded
+appear before platform names in all platform charts and their JPG exports. Uploaded
 images are resized to fit 256 × 256 pixels and saved as embedded PNGs. Rerun
 `supabase/marketing_metrics_schema.sql` to add logo support to an existing setup.
 
@@ -94,16 +99,21 @@ observation when you save. **Save changes** saves all pending cells across month
 atomically (up to 5,000 cells); unsaved edits stay in this page until saved or left.
 
 **Charts & insights** provides a total daily audience bar chart across all platforms,
-a daily audience bar chart for the selected platform, a monthly line chart,
+a daily audience bar chart and a daily change bar chart for the selected platform,
+a monthly line chart,
 and a growth leaderboard for the selected platform. Lines have gaps for missing
 days; growth compares each centre's first and last recorded dates, with those dates
 shown. Percentage growth is unavailable for a zero baseline. Charts preview valid
 unsaved entries, and each exports a standalone JPG at 2× resolution.
 
 In Marketing **Charts & insights**, use the learning-centre checkboxes to include
-or exclude centres from all four charts and their JPG exports. The selection
+or exclude centres from all five charts and their JPG exports. The selection
 persists across dates, months, platforms, and table/chart tabs while the page stays
 open. Unchecking every centre shows a prompt to select at least one.
+
+Daily audience change subtracts the previous calendar day for each centre on the
+selected platform, including across month/year boundaries. Both dates must have
+recorded counts; missing values are not treated as zero.
 
 Total daily audience sums each centre's recorded counts on the selected date and
 ranks centres by that sum, regardless of the platform filter. Platform coverage

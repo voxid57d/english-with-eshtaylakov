@@ -20,7 +20,7 @@ export default function MarketingCharts({ centres, platforms, entries, platform,
       </fieldset>
       {!selected.length ? <p className={styles.loading}>Select at least one learning centre to draw charts.</p> : <>
          <MarketingChart kind="total" centres={selected} platforms={platforms} entries={entries} platformId="" platformName="All platforms" days={days} date={date} monthLabel={monthLabel} />
-         {platform && (["daily", "trend", "growth"] as const).map((kind) => <MarketingChart
+         {platform && (["daily", "change", "trend", "growth"] as const).map((kind) => <MarketingChart
             key={`${platform.id}-${kind}`} kind={kind} centres={selected} entries={entries}
             platformId={platform.id} platformName={platform.name} platformLogo={platform.logo_data_url}
             days={days} date={date} monthLabel={monthLabel}

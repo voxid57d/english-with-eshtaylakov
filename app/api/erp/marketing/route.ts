@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { erpJsonError } from "@/lib/erp";
 import { getErpPermissions, requireErpPermission } from "@/lib/erpAuth";
-import { monthDays, parseProfileLink, validateChanges, type MarketingEntry, type MarketingProfileLink } from "@/lib/marketingMetrics";
+import { monthDays, previousDate, parseProfileLink, validateChanges, type MarketingEntry, type MarketingProfileLink } from "@/lib/marketingMetrics";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { validatePlatformLogo } from "@/lib/marketingLogo";
 
@@ -27,11 +27,12 @@ export async function GET(req: Request) {
       ]);
       if (centres.error || platforms.error) throw databaseError((centres.error || platforms.error)!);
       const entries: MarketingEntry[] = [];
-      // Supabase caps individual responses; fetch every page of the monthly sheet.
+      // Include the previous month's last day for daily change on the first.
+      // Supabase caps individual responses; fetch every page of the sheet.
       for (let offset = 0; ; offset += 1000) {
          const result = await supabaseAdmin.from("marketing_entries")
             .select("centre_id, platform_id, entry_date, subscribers")
-            .gte("entry_date", days[0]).lte("entry_date", days[days.length - 1])
+            .gte("entry_date", previousDate(days[0])).lte("entry_date", days[days.length - 1])
             .order("entry_date").order("centre_id").order("platform_id").range(offset, offset + 999);
          if (result.error) throw databaseError(result.error);
          entries.push(...(result.data || []));

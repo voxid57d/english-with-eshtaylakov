@@ -78,6 +78,7 @@ export default function StatisticsMetrics() {
    }, [drafts, data.entries, month]);
    const columns = useMemo(() => data.categories.filter((category) => category.name.toLowerCase().includes(search.toLowerCase()) && (!sheetUnit || category.unit === sheetUnit)), [data.categories, search, sheetUnit]);
    const recordedOnDate = draftState.entries.filter((entry) => entry.entry_date === date).length;
+   const monthlyEntryCount = draftState.entries.filter((entry) => entry.entry_date.startsWith(month)).length;
    const availableCells = days.length * data.categories.length;
 
    const updateDrafts = useCallback((updates: StatisticDraft[]) => {
@@ -183,8 +184,8 @@ export default function StatisticsMetrics() {
          <section className={shared.stats} aria-label="Statistics summary">
             <div><span>Categories</span><strong>{data.categories.length}</strong><small>Figures you track</small></div>
             <div><span>Recorded on {date.slice(5)}</span><strong>{recordedOnDate}<em> / {data.categories.length}</em></strong><small>Daily observations</small></div>
-            <div><span>Monthly entries</span><strong>{draftState.entries.length.toLocaleString("en-US")}</strong><small>{monthLabel}</small></div>
-            <div><span>Month coverage</span><strong>{availableCells ? Math.round(draftState.entries.length / availableCells * 100) : 0}<em>%</em></strong><small>All calendar days · {draftCount ? "Includes unsaved preview" : "Saved figures"}</small></div>
+            <div><span>Monthly entries</span><strong>{monthlyEntryCount.toLocaleString("en-US")}</strong><small>{monthLabel}</small></div>
+            <div><span>Month coverage</span><strong>{availableCells ? Math.round(monthlyEntryCount / availableCells * 100) : 0}<em>%</em></strong><small>All calendar days · {draftCount ? "Includes unsaved preview" : "Saved figures"}</small></div>
          </section>
          <div className={shared.navigation}>
             <div className={shared.tabs} role="tablist" aria-label="Statistics views">

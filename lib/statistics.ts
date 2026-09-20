@@ -1,4 +1,4 @@
-import { monthDays } from "@/lib/marketingMetrics";
+import { monthDays, previousDate } from "@/lib/marketingMetrics";
 
 export const STATISTIC_UNITS = { number: "Numbers", UZS: "UZS", USD: "USD", percent: "Percent (%)" } as const;
 export type StatisticUnit = keyof typeof STATISTIC_UNITS;
@@ -58,9 +58,11 @@ export function pasteStatisticCells(text: string, days: string[], categories: St
 }
 
 export function applyStatisticChanges(entries: StatisticEntry[], changes: StatisticChange[], month: string): StatisticEntry[] {
-   const next = new Map(entries.filter((entry) => entry.entry_date.startsWith(`${month}-`)).map((entry) => [statisticKey(entry.category_id, entry.entry_date), entry]));
+   const baselineDate = previousDate(`${month}-01`);
+   const inRange = (date: string) => date.startsWith(`${month}-`) || date === baselineDate;
+   const next = new Map(entries.filter((entry) => inRange(entry.entry_date)).map((entry) => [statisticKey(entry.category_id, entry.entry_date), entry]));
    for (const change of changes) {
-      if (!change.entry_date.startsWith(`${month}-`)) continue;
+      if (!inRange(change.entry_date)) continue;
       const key = statisticKey(change.category_id, change.entry_date);
       if (change.value === null) next.delete(key);
       else next.set(key, { ...change, value: change.value });
