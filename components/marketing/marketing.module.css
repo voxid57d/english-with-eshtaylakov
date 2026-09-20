@@ -96,6 +96,22 @@
 .previewNote { color: #fcd34d; background: #f59e0b12; margin-bottom: 0; }
 .chartHint { font-size: 11px; color: var(--muted); line-height: 1.8; }
 .srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); }
+@keyframes marketingEnter { from { opacity: .45; } to { opacity: 1; } }
+@keyframes marketingDialog { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: no-preference) {
+   .stats > div { animation: marketingEnter 280ms ease-out backwards; transition: transform 180ms ease, border-color 180ms ease; }
+   .stats > div:nth-child(2) { animation-delay: 35ms; }
+   .stats > div:nth-child(3) { animation-delay: 70ms; }
+   .stats > div:nth-child(4) { animation-delay: 105ms; }
+   .chartCard, .sheetCard, .notice { animation: marketingEnter 200ms ease-out; }
+   .linkDialog[open] { animation: marketingDialog 180ms ease-out; }
+   .linkDialog[open]::backdrop { animation: marketingEnter 160ms ease-out; }
+   .primary:active:not(:disabled), .secondary:active:not(:disabled) { transform: translateY(1px); }
+   @media (hover: hover) and (pointer: fine) {
+      .stats > div:hover { transform: translateY(-2px); border-color: #34d39970; }
+   }
+}
+@media (prefers-reduced-motion: reduce) { .workspace *, .linkDialog { animation: none !important; transition: none !important; } }
 :global(:root[data-theme=light]) .workspace { --panel: #fff; --border: #dce4ed; --muted: #64748b; --text: #142139; }
 :global(:root[data-theme=light]) .table thead th, :global(:root[data-theme=light]) .table thead tr > :nth-child(-n+2) { background: #f1f5f9; }
 :global(:root[data-theme=light]) .eyebrow, :global(:root[data-theme=light]) .tabs button[aria-selected=true], :global(:root[data-theme=light]) .notice { color: #047857; }

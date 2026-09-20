@@ -5,7 +5,7 @@ export default function PageShellWithFooter({
 }) {
    return (
       <div className="min-h-screen flex flex-col bg-slate-950 text-white">
-         <main className="flex-1 flex">{children}</main>
+         <main className="workspace-content flex-1 flex">{children}</main>
       </div>
    );
 }

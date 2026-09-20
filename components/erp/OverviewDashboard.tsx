@@ -45,12 +45,15 @@ type SummaryCard = {
    icon: IconType;
 };
 
+const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+const hoursFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+
 function formatNumber(value: number) {
-   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
+   return numberFormatter.format(value);
 }
 
 function formatHours(value: number) {
-   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
+   return hoursFormatter.format(value);
 }
 
 function getSummaryCards(payload: OverviewPayload | null): SummaryCard[] {
@@ -152,12 +155,12 @@ export default function OverviewDashboard() {
             </div>
          )}
 
-         <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+         <section className="motion-stagger grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {summaryCards.map((card) => {
                const Icon = card.icon;
 
                return (
-                  <div key={card.label} className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
+                  <div key={card.label} className="surface-lift rounded-lg border border-slate-800 bg-slate-900/50 p-4">
                      <div className="flex items-center justify-between gap-3">
                         <p className="text-sm text-slate-400">{card.label}</p>
                         <Icon className="text-emerald-300" size={22} />

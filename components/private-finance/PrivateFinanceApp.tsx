@@ -41,6 +41,7 @@ import type { IconType } from "react-icons";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { getLocalDateString } from "@/lib/localDate";
 import { compareFinanceMonths, type financeComparisonPeriod } from "@/lib/financeComparison";
+import { financeCategoryTotals } from "@/lib/financeTotals";
 import { supabase } from "@/lib/supabaseClient";
 import type {
    FinanceAccountType,
@@ -231,23 +232,28 @@ function shiftMonth(month: string, amount: number) {
    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+const monthFormatter = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" });
+const shortDateFormatter = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+const nativeFormatters = {
+   USD: new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }),
+   UZS: new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }),
+};
+
 function monthLabel(month: string) {
    const [year, monthNumber] = month.split("-").map(Number);
-   return new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(
+   return monthFormatter.format(
       new Date(year, monthNumber - 1, 1),
    );
 }
 
 function shortDate(date: string) {
-   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(
+   return shortDateFormatter.format(
       new Date(`${date}T00:00:00`),
    );
 }
 
 function nativeMoney(amount: number, currency: FinanceCurrency) {
-   const formatted = new Intl.NumberFormat("en-US", {
-      maximumFractionDigits: currency === "USD" ? 2 : 0,
-   }).format(amount);
+   const formatted = nativeFormatters[currency].format(amount);
    return currency === "USD" ? `$${formatted}` : `${formatted} UZS`;
 }
 
@@ -335,18 +341,22 @@ export default function PrivateFinanceApp() {
       (budget: Budget) => budget.amount * (budget.currency === "USD" ? rate : 1),
       [rate],
    );
+   const moneyFormatters = useMemo(() => {
+      const maximumFractionDigits = displayCurrency === "USD" ? 2 : 0;
+      return {
+         standard: new Intl.NumberFormat("en-US", { maximumFractionDigits }),
+         compact: new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits }),
+      };
+   }, [displayCurrency]);
    const displayMoney = useCallback(
       (uzsAmount: number, compact = false) => {
          const value = displayCurrency === "USD" ? uzsAmount / rate : uzsAmount;
-         const formatter = new Intl.NumberFormat("en-US", {
-            notation: compact && Math.abs(value) >= 1000000 ? "compact" : "standard",
-            maximumFractionDigits: displayCurrency === "USD" ? 2 : 0,
-         });
+         const formatter = compact && Math.abs(value) >= 1000000 ? moneyFormatters.compact : moneyFormatters.standard;
          return displayCurrency === "USD"
             ? `$${formatter.format(value)}`
             : `${formatter.format(value)} UZS`;
       },
-      [displayCurrency, rate],
+      [displayCurrency, rate, moneyFormatters],
    );
 
    const totals = useMemo(() => {
@@ -984,6 +994,8 @@ function Overview({
    comparisonPeriod: FinancePayload["comparisonPeriod"];
    previousTransactions: FinanceTransaction[];
 }) {
+   const categoryTotals = useMemo(() => financeCategoryTotals(transactions, toUzs), [transactions, toUzs]);
+   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
    const expenseByCategory = categories
       .filter(
          (category) =>
@@ -991,13 +1003,7 @@ function Overview({
       )
       .map((category) => ({
          ...category,
-         total: transactions
-            .filter(
-               (transaction) =>
-                  transaction.categoryId === category.id ||
-                  transaction.parentCategoryId === category.id,
-            )
-            .reduce((sum, transaction) => sum + toUzs(transaction), 0),
+         total: categoryTotals.get(category.id) || 0,
       }))
       .filter((category) => category.total > 0)
       .sort((a, b) => b.total - a.total);
@@ -1009,19 +1015,13 @@ function Overview({
       )
       .map((category) => ({
          ...category,
-         total: transactions
-            .filter(
-               (transaction) =>
-                  transaction.categoryId === category.id ||
-                  transaction.parentCategoryId === category.id,
-            )
-            .reduce((sum, transaction) => sum + toUzs(transaction), 0),
+         total: categoryTotals.get(category.id) || 0,
       }))
       .filter((category) => category.total > 0)
       .sort((a, b) => b.total - a.total);
    const biggestIncome = Math.max(...incomeByCategory.map((item) => item.total), 1);
    const planned = budgets
-      .filter((budget) => categories.find((category) => category.id === budget.categoryId)?.entryType === "expense")
+      .filter((budget) => categoryById.get(budget.categoryId)?.entryType === "expense")
       .reduce((sum, budget) => sum + planToUzs(budget), 0);
 
    return (
@@ -1082,8 +1082,8 @@ function MonthlyComparison({ transactions, previousTransactions, period, display
    period: FinancePayload["comparisonPeriod"];
    displayMoney: (amount: number) => string;
 }) {
+   const comparison = useMemo(() => compareFinanceMonths(transactions, previousTransactions, period), [transactions, previousTransactions, period]);
    if (!period.available) return null;
-   const comparison = compareFinanceMonths(transactions, previousTransactions, period);
    const range = (start: string, end: string) => `${shortDate(start)} – ${shortDate(end)}`;
    return (
       <section className={`${styles.panel} ${styles.comparisonPanel}`}>
@@ -1201,15 +1201,11 @@ function Plans({
    onAdd: () => void;
    onDelete: (id: string) => void;
 }) {
+   const categoryTotals = useMemo(() => financeCategoryTotals(transactions, toUzs), [transactions, toUzs]);
+   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
    const items = budgets.map((budget) => {
-      const category = categories.find((item) => item.id === budget.categoryId);
-      const actual = transactions
-         .filter(
-            (transaction) =>
-               transaction.categoryId === budget.categoryId ||
-               transaction.parentCategoryId === budget.categoryId,
-         )
-         .reduce((sum, transaction) => sum + toUzs(transaction), 0);
+      const category = categoryById.get(budget.categoryId);
+      const actual = categoryTotals.get(budget.categoryId) || 0;
       const planned = planToUzs(budget);
       return { budget, category, actual, planned, progress: planned ? (actual / planned) * 100 : 0 };
    });

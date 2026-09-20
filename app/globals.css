@@ -282,8 +282,32 @@ input, select, textarea {
    color-scheme: inherit;
 }
 
+/* One-shot entrances avoid persistent animation work and preserve fixed dialogs. */
+@keyframes workspace-enter {
+   from { opacity: .45; }
+   to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+   .workspace-content > * { animation: workspace-enter 220ms ease-out; }
+   .motion-stagger > * { animation: workspace-enter 300ms ease-out backwards; }
+   .motion-stagger > :nth-child(2) { animation-delay: 40ms; }
+   .motion-stagger > :nth-child(3) { animation-delay: 80ms; }
+   .motion-stagger > :nth-child(4) { animation-delay: 120ms; }
+   .surface-lift { transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
+   .motion-action, .theme-toggle { transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease, color 180ms ease; }
+   .motion-action svg, .theme-toggle svg { transition: transform 180ms ease; }
+   .motion-action:active, .theme-toggle:active { transform: scale(.97); }
+   @media (hover: hover) and (pointer: fine) {
+      .surface-lift:hover { transform: translateY(-2px); border-color: #34d39970; box-shadow: 0 8px 24px rgb(15 23 42 / .08); }
+      .motion-action:hover svg { transform: translateX(3px); }
+      .theme-toggle:hover svg { transform: rotate(12deg); }
+   }
+}
+
 @media (prefers-reduced-motion: reduce) {
-   .skeleton-shimmer {
+   .skeleton-shimmer, .animate-pulse, .animate-spin {
       animation: none;
    }
+   .app-shell :is(a, button, aside), .theme-toggle { transition: none; }
 }

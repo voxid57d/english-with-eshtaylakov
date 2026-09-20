@@ -15,6 +15,7 @@ type DashboardViewer = {
    user: User;
    fullName: string | null;
    roleLabel: string | null;
+   permissions: Record<string, unknown>;
 };
 
 type PendingViewer = {
@@ -27,7 +28,7 @@ const DashboardContent = memo(function DashboardContent({
 }: {
    children: React.ReactNode;
 }) {
-   return <section className="min-w-0 flex-1 p-4 md:p-6 space-y-6">{children}</section>;
+   return <section className="workspace-content min-w-0 flex-1 p-4 md:p-6 space-y-6">{children}</section>;
 });
 
 export default function DashboardLayout({
@@ -76,6 +77,7 @@ export default function DashboardLayout({
          const authUser = data.user;
          let fullName: string | null = null;
          let roleLabel: string | null = null;
+         let permissions: Record<string, unknown> = {};
          let pendingMessage: string | null = null;
 
          try {
@@ -89,6 +91,7 @@ export default function DashboardLayout({
             if (response.ok) {
                fullName = payload.staff?.fullName ?? null;
                roleLabel = payload.staff?.roleLabel ?? null;
+               permissions = payload.permissions || {};
             } else {
                console.error("Error loading staff profile:", payload.error);
                pendingMessage =
@@ -119,6 +122,7 @@ export default function DashboardLayout({
             user: authUser,
             fullName,
             roleLabel,
+            permissions,
          });
          setPendingViewer(null);
          setIsLoadingUser(false);
@@ -187,7 +191,7 @@ export default function DashboardLayout({
    }
 
    return (
-      <main className="min-h-screen bg-slate-950 text-white flex flex-col">
+      <main className="app-shell min-h-screen bg-slate-950 text-white flex flex-col">
          <Navbar
             user={viewer.user}
             username={viewer.fullName ?? undefined}
@@ -198,6 +202,7 @@ export default function DashboardLayout({
 
          <div className="flex flex-1">
             <Sidebar
+               permissions={viewer.permissions}
                isOpenOnMobile={isSidebarOpen}
                closeMobile={handleCloseSidebar}
             />

@@ -1,14 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { dailyAudienceTotals, growthBetween, platformSeries, type MarketingCentre, type MarketingEntry, type MarketingPlatform } from "@/lib/marketingMetrics";
 import styles from "./marketing.module.css";
 
 const format = (value: number) => value.toLocaleString("en-US");
-const compact = (value: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+const compactFormatter = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+const compact = (value: number) => compactFormatter.format(value);
+const emptyPlatforms: MarketingPlatform[] = [];
 const wrap = (text: string, length: number) => text.match(new RegExp(`.{1,${length}}`, "g")) || [text];
 
-export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = [], days, date, monthLabel }: {
+export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = emptyPlatforms, days, date, monthLabel }: {
    kind: "total" | "daily" | "trend" | "growth"; centres: MarketingCentre[]; entries: MarketingEntry[];
    platformId: string; platformName: string; days: string[]; date: string; monthLabel: string;
    platformLogo?: string | null; platforms?: MarketingPlatform[];
@@ -16,9 +18,9 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
    const svg = useRef<SVGSVGElement>(null);
    const [exporting, setExporting] = useState(false);
    const [error, setError] = useState("");
-   const series = platformSeries(centres, entries, platformId, days);
+   const series = useMemo(() => platformSeries(centres, entries, platformId, days), [centres, entries, platformId, days]);
    const isDaily = kind === "daily" || kind === "total";
-   const totals = new Map(dailyAudienceTotals(centres, platforms, entries, date).map((centre) => [centre.id, centre]));
+   const totals = useMemo(() => new Map(dailyAudienceTotals(centres, platforms, entries, date).map((centre) => [centre.id, centre])), [centres, platforms, entries, date]);
    const chartPlatform = kind === "total" ? "All platforms" : platformName;
    const title = kind === "total" ? "Total daily audience" : kind === "daily" ? "Daily audience comparison" : kind === "trend" ? "Audience over time" : "Monthly audience growth";
    const subtitle = `${chartPlatform} · ${isDaily ? date : monthLabel}`;

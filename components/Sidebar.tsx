@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
@@ -17,7 +17,6 @@ import {
    PiUsersThreeLight,
 } from "react-icons/pi";
 import type { IconType } from "react-icons";
-import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { isErpModuleVisible } from "@/lib/erpVisibility";
 
 type ErpModule =
@@ -67,6 +66,7 @@ const links: SidebarLink[] = [
 ];
 
 type SidebarProps = {
+   permissions: Record<string, unknown>;
    isOpenOnMobile: boolean;
    closeMobile: () => void;
    isPremium?: boolean;
@@ -80,53 +80,20 @@ function CollapsedTooltip({ label }: { label: string }) {
    );
 }
 
-function Sidebar({ isOpenOnMobile, closeMobile }: SidebarProps) {
+function Sidebar({ isOpenOnMobile, closeMobile, permissions }: SidebarProps) {
    const pathname = usePathname();
    const searchParams = useSearchParams();
    const [collapsed, setCollapsed] = useState(false);
-   const [visibleModules, setVisibleModules] = useState<Set<ErpModule> | null>(null);
-
-   useEffect(() => {
-      let isActive = true;
-
-      async function loadPermissions() {
-         try {
-            const token = await getSupabaseAccessToken();
-            const response = await fetch("/api/erp/me", {
-               headers: { Authorization: `Bearer ${token}` },
-               cache: "no-store",
-            });
-            const payload = await response.json();
-
-            if (!response.ok) {
-               throw new Error(payload.error || "Failed to load Amir Temur permissions.");
-            }
-
-            if (!isActive) return;
-
-            const modules = Object.entries(payload.permissions || {})
-               .filter(([, actions]) => Array.isArray(actions) && actions.includes("view"))
-               .map(([module]) => module as ErpModule);
-            setVisibleModules(new Set(modules));
-         } catch (error) {
-            console.error("Failed to load Amir Temur sidebar permissions:", error);
-            if (isActive) {
-               setVisibleModules(new Set(["overview", "tasks"]));
-            }
-         }
-      }
-
-      void loadPermissions();
-
-      return () => {
-         isActive = false;
-      };
-   }, []);
+   const visibleModules = useMemo(() => new Set(
+      Object.entries(permissions)
+         .filter(([, actions]) => Array.isArray(actions) && actions.includes("view"))
+         .map(([module]) => module),
+   ), [permissions]);
 
    const filteredLinks = links.filter(
       (link) =>
          isErpModuleVisible(link.module) &&
-         (!visibleModules || visibleModules.has(link.module)),
+         visibleModules.has(link.module),
    );
 
    const navLinks = (

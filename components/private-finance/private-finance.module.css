@@ -473,7 +473,38 @@
    .iconButton { width: 36px; height: 36px; }
 }
 
+@keyframes financeEnter {
+   from { opacity: .45; }
+   to { opacity: 1; }
+}
+@keyframes financeDialog {
+   from { opacity: 0; transform: translateY(8px) scale(.99); }
+   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes financeBar {
+   from { transform: scaleX(0); }
+   to { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+   .content { animation: financeEnter 200ms ease-out; }
+   .summaryCard { animation: financeEnter 300ms ease-out backwards; }
+   .summaryCard:nth-child(2) { animation-delay: 35ms; }
+   .summaryCard:nth-child(3) { animation-delay: 70ms; }
+   .summaryCard:nth-child(4) { animation-delay: 105ms; }
+   .modalBackdrop { animation: financeEnter 160ms ease-out; }
+   .modal, .toast { animation: financeDialog 200ms ease-out; }
+   .progressTrack > span, .planTrack > span { transform-origin: left; animation: financeBar 380ms ease-out; }
+   .overviewPanel, .accountCard, .planCard { transition: border-color 180ms ease, box-shadow 180ms ease; }
+   .transactionRow { transition: background-color 150ms ease; }
+   .expandButton svg { transition: transform 180ms ease; }
+   .primaryButton:active:not(:disabled), .addButton:active:not(:disabled), .secondaryButton:active:not(:disabled) { transform: translateY(1px); }
+   @media (hover: hover) and (pointer: fine) {
+      .overviewPanel:hover, .accountCard:hover, .planCard:hover { border-color: #bac9bc; box-shadow: 0 6px 20px rgba(36,49,40,.045); }
+      .transactionRow:hover { background: rgba(49,95,72,.035); }
+   }
+}
 @media (prefers-reduced-motion: reduce) {
+   .financeApp *, .gate * { animation: none !important; transition: none !important; }
    .summaryCard,
    .summaryIcon { transition: none; }
    .summaryCard:hover,

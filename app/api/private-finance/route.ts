@@ -418,6 +418,7 @@ export async function GET(req: Request) {
       const categoryRows = (categoryResult.data || []) as CategoryRow[];
       const categories = new Map(categoryRows.map((category) => [category.id, category]));
       const debtRows = (debtResult.data || []) as DebtRow[];
+      const debtsById = new Map(debtRows.map((debt) => [debt.id, debt]));
       const debtPaymentRows = (debtPaymentResult.data || []) as DebtPaymentRow[];
       const paidByDebt = new Map<string, number>();
       for (const payment of debtPaymentRows) {
@@ -466,7 +467,7 @@ export async function GET(req: Request) {
       }
 
       for (const payment of debtPaymentRows) {
-         const debt = debtRows.find((item) => item.id === payment.debt_id);
+         const debt = debtsById.get(payment.debt_id);
          if (!debt || !balances.has(payment.account_id)) continue;
          const direction = debt.direction === "receivable" ? 1 : -1;
          balances.set(

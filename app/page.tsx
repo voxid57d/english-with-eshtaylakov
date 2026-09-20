@@ -80,18 +80,18 @@ export default function HomePage() {
 
                   <Link
                      href="/login"
-                     className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
+                     className="motion-action inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
                      Staff login
                      <PiArrowRightLight size={18} />
                   </Link>
                </div>
 
-               <div className="grid grid-cols-1 gap-3">
+               <div className="motion-stagger grid grid-cols-1 gap-3">
                   {visibleHighlights.map((item) => {
                      const Icon = item.icon;
 
                      return (
-                        <div key={item.label} className="rounded-lg border border-slate-800 bg-slate-900/60 p-5">
+                        <div key={item.label} className="surface-lift rounded-lg border border-slate-800 bg-slate-900/60 p-5">
                            <div className="flex items-center gap-3">
                               <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-200">
                                  <Icon size={23} />
