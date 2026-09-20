@@ -249,6 +249,32 @@ test("platform logos accept bounded PNG data and reject external images, SVGs, a
    assert.throws(() => logos.validatePlatformLogo(`data:image/png;base64,${oversized.toString("base64")}`));
 });
 
+test("centre checkboxes exclude centres from every chart and export while allowing an empty selection", () => {
+   const Chart = load("components/marketing/MarketingChart.tsx", {
+      react: React, "react/jsx-runtime": jsxRuntime,
+      "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+   }).default;
+   const Charts = load("components/marketing/MarketingCharts.tsx", {
+      react: React, "react/jsx-runtime": jsxRuntime,
+      "./MarketingChart": { default: Chart }, "./marketing.module.css": { default: {} },
+   }).default;
+   const centres = [{ id: centre_id, name: "Visible centre", color: "#10b981" }, { id: "hidden", name: "Hidden centre", color: "#6366f1" }];
+   const platform = { id: platform_id, name: "Telegram" };
+   const props = { centres, platform, platforms: [platform], days: monthDays("2026-09"), date: "2026-09-14", monthLabel: "September 2026", onToggle: () => {},
+      entries: [change(100), change(120, "2026-09-15"), { ...change(99999), centre_id: "hidden" }, { ...change(199999, "2026-09-15"), centre_id: "hidden" }] };
+   const html = renderToStaticMarkup(React.createElement(Charts, { ...props, excluded: new Set(["hidden"]) }));
+   assert.equal((html.match(/type="checkbox"/g) || []).length, 2);
+   const charts = [...html.matchAll(/<svg[\s\S]*?<\/svg>/g)].map((match) => match[0]);
+   assert.equal(charts.length, 4);
+   for (const chart of charts) {
+      assert.match(chart, /Visible centre/);
+      assert.doesNotMatch(chart, /Hidden centre|99,999|199,999/);
+   }
+   const empty = renderToStaticMarkup(React.createElement(Charts, { ...props, excluded: new Set(centres.map((centre) => centre.id)) }));
+   assert.match(empty, /Select at least one learning centre/);
+   assert.doesNotMatch(empty, /<svg|Export JPG/);
+});
+
 test("platform create, replace, remove, and name-only edits preserve intended logo state", async () => {
    for (const body of [
       { action: "platform", name: "Telegram", logo_data_url: logo },

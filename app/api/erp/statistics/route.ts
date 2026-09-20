@@ -46,6 +46,12 @@ export async function POST(req: Request) {
    try {
       const { user } = await requireErpPermission(req, "statistics", "manage");
       const body = await req.json();
+      if (body?.action === "deleteCategory") {
+         if (typeof body.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.id)) throw new Error("Choose a valid category.");
+         const { error } = await supabaseAdmin.rpc("delete_statistics_category", { target_category_id: body.id });
+         if (error) throw databaseError(error);
+         return NextResponse.json({ ok: true });
+      }
       if (body?.action === "saveEntries") {
          const changes = validateStatisticChanges(body.changes);
          const { error } = await supabaseAdmin.rpc("save_statistics_entries", { changes, actor: user.id });

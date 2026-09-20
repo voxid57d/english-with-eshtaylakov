@@ -1,4 +1,5 @@
 .nameField { flex: 2; min-width: 220px; }
+.deleteButton { color: #ef4444; border-color: #ef444460; }
 .table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: fixed; }
 .table th, .table td { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .table thead th { position: sticky; top: 0; z-index: 3; min-width: 180px; width: 180px; max-width: 180px; padding: 15px 14px; background: var(--panel); text-align: left; font-weight: 600; overflow-wrap: anywhere; vertical-align: top; }

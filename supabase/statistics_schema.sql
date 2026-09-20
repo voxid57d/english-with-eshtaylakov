@@ -58,4 +58,19 @@ end;
 $$;
 revoke all on function public.save_statistics_entries(jsonb, uuid) from public, anon, authenticated;
 grant execute on function public.save_statistics_entries(jsonb, uuid) to service_role;
+
+-- Lock the parent before deleting its observations, so concurrent saves cannot
+-- create a new observation between the two deletes. Both deletes are atomic.
+create or replace function public.delete_statistics_category(target_category_id uuid)
+returns boolean language plpgsql set search_path = public as $$
+begin
+   perform id from public.statistics_categories where id = target_category_id for update;
+   if not found then return false; end if;
+   delete from public.statistics_entries where category_id = target_category_id;
+   delete from public.statistics_categories where id = target_category_id;
+   return true;
+end;
+$$;
+revoke all on function public.delete_statistics_category(uuid) from public, anon, authenticated;
+grant execute on function public.delete_statistics_category(uuid) to service_role;
 commit;

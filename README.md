@@ -26,12 +26,23 @@ The daily statistics workspace lives at `/dashboard/statistics` and appears as
 3. Refresh the dashboard. Admin, branch manager, and sales manager roles have
    view/manage access by default; configure other roles in Settings.
 
+To import the supplied September 2026 screenshots, run
+`supabase/statistics_import_september_2026.sql` after the Statistics schema. It
+creates 20 categories and imports 312 observations for September 2–18. Blank
+cells remain unrecorded. Existing categories and figures are preserved on reruns;
+the final result reports how many observations were inserted or already present.
+
 Use **Categories** to add or edit a name, chart color, and unit (numbers, UZS,
 USD, or percent). Each category is a column and every day of the selected month
 is a row. Enter figures manually or paste a rectangular numeric range from a
 spreadsheet without its headers or date column. Grouped thousands, negative
 numbers, and up to two decimal places are supported. Blank means unrecorded;
 zero is a real observation. Clearing a cell removes it on save.
+
+To delete a category, select it under **Categories**, click **Delete category**,
+and confirm. This permanently removes its observations across all months and its
+unsaved entries; other categories are unaffected. Rerun `statistics_schema.sql`
+to install the atomic deletion function on an existing database.
 
 **Save changes** saves pending entries across months in one transaction (up to
 5,000 cells), preserving edits after a failed request and warning before leaving
@@ -88,6 +99,11 @@ and a growth leaderboard for the selected platform. Lines have gaps for missing
 days; growth compares each centre's first and last recorded dates, with those dates
 shown. Percentage growth is unavailable for a zero baseline. Charts preview valid
 unsaved entries, and each exports a standalone JPG at 2× resolution.
+
+In Marketing **Charts & insights**, use the learning-centre checkboxes to include
+or exclude centres from all four charts and their JPG exports. The selection
+persists across dates, months, platforms, and table/chart tabs while the page stays
+open. Unchecking every centre shows a prompt to select at least one.
 
 Total daily audience sums each centre's recorded counts on the selected date and
 ranks centres by that sum, regardless of the platform filter. Platform coverage

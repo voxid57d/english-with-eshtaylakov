@@ -137,6 +137,24 @@ export default function StatisticsMetrics() {
       } catch { /* A native month picker may temporarily emit an incomplete value. */ }
    }
 
+   async function deleteCategory() {
+      if (saveLock.current || !data.canManage || !editor.id) return;
+      const category = data.categories.find((item) => item.id === editor.id);
+      if (!category || !window.confirm(`Delete "${category.name}"? This permanently removes the category and all its saved figures across every month, plus its unsaved entries. This cannot be undone.`)) return;
+      saveLock.current = true; setSaving(true); setError(""); setNotice("");
+      try {
+         await request("", { action: "deleteCategory", id: category.id });
+         setData((previous) => ({ ...previous,
+            categories: previous.categories.filter((item) => item.id !== category.id),
+            entries: previous.entries.filter((entry) => entry.category_id !== category.id),
+         }));
+         setDrafts((previous) => Object.fromEntries(Object.entries(previous).filter(([, draft]) => draft.category_id !== category.id)));
+         setEditor(newCategory());
+         setNotice(`Deleted "${category.name}" and its figures.`);
+      } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not delete the category. Please retry."); }
+      finally { saveLock.current = false; setSaving(false); }
+   }
+
    return <div className={shared.workspace}>
       <header className={shared.header}>
          <div><p className={shared.eyebrow}>DAILY PERFORMANCE</p><h1>Statistics<span>.</span></h1><p className={shared.description}>Your daily figures, with a clearer view of what changes.</p></div>
@@ -158,6 +176,7 @@ export default function StatisticsMetrics() {
                <label className={shared.field}>Chart color<input type="color" value={editor.color} disabled={saving} onChange={(event) => setEditor({ ...editor, color: event.target.value })} /></label>
                <button className={shared.primary} disabled={saving}>{editor.id ? "Update category" : "Add category"}</button>
                {editor.id && <button type="button" className={shared.secondary} disabled={saving} onClick={() => setEditor(newCategory(data.categories.length))}>Cancel edit</button>}
+               {editor.id && <button type="button" className={`${shared.secondary} ${styles.deleteButton}`} disabled={saving} onClick={() => void deleteCategory()}>Delete category</button>}
             </form>
             {editor.id && <p>Changes to the name, unit, and color apply to this category across all months.</p>}
          </section>}

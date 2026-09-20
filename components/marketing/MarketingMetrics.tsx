@@ -6,7 +6,7 @@ import { preparePlatformLogo } from "@/lib/marketingLogo";
 import { CENTRE_COLORS, entryKey, monthDays, parseSubscribers, type MarketingChange, type MarketingData, type MarketingEntry } from "@/lib/marketingMetrics";
 import { installUnsavedChangesGuard } from "@/lib/unsavedChanges";
 import { useLocalToday } from "@/lib/useLocalToday";
-import MarketingChart from "./MarketingChart";
+import MarketingCharts from "./MarketingCharts";
 import PlatformProfileLink from "./PlatformProfileLink";
 import styles from "./marketing.module.css";
 
@@ -40,6 +40,7 @@ export default function MarketingMetrics() {
    const [drafts, setDrafts] = useState<Record<string, Draft>>({});
    const [saving, setSaving] = useState(false);
    const [platform, setPlatform] = useState("");
+   const [excludedCentres, setExcludedCentres] = useState<Set<string>>(new Set());
    const [sheetPlatform, setSheetPlatform] = useState("");
    const [search, setSearch] = useState("");
    const [tab, setTab] = useState<"sheet" | "charts">("sheet");
@@ -205,7 +206,11 @@ export default function MarketingMetrics() {
                         if (event.key === "Enter") { event.preventDefault(); const inputs = event.currentTarget.closest("tbody")?.querySelectorAll("input"); inputs?.[Math.min((rowIndex + 1) * days.length + dayIndex, rows.length * days.length - 1)]?.focus(); }
                      }} /></td>;
                   })}</tr>)}</tbody></table></div>{!rows.length && <p className={styles.loading}>No centres match your filter.</p>}<footer className={styles.sheetFooter}><span>{rows.length} rows · {days.length} days · Tab moves right, Enter moves down</span><span>Changes stay in this page across months until saved.</span></footer></div> :
-                  <div className={styles.charts}><div className={styles.chartFilters}><div><h2>A clearer view of your growth</h2><p>Compare audiences, follow trends, and see who is gaining ground.</p></div><div className={styles.filters}><label className={styles.field}>Platform<select value={selectedPlatform?.id || ""} onChange={(event) => setPlatform(event.target.value)}>{data.platforms.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className={styles.field}>Daily snapshot<input type="date" min={days[0]} max={days[days.length - 1]} value={date} onChange={(event) => { if (days.includes(event.target.value)) setDate(event.target.value); }} /></label></div></div>{draftCount > 0 && <p className={styles.previewNote}>Preview includes unsaved entries. Save changes before sharing your charts.{invalidCount > 0 ? " Invalid cells are excluded from the preview." : ""}</p>}<MarketingChart kind="total" centres={data.centres} platforms={data.platforms} entries={effectiveEntries} platformId="" platformName="All platforms" days={days} date={date} monthLabel={monthLabel} />{selectedPlatform && (["daily", "trend", "growth"] as const).map((kind) => <MarketingChart key={`${selectedPlatform.id}-${kind}`} kind={kind} centres={data.centres} entries={effectiveEntries} platformId={selectedPlatform.id} platformName={selectedPlatform.name} platformLogo={selectedPlatform.logo_data_url} days={days} date={date} monthLabel={monthLabel} />)}<p className={styles.chartHint}>Growth uses each centre’s first and last recorded dates this month. Date ranges appear on the chart so incomplete periods are visible. JPG exports are rendered at 2× resolution.</p></div>}
+                  <div className={styles.charts}><div className={styles.chartFilters}><div><h2>A clearer view of your growth</h2><p>Compare audiences, follow trends, and see who is gaining ground.</p></div><div className={styles.filters}><label className={styles.field}>Platform<select value={selectedPlatform?.id || ""} onChange={(event) => setPlatform(event.target.value)}>{data.platforms.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className={styles.field}>Daily snapshot<input type="date" min={days[0]} max={days[days.length - 1]} value={date} onChange={(event) => { if (days.includes(event.target.value)) setDate(event.target.value); }} /></label></div></div>{draftCount > 0 && <p className={styles.previewNote}>Preview includes unsaved entries. Save changes before sharing your charts.{invalidCount > 0 ? " Invalid cells are excluded from the preview." : ""}</p>}<MarketingCharts centres={data.centres} platforms={data.platforms} entries={effectiveEntries} platform={selectedPlatform} days={days} date={date} monthLabel={monthLabel} excluded={excludedCentres} onToggle={(id, checked) => setExcludedCentres((previous) => {
+                     const next = new Set(previous);
+                     if (checked) next.delete(id); else next.add(id);
+                     return next;
+                  })} /><p className={styles.chartHint}>Growth uses each centre’s first and last recorded dates this month. Date ranges appear on the chart so incomplete periods are visible. JPG exports are rendered at 2× resolution.</p></div>}
             </section>}
       </>}
    </div>;

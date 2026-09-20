@@ -114,6 +114,30 @@ test("batch saving uses one atomic RPC and the authenticated user, including cle
    assert.equal(calls[1].payload.changes[1].value, null);
 });
 
+test("deleting a category requires manage access and uses one atomic database operation", async () => {
+   const body = { action: "deleteCategory", id: categoryA.id };
+   const denied = apiHarness({ deny: true });
+   assert.equal((await denied.route.POST({ json: async () => body })).status, 403);
+   assert.equal(denied.calls.length, 1);
+   const allowed = apiHarness();
+   assert.equal((await allowed.route.POST({ json: async () => body })).status, 200);
+   assert.equal(allowed.calls[0].module, "statistics");
+   assert.equal(allowed.calls[0].action, "manage");
+   assert.equal(allowed.calls.length, 2);
+   assert.equal(allowed.calls[1].name, "delete_statistics_category");
+   assert.equal(allowed.calls[1].payload.target_category_id, categoryA.id);
+});
+
+test("invalid category deletion never reaches storage and failed deletion is not reported as success", async () => {
+   const invalid = apiHarness();
+   assert.equal((await invalid.route.POST({ json: async () => ({ action: "deleteCategory", id: "bad" }) })).status, 400);
+   assert.equal(invalid.calls.length, 1);
+   const failed = apiHarness({ dbError: { code: "PGRST202" } });
+   const response = await failed.route.POST({ json: async () => ({ action: "deleteCategory", id: categoryA.id }) });
+   assert.equal(response.status, 400);
+   assert.match(response.body.error, /statistics_schema.sql/);
+});
+
 test("invalid writes never reach the database and migration failures are surfaced", async () => {
    const invalid = apiHarness();
    assert.equal((await invalid.route.POST({ json: async () => ({ action: "saveEntries", changes: [entry("wrong")] }) })).status, 400);
