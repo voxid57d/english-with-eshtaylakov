@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import {
    PiArchiveLight,
    PiAirplaneLight,
@@ -8,6 +8,7 @@ import {
    PiBankLight,
    PiBowlFoodLight,
    PiCalendarBlankLight,
+   PiCaretDownLight,
    PiCaretLeftLight,
    PiCaretRightLight,
    PiChartDonutLight,
@@ -39,6 +40,7 @@ import {
 import type { IconType } from "react-icons";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { getLocalDateString } from "@/lib/localDate";
+import { compareFinanceMonths, type financeComparisonPeriod } from "@/lib/financeComparison";
 import { supabase } from "@/lib/supabaseClient";
 import type {
    FinanceAccountType,
@@ -141,6 +143,8 @@ type ExchangeRate = {
 } | null;
 
 type FinancePayload = {
+   comparisonPeriod: ReturnType<typeof financeComparisonPeriod>;
+   previousTransactions: FinanceTransaction[];
    user: { id: string; email: string | null };
    accounts: Account[];
    categories: Category[];
@@ -258,6 +262,7 @@ export default function PrivateFinanceApp() {
    const [modal, setModal] = useState<Modal>(null);
    const [categoryParent, setCategoryParent] = useState<Category | null>(null);
    const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null);
+   const [transactionToEdit, setTransactionToEdit] = useState<FinanceTransaction | null>(null);
    const [debtDirection, setDebtDirection] = useState<FinanceDebtDirection>("receivable");
    const [debtToPay, setDebtToPay] = useState<Debt | null>(null);
    const [month, setMonth] = useState(currentMonth);
@@ -474,6 +479,8 @@ export default function PrivateFinanceApp() {
                   totals={totals}
                   accounts={payload.accounts}
                   transactions={payload.transactions}
+                  comparisonPeriod={payload.comparisonPeriod}
+                  previousTransactions={payload.previousTransactions}
                   categories={payload.categories}
                   budgets={payload.budgets}
                   displayMoney={displayMoney}
@@ -483,6 +490,7 @@ export default function PrivateFinanceApp() {
                   onTransfer={() => setModal("transfer")}
                   onViewAccounts={() => setView("accounts")}
                   onViewAll={() => setView("transactions")}
+                  onEdit={(transaction) => { setTransactionToEdit(transaction); setModal("transaction"); }}
                />
             )}
             {view === "accounts" && (
@@ -508,6 +516,7 @@ export default function PrivateFinanceApp() {
             {view === "transactions" && (
                <Transactions
                   transactions={filteredTransactions}
+                  onEdit={(transaction) => { setTransactionToEdit(transaction); setModal("transaction"); }}
                   filter={filter}
                   setFilter={setFilter}
                   displayMoney={displayMoney}
@@ -584,11 +593,12 @@ export default function PrivateFinanceApp() {
 
          {modal === "transaction" && (
             <TransactionModal
+               transaction={transactionToEdit}
                accounts={payload.accounts}
                categories={payload.categories}
-               rate={rate}
+               rate={payload.exchangeRate?.rate || 0}
                request={request}
-               close={() => setModal(null)}
+               close={() => { setModal(null); setTransactionToEdit(null); }}
                refresh={loadData}
                showMessage={setMessage}
             />
@@ -894,6 +904,53 @@ function Debts({
    );
 }
 
+function OverviewPanel({
+   label,
+   title,
+   total,
+   count,
+   action,
+   children,
+}: {
+   label: string;
+   title: string;
+   total?: string;
+   count: number;
+   action?: ReactNode;
+   children: (limit: number) => ReactNode;
+}) {
+   const [expanded, setExpanded] = useState(false);
+   const contentId = useId();
+   const previewCount = 3;
+
+   return (
+      <article className={`${styles.panel} ${styles.overviewPanel}`}>
+         <div className={styles.overviewPanelHeader}>
+            <div className={styles.overviewPanelLabel}>
+               <p className={styles.eyebrow}>{label}</p>
+               {total && <span className={styles.panelTotal}>{total}</span>}
+               {action}
+            </div>
+            <h2>{title}</h2>
+         </div>
+         <div id={contentId}>{children(expanded ? count : previewCount)}</div>
+         {count > previewCount && (
+            <button
+               type="button"
+               className={styles.expandButton}
+               aria-expanded={expanded}
+               aria-controls={contentId}
+               aria-label={`${expanded ? "Show less" : `Show all ${count}`} ${label.toLowerCase()}`}
+               onClick={() => setExpanded((value) => !value)}
+            >
+               {expanded ? "Show less" : `Show all (${count})`}
+               <PiCaretDownLight aria-hidden="true" />
+            </button>
+         )}
+      </article>
+   );
+}
+
 function Overview({
    totals,
    accounts,
@@ -907,6 +964,9 @@ function Overview({
    onTransfer,
    onViewAccounts,
    onViewAll,
+   onEdit,
+   comparisonPeriod,
+   previousTransactions,
 }: {
    totals: { expense: number; income: number; savings: number; available: number };
    accounts: Account[];
@@ -920,6 +980,9 @@ function Overview({
    onTransfer: () => void;
    onViewAccounts: () => void;
    onViewAll: () => void;
+   onEdit: (transaction: FinanceTransaction) => void;
+   comparisonPeriod: FinancePayload["comparisonPeriod"];
+   previousTransactions: FinanceTransaction[];
 }) {
    const expenseByCategory = categories
       .filter(
@@ -961,7 +1024,7 @@ function Overview({
       .filter((budget) => categories.find((category) => category.id === budget.categoryId)?.entryType === "expense")
       .reduce((sum, budget) => sum + planToUzs(budget), 0);
 
-      return (
+   return (
       <div className={styles.content}>
          <AccountStrip accounts={accounts} onTransfer={onTransfer} onViewAll={onViewAccounts} />
          <section className={styles.summaryGrid}>
@@ -971,58 +1034,85 @@ function Overview({
             <SummaryCard label="Saved" value={displayMoney(totals.savings)} note={totals.income ? `${Math.round((totals.savings / totals.income) * 100)}% of income` : "Start with your first deposit"} icon={PiPiggyBankLight} tone="blue" />
          </section>
 
+         <MonthlyComparison transactions={transactions} previousTransactions={previousTransactions} period={comparisonPeriod} displayMoney={displayMoney} />
          <section className={styles.dashboardGrid}>
-            <div className={styles.breakdownColumn}>
-               <article className={styles.panel}>
-                  <div className={styles.panelHeader}>
-                     <div><p className={styles.eyebrow}>Spending</p><h2>Where your money went</h2></div>
-                     <span className={styles.panelTotal}>{displayMoney(totals.expense)}</span>
-                  </div>
-                  {expenseByCategory.length ? (
-                     <div className={styles.breakdownList}>
-                        {expenseByCategory.slice(0, 6).map((category) => (
-                           <div key={category.id} className={styles.breakdownRow}>
-                              <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}><CategoryIcon icon={category.icon} /></span>
-                              <div className={styles.breakdownBody}>
-                                 <div><b>{category.name}</b><span>{displayMoney(category.total)}</span></div>
-                                 <div className={styles.progressTrack}><span style={{ width: `${(category.total / biggestExpense) * 100}%`, background: category.color }} /></div>
-                              </div>
+            <OverviewPanel label="Spending" title="Where your money went" total={displayMoney(totals.expense)} count={expenseByCategory.length}>
+               {(limit) => expenseByCategory.length ? (
+                  <div className={styles.breakdownList}>
+                     {expenseByCategory.slice(0, limit).map((category) => (
+                        <div key={category.id} className={styles.breakdownRow}>
+                           <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}><CategoryIcon icon={category.icon} /></span>
+                           <div className={styles.breakdownBody}>
+                              <div><b>{category.name}</b><span>{displayMoney(category.total)}</span></div>
+                              <div className={styles.progressTrack}><span style={{ width: `${(category.total / biggestExpense) * 100}%`, background: category.color }} /></div>
                            </div>
-                        ))}
-                     </div>
-                  ) : <EmptyState icon={PiChartDonutLight} title="Nothing spent yet" text="Your category breakdown will appear here." action={onAdd} actionLabel="Add expense" />}
-               </article>
-
-               <article className={styles.panel}>
-                  <div className={styles.panelHeader}>
-                     <div><p className={styles.eyebrow}>Income</p><h2>Where your money came from</h2></div>
-                     <span className={styles.panelTotal}>{displayMoney(totals.income)}</span>
+                        </div>
+                     ))}
                   </div>
-                  {incomeByCategory.length ? (
-                     <div className={styles.breakdownList}>
-                        {incomeByCategory.slice(0, 6).map((category) => (
-                           <div key={category.id} className={styles.breakdownRow}>
-                              <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}><CategoryIcon icon={category.icon} /></span>
-                              <div className={styles.breakdownBody}>
-                                 <div><b>{category.name}</b><span>{displayMoney(category.total)}</span></div>
-                                 <div className={styles.progressTrack}><span style={{ width: `${(category.total / biggestIncome) * 100}%`, background: category.color }} /></div>
-                              </div>
-                           </div>
-                        ))}
-                     </div>
-                  ) : <EmptyState icon={PiTrendUpLight} title="No income yet" text="Income sources will appear here." action={onAdd} actionLabel="Add income" />}
-               </article>
-            </div>
+               ) : <EmptyState icon={PiChartDonutLight} title="Nothing spent yet" text="Your category breakdown will appear here." action={onAdd} actionLabel="Add expense" />}
+            </OverviewPanel>
 
-            <article className={styles.panel}>
-               <div className={styles.panelHeader}>
-                  <div><p className={styles.eyebrow}>Activity</p><h2>Recent transactions</h2></div>
-                  <button className={styles.textButton} onClick={onViewAll}>View all</button>
-               </div>
-               {transactions.length ? <TransactionList transactions={transactions.slice(0, 6)} displayMoney={displayMoney} toUzs={toUzs} /> : <EmptyState icon={PiArrowsLeftRightLight} title="Your ledger is empty" text="Add income or an expense to begin." action={onAdd} actionLabel="Add transaction" />}
-            </article>
+            <OverviewPanel label="Income" title="Where your money came from" total={displayMoney(totals.income)} count={incomeByCategory.length}>
+               {(limit) => incomeByCategory.length ? (
+                  <div className={styles.breakdownList}>
+                     {incomeByCategory.slice(0, limit).map((category) => (
+                        <div key={category.id} className={styles.breakdownRow}>
+                           <span className={styles.categoryGlyph} style={{ background: `${category.color}1A`, color: category.color }}><CategoryIcon icon={category.icon} /></span>
+                           <div className={styles.breakdownBody}>
+                              <div><b>{category.name}</b><span>{displayMoney(category.total)}</span></div>
+                              <div className={styles.progressTrack}><span style={{ width: `${(category.total / biggestIncome) * 100}%`, background: category.color }} /></div>
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+               ) : <EmptyState icon={PiTrendUpLight} title="No income yet" text="Income sources will appear here." action={onAdd} actionLabel="Add income" />}
+            </OverviewPanel>
+
+            <OverviewPanel label="Activity" title="Recent transactions" count={transactions.length} action={<button className={styles.textButton} onClick={onViewAll}>View all</button>}>
+               {(limit) => transactions.length ? <TransactionList transactions={transactions.slice(0, limit)} displayMoney={displayMoney} toUzs={toUzs} onEdit={onEdit} /> : <EmptyState icon={PiArrowsLeftRightLight} title="Your ledger is empty" text="Add income or an expense to begin." action={onAdd} actionLabel="Add transaction" />}
+            </OverviewPanel>
          </section>
       </div>
+   );
+}
+
+function MonthlyComparison({ transactions, previousTransactions, period, displayMoney }: {
+   transactions: FinanceTransaction[];
+   previousTransactions: FinanceTransaction[];
+   period: FinancePayload["comparisonPeriod"];
+   displayMoney: (amount: number) => string;
+}) {
+   if (!period.available) return null;
+   const comparison = compareFinanceMonths(transactions, previousTransactions, period);
+   const range = (start: string, end: string) => `${shortDate(start)} – ${shortDate(end)}`;
+   return (
+      <section className={`${styles.panel} ${styles.comparisonPanel}`}>
+         <div className={styles.panelHeader}>
+            <div><p className={styles.eyebrow}>Monthly comparison</p><h2>{period.partial ? "This month so far" : "Compared with last month"}</h2>
+               <p className={styles.comparisonPeriod}>{range(period.start, period.end)} vs {range(period.previousStart, period.previousEnd)}{period.partial ? " · Matching days" : " · Full months"}</p>
+            </div>
+         </div>
+         <div className={styles.comparisonGrid}>
+            {(["expense", "income", "savings"] as const).map((type) => {
+               const current = comparison.current[type];
+               const previous = comparison.previous[type];
+               const difference = current - previous;
+               const increased = difference > 0;
+               const favorable = type === "expense" ? !increased : increased;
+               const change = previous > 0 ? `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(Math.abs(difference / previous) * 100)}% ${increased ? "more" : "less"}` : "No previous amount recorded";
+               return (
+                  <div className={styles.comparisonMetric} key={type}>
+                     <span>{TYPE_META[type].label}</span><strong>{displayMoney(current)}</strong>
+                     <small>Previous: {displayMoney(previous)}</small>
+                     <b className={difference === 0 || previous === 0 ? styles.comparisonNeutral : favorable ? styles.comparisonPositive : styles.comparisonNegative}>
+                        {difference === 0 ? "No change" : `${difference > 0 ? "+" : "−"}${displayMoney(Math.abs(difference))} · ${change}`}
+                     </b>
+                  </div>
+               );
+            })}
+         </div>
+         {comparison.changes.length > 0 && <div className={styles.comparisonChanges}><span>Biggest spending changes</span>{comparison.changes.slice(0, 3).map((item) => <div key={item.id}><b>{item.name}</b><span className={item.difference > 0 ? styles.comparisonNegative : styles.comparisonPositive}>{item.difference > 0 ? "+" : "−"}{displayMoney(Math.abs(item.difference))}</span></div>)}</div>}
+      </section>
    );
 }
 
@@ -1031,11 +1121,13 @@ function TransactionList({
    displayMoney,
    toUzs,
    onDelete,
+   onEdit,
 }: {
    transactions: FinanceTransaction[];
    displayMoney: (amount: number) => string;
    toUzs: (transaction: FinanceTransaction) => number;
    onDelete?: (id: string) => void;
+   onEdit?: (transaction: FinanceTransaction) => void;
 }) {
    return (
       <div className={styles.transactionList}>
@@ -1046,7 +1138,10 @@ function TransactionList({
                   <span className={styles.categoryGlyph} style={{ background: `${transaction.categoryColor}1A`, color: transaction.categoryColor }}><CategoryIcon icon={transaction.categoryIcon} /></span>
                   <div className={styles.transactionName}><b>{transaction.parentCategoryName ? `${transaction.parentCategoryName} · ${transaction.categoryName}` : transaction.categoryName}</b><small>{transaction.accountName} · {transaction.note || meta.shortLabel} · {shortDate(transaction.entryDate)}</small></div>
                   <div className={`${styles.transactionAmount} ${styles[`amount_${transaction.entryType}`]}`}><b>{meta.sign}{displayMoney(toUzs(transaction))}</b>{transaction.currency === "USD" && <small>${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(transaction.amount)} original</small>}</div>
-                  {onDelete && <button className={styles.iconButton} onClick={() => onDelete(transaction.id)} title="Delete transaction"><PiTrashLight /></button>}
+                  {(onEdit || onDelete) && <div className={styles.transactionActions}>
+                     {onEdit && <button className={styles.iconButton} onClick={() => onEdit(transaction)} title="Edit transaction" aria-label={`Edit ${transaction.categoryName} transaction`}><PiPencilSimpleLight /></button>}
+                     {onDelete && <button className={styles.iconButton} onClick={() => onDelete(transaction.id)} title="Delete transaction" aria-label={`Delete ${transaction.categoryName} transaction`}><PiTrashLight /></button>}
+                  </div>}
                </div>
             );
          })}
@@ -1062,6 +1157,7 @@ function Transactions({
    toUzs,
    onAdd,
    onDelete,
+   onEdit,
 }: {
    transactions: FinanceTransaction[];
    filter: FinanceEntryType | "all";
@@ -1070,6 +1166,7 @@ function Transactions({
    toUzs: (transaction: FinanceTransaction) => number;
    onAdd: () => void;
    onDelete: (id: string) => void;
+   onEdit: (transaction: FinanceTransaction) => void;
 }) {
    return (
       <div className={styles.content}>
@@ -1079,7 +1176,7 @@ function Transactions({
             <span>{transactions.length} {transactions.length === 1 ? "entry" : "entries"}</span>
          </div>
          <section className={styles.panel}>
-            {transactions.length ? <TransactionList transactions={transactions} displayMoney={displayMoney} toUzs={toUzs} onDelete={onDelete} /> : <EmptyState icon={PiArrowsLeftRightLight} title="No matching transactions" text="Try another filter or add a new entry." action={onAdd} actionLabel="Add transaction" />}
+            {transactions.length ? <TransactionList transactions={transactions} displayMoney={displayMoney} toUzs={toUzs} onDelete={onDelete} onEdit={onEdit} /> : <EmptyState icon={PiArrowsLeftRightLight} title="No matching transactions" text="Try another filter or add a new entry." action={onAdd} actionLabel="Add transaction" />}
          </section>
       </div>
    );
@@ -1253,7 +1350,8 @@ function TypePicker({ value, onChange }: { value: FinanceEntryType; onChange: (v
    );
 }
 
-function TransactionModal({ accounts, categories, rate, request, close, refresh, showMessage }: {
+function TransactionModal({ transaction, accounts, categories, rate, request, close, refresh, showMessage }: {
+   transaction: FinanceTransaction | null;
    accounts: Account[];
    categories: Category[];
    rate: number;
@@ -1262,28 +1360,32 @@ function TransactionModal({ accounts, categories, rate, request, close, refresh,
    refresh: () => Promise<void>;
    showMessage: (message: string) => void;
 }) {
-   const [type, setType] = useState<FinanceEntryType>("expense");
-   const accountOptions = accounts.filter((account) => account.active);
-   const [accountId, setAccountId] = useState(accountOptions[0]?.id || "");
-   const [parentCategoryId, setParentCategoryId] = useState("");
-   const [subcategoryId, setSubcategoryId] = useState("");
-   const [amount, setAmount] = useState("");
-   const [date, setDate] = useState(getLocalDateString);
-   const [note, setNote] = useState("");
+   const [type, setType] = useState<FinanceEntryType>(transaction?.entryType || "expense");
+   const accountOptions = accounts.filter((account) => account.active || account.id === transaction?.accountId);
+   const [accountId, setAccountId] = useState(transaction ? transaction.accountId || "" : accountOptions[0]?.id || "");
+   const [parentCategoryId, setParentCategoryId] = useState(transaction?.parentCategoryId || transaction?.categoryId || "");
+   const [subcategoryId, setSubcategoryId] = useState(transaction?.parentCategoryId ? transaction.categoryId : "");
+   const [amount, setAmount] = useState(transaction ? String(transaction.amount) : "");
+   const [date, setDate] = useState(transaction?.entryDate || getLocalDateString());
+   const [note, setNote] = useState(transaction?.note || "");
+   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+   const allowUnassigned = !!transaction && transaction.accountId === null;
    const [saving, setSaving] = useState(false);
    const parentOptions = categories.filter(
       (category) =>
          category.entryType === type &&
-         category.active &&
+         (category.active || category.id === transaction?.categoryId || category.id === transaction?.parentCategoryId) &&
          category.parentCategoryId === null,
    );
    const subcategoryOptions = categories.filter(
       (category) =>
          category.entryType === type &&
-         category.active &&
+         (category.active || category.id === transaction?.categoryId) &&
          category.parentCategoryId === parentCategoryId,
    );
    const selectedAccount = accountOptions.find((account) => account.id === accountId);
+   const currency = selectedAccount?.currency || transaction?.currency;
+   const savedRate = transaction && currency === transaction.currency ? transaction.exchangeRateToUzs : rate;
    const categoryId = subcategoryId || parentCategoryId;
 
    useEffect(() => {
@@ -1302,26 +1404,29 @@ function TransactionModal({ accounts, categories, rate, request, close, refresh,
       event.preventDefault();
       try {
          setSaving(true);
-         await request("POST", { action: "transaction", accountId, categoryId, amount, entryDate: date, note, exchangeRateToUzs: rate });
+         setErrorMessage(null);
+         await request(transaction ? "PATCH" : "POST", { action: "transaction", id: transaction?.id, accountId, categoryId, amount, entryDate: date, note, exchangeRateToUzs: savedRate });
          close();
          await refresh();
-      } catch (error) { showMessage(error instanceof Error ? error.message : "Could not save transaction."); }
+         if (transaction) showMessage("Transaction updated.");
+      } catch (error) { setErrorMessage(error instanceof Error ? error.message : "Could not save transaction."); }
       finally { setSaving(false); }
    };
 
    return (
-      <ModalShell title="Add transaction" description="Record a movement in a few seconds." close={close}>
+      <ModalShell title={transaction ? "Edit transaction" : "Add transaction"} description={transaction ? "Update the details. Balances and monthly totals will be recalculated." : "Record a movement in a few seconds."} close={close}>
          <form onSubmit={submit} className={styles.form}>
+            {errorMessage && <p className={styles.inlineNotice} role="alert">{errorMessage}</p>}
             <TypePicker value={type} onChange={setType} />
-            <label><span>Account</span><select value={accountId} onChange={(event) => setAccountId(event.target.value)} required><option value="">Choose an account</option>{accountOptions.map((account) => <option value={account.id} key={account.id}>{account.name} · {account.currency} · {nativeMoney(account.balance, account.currency)}</option>)}</select></label>
-            {!accountOptions.length && <button type="button" className={styles.inlineNotice} disabled>Create an account before adding transactions</button>}
+            <label><span>Account</span><select value={accountId} onChange={(event) => setAccountId(event.target.value)} required={!allowUnassigned}><option value="">{allowUnassigned ? "Unassigned" : "Choose an account"}</option>{accountOptions.map((account) => <option value={account.id} key={account.id}>{account.name} · {account.currency} · {nativeMoney(account.balance, account.currency)}</option>)}</select></label>
+            {!accountOptions.length && !allowUnassigned && <button type="button" className={styles.inlineNotice} disabled>Create an account before adding transactions</button>}
             <label><span>Category</span><select value={parentCategoryId} onChange={(event) => setParentCategoryId(event.target.value)} required><option value="">Choose a category</option>{parentOptions.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
             {!parentOptions.length && <button type="button" className={styles.inlineNotice} disabled>Add a {TYPE_META[type].shortLabel.toLowerCase()} category first</button>}
             {subcategoryOptions.length > 0 && <label><span>Subcategory <em>optional</em></span><select value={subcategoryId} onChange={(event) => setSubcategoryId(event.target.value)}><option value="">No subcategory</option>{subcategoryOptions.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>}
-            <div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{selectedAccount?.currency || "—"}</div></div>
-            {selectedAccount?.currency === "USD" && <p className={styles.rateHint}>Saved using 1 USD = {new Intl.NumberFormat("en-US").format(rate)} UZS</p>}
+            <div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{currency || "—"}</div></div>
+            {currency === "USD" && <p className={styles.rateHint}>{savedRate > 0 ? `Saved using 1 USD = ${new Intl.NumberFormat("en-US").format(savedRate)} UZS` : "USD exchange rate unavailable. Please try again later."}</p>}
             <div className={styles.formGrid}><label><span>Date</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="A short reminder" /></label></div>
-            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !accountId || !categoryId}>{saving ? "Saving…" : "Save transaction"}</button></div>
+            <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || (!accountId && !allowUnassigned) || !categoryId || (currency === "USD" && savedRate <= 0)}>{saving ? "Saving…" : transaction ? "Save changes" : "Save transaction"}</button></div>
          </form>
       </ModalShell>
    );

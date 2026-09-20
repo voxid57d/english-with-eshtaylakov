@@ -177,12 +177,33 @@
 .tone_blue .summaryIcon { background: var(--blue-soft); color: var(--blue); }
 .tone_ink .summaryIcon { background: #e8e7e1; color: var(--ink); }
 
-.dashboardGrid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 14px; margin-top: 14px; }
-.breakdownColumn { display: flex; min-width: 0; flex-direction: column; gap: 14px; }
+.dashboardGrid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); align-items: start; gap: 14px; margin-top: 14px; }
 .panel { border: 1px solid var(--line); border-radius: 15px; background: var(--surface); padding: 20px; }
 .panelHeader { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .panelHeader h2 { margin: 0; font-family: Georgia, serif; font-size: 18px; font-weight: 500; }
 .panelTotal { color: var(--muted); font-size: 11px; font-weight: 700; }
+
+.overviewPanel { display: flex; min-width: 0; min-height: 330px; flex-direction: column; padding: 16px; }
+.overviewPanelHeader { min-height: 76px; margin-bottom: 8px; }
+.overviewPanelLabel { display: flex; min-height: 26px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; }
+.overviewPanelLabel .eyebrow { margin: 0; }
+.overviewPanelHeader h2 { margin: 0; font-family: Georgia, serif; font-size: 17px; font-weight: 500; }
+.overviewPanel .breakdownList { gap: 0; }
+.overviewPanel .breakdownRow { min-height: 60px; padding: 10px 0; }
+.overviewPanel .breakdownBody > div:first-child { flex-wrap: wrap; gap: 3px 8px; }
+.overviewPanel .breakdownBody b { overflow-wrap: anywhere; }
+.overviewPanel .breakdownBody span { margin-left: auto; }
+.overviewPanel .progressTrack span { margin-left: 0; }
+.overviewPanel .transactionRow { min-height: 60px; grid-template-columns: 30px minmax(0,1fr) auto auto; gap: 6px; }
+.overviewPanel .categoryGlyph { width: 30px; height: 30px; border-radius: 9px; }
+.overviewPanel .transactionName { min-width: 0; overflow-wrap: anywhere; }
+.overviewPanel .transactionName b { white-space: normal; }
+.overviewPanel .transactionAmount b { max-width: none; overflow: visible; white-space: nowrap; font-size: 10px; }
+.overviewPanel .emptyState { min-height: 180px; padding: 16px 0; }
+.expandButton { display: flex; width: 100%; align-items: center; justify-content: center; gap: 7px; margin-top: auto; border: 0; border-top: 1px solid var(--line); background: transparent; padding: 12px 0 0; color: var(--green); font-size: 11px; font-weight: 700; cursor: pointer; }
+.expandButton:hover { color: var(--ink); }
+.expandButton:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; border-radius: 4px; }
+.expandButton[aria-expanded="true"] svg { transform: rotate(180deg); }
 
 .breakdownList { display: flex; flex-direction: column; gap: 18px; }
 .breakdownRow { display: flex; align-items: center; gap: 11px; }
@@ -196,6 +217,21 @@
 .planTrack span { display: block; height: 100%; border-radius: inherit; }
 
 .transactionList { display: flex; flex-direction: column; }
+.transactionActions { display: flex; align-items: center; gap: 2px; }
+.comparisonPanel { margin-top: 14px; }
+.comparisonPeriod { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.comparisonGrid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; }
+.comparisonMetric { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
+.comparisonMetric > span { color: var(--muted); font-size: 11px; }
+.comparisonMetric > strong { font-family: Georgia,serif; font-size: 22px; font-weight: 500; overflow-wrap: anywhere; }
+.comparisonMetric > small { color: var(--muted); font-size: 10px; }
+.comparisonMetric > b { font-size: 11px; line-height: 1.5; }
+.comparisonPositive { color: var(--green); }
+.comparisonNegative { color: var(--red); }
+.comparisonNeutral { color: var(--muted); }
+.comparisonChanges { display: flex; flex-wrap: wrap; gap: 10px 20px; margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; font-size: 11px; }
+.comparisonChanges > span { color: var(--muted); }
+.comparisonChanges > div { display: flex; flex-wrap: wrap; gap: 8px; }
 .transactionRow { display: grid; grid-template-columns: 36px minmax(120px,1fr) auto auto; align-items: center; gap: 11px; border-bottom: 1px solid #eceae4; padding: 11px 0; }
 .transactionRow:last-child { border-bottom: 0; }
 .transactionName b,
@@ -412,6 +448,8 @@
 }
 
 @media (max-width: 480px) {
+   .comparisonGrid { grid-template-columns: 1fr; gap: 18px; }
+   .transactionActions { flex-direction: column; }
    .ratePill > em,
    .ratePill small { display: none; }
    .ratePill { gap: 5px; }

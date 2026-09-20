@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { financeComparisonPeriod } from "@/lib/financeComparison";
 import {
    cleanFinanceText,
    isFinanceAccountType,
@@ -309,6 +310,8 @@ export async function GET(req: Request) {
    try {
       const user = await requirePrivateFinanceUser(req);
       const period = monthBounds(new URL(req.url).searchParams.get("month"));
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tashkent", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const comparisonPeriod = financeComparisonPeriod(period.month, today);
 
       const [
          accountResult,
@@ -321,6 +324,7 @@ export async function GET(req: Request) {
          debtResult,
          debtPaymentResult,
          exchangeRate,
+         previousTransactionResult,
       ] = await Promise.all([
             supabaseAdmin
                .from("finance_accounts")
@@ -384,6 +388,12 @@ export async function GET(req: Request) {
                .order("payment_date", { ascending: false })
                .order("created_at", { ascending: false }),
             getUsdRate(),
+            supabaseAdmin
+               .from("finance_transactions")
+               .select("id, account_id, category_id, entry_type, amount, currency, exchange_rate_to_uzs, entry_date, note, created_at")
+               .eq("owner_user_id", user.id)
+               .gte("entry_date", comparisonPeriod.previousStart)
+               .lte("entry_date", comparisonPeriod.previousEnd),
          ]);
 
       if (
@@ -395,7 +405,8 @@ export async function GET(req: Request) {
          balanceTransactionResult.error ||
          balanceTransferResult.error ||
          debtResult.error ||
-         debtPaymentResult.error
+         debtPaymentResult.error ||
+         previousTransactionResult.error
       ) {
          throw new Error(
             "Finance storage is not ready. Apply supabase/private_finance_schema.sql first.",
@@ -467,6 +478,10 @@ export async function GET(req: Request) {
       return NextResponse.json({
          user: { id: user.id, email: user.email || null },
          period,
+         comparisonPeriod,
+         previousTransactions: ((previousTransactionResult.data || []) as unknown as TransactionRow[]).map(
+            (transaction) => mapTransaction(transaction, categories, accountNames),
+         ),
          accounts: accountRows.map((account) => mapAccount(account, balances.get(account.id))),
          categories: categoryRows.map(mapCategory),
          transactions: ((transactionResult.data || []) as unknown as TransactionRow[]).map(
@@ -779,6 +794,52 @@ export async function PATCH(req: Request) {
    try {
       const user = await requirePrivateFinanceUser(req);
       const body = await req.json();
+
+      if (body?.action === "transaction") {
+         const id = cleanFinanceText(body.id, 60);
+         if (!id) throw new Error("Transaction id is required.");
+         const { data: existing, error: existingError } = await supabaseAdmin
+            .from("finance_transactions")
+            .select("id, account_id, category_id, currency, exchange_rate_to_uzs")
+            .eq("id", id)
+            .eq("owner_user_id", user.id)
+            .single();
+         if (existingError || !existing) throw new Error("Choose a valid transaction.");
+         const accountId = cleanFinanceText(body.accountId, 60);
+         const categoryId = cleanFinanceText(body.categoryId, 60);
+         if (!accountId && existing.account_id) throw new Error("Choose an account.");
+         if (!categoryId) throw new Error("Choose a category.");
+         const account = accountId ? await getOwnedAccount(user.id, accountId) : null;
+         const category = await getOwnedCategory(user.id, categoryId);
+         if (account && !account.active && account.id !== existing.account_id) throw new Error("Choose an active account.");
+         if (!category.active && category.id !== existing.category_id) throw new Error("Choose an active category.");
+         const amount = requirePositiveAmount(body.amount);
+         if (amount <= 0) throw new Error("Amount must be at least 0.01.");
+         if (!isIsoDate(body.entryDate)) throw new Error("Valid transaction date is required.");
+         const currency = account?.currency || existing.currency;
+         // Editing a historical transaction must not revalue it at today's rate.
+         const exchangeRate = currency === "UZS" ? 1 : currency === existing.currency
+            ? Number(existing.exchange_rate_to_uzs)
+            : requirePositiveAmount(body.exchangeRateToUzs, "USD exchange rate");
+         const { data, error } = await supabaseAdmin
+            .from("finance_transactions")
+            .update({
+               account_id: account?.id || null,
+               category_id: category.id,
+               entry_type: category.entry_type,
+               amount,
+               currency,
+               exchange_rate_to_uzs: exchangeRate,
+               entry_date: body.entryDate,
+               note: cleanFinanceText(body.note) || null,
+            })
+            .eq("id", id)
+            .eq("owner_user_id", user.id)
+            .select("id")
+            .single();
+         if (error || !data) throw new Error("Failed to update transaction.");
+         return NextResponse.json({ ok: true });
+      }
 
       if (body?.action === "account") {
          const id = cleanFinanceText(body.id, 60);
