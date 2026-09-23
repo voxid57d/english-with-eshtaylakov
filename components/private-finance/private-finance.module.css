@@ -373,8 +373,11 @@
 .amountField { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; }
 .amountField label { min-width: 0; }
 .amountCurrency { display: grid; height: 42px; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: #efede7; padding: 0 10px; color: var(--muted); font-size: 10px; font-weight: 800; }
-.transferAccounts { display: grid; grid-template-columns: 1fr 28px 1fr; align-items: end; gap: 8px; }
-.transferAccounts > span { display: grid; height: 42px; place-items: center; color: var(--muted); font-size: 17px; }
+.transferAccounts { display: grid; grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr); align-items: end; gap: 8px; }
+.swapAccounts { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font-size: 17px; cursor: pointer; }
+.swapAccounts:hover:not(:disabled) { border-color: var(--line); background: var(--green-soft); color: var(--green); }
+.swapAccounts:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.swapAccounts:disabled { opacity: .45; cursor: not-allowed; }
 .currencySelect { display: flex; height: 42px; align-items: center; border: 1px solid var(--line); border-radius: 9px; background: #efede7; padding: 3px; }
 .currencySelect button { height: 34px; }
 .formGrid { display: grid; grid-template-columns: 1fr 1.3fr; gap: 10px; }
@@ -465,7 +468,8 @@
    .accountStripCards { grid-template-columns: 1fr 1fr; }
    .accountsToolbar { align-items: stretch; flex-direction: column; }
    .transferAccounts { grid-template-columns: 1fr; }
-   .transferAccounts > span { height: 20px; transform: rotate(90deg); }
+   .swapAccounts { justify-self: center; }
+   .swapAccounts svg { transform: rotate(90deg); }
    .iconChoices { grid-template-columns: repeat(6,1fr); }
    .gateCard { padding: 30px 20px; }
    .modalBackdrop { align-items: end; padding: 0; }

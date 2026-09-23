@@ -83,14 +83,14 @@
 .empty { text-align: center; border: 1px dashed var(--border); border-radius: 15px; padding: 70px 20px; background: var(--panel); }
 .empty p { max-width: 410px; color: var(--muted); font-size: 13px; line-height: 1.8; margin: 12px auto 23px; }
 .emptyIcon { font-size: 32px; color: #34d399; margin-bottom: 18px; }
-.charts { display: grid; gap: 20px; }
+.charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 .centrePicker { display: flex; flex-wrap: wrap; gap: 9px; border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--panel); }
 .centrePicker legend { color: var(--muted); font-size: 11px; padding: 0 7px; }
 .centrePicker label { display: flex; align-items: center; padding: 8px 10px; border-radius: 7px; background: #94a3b80a; font-size: 12px; cursor: pointer; }
 .centrePicker input { margin-right: 9px; accent-color: #10b981; }
 .centrePicker i { width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; flex-shrink: 0; }
 .chartFilters { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 5px; }
-.chartCard { border: 1px solid #263247; border-radius: 15px; background: #0b1220; overflow: hidden; }
+.chartCard { min-width: 0; border: 1px solid #263247; border-radius: 15px; background: #0b1220; overflow: hidden; }
 .chartToolbar { display: flex; justify-content: space-between; align-items: center; padding: 17px 22px; border-bottom: 1px solid #263247; gap: 12px; }
 .chartToolbar span { font-size: 9px; letter-spacing: .15em; color: #94a3b8; }
 .chartToolbar button { padding: 8px 11px; color: #d1fae5; font-size: 11px; border-radius: 7px; border: 1px solid #34d39950; background: #34d3990c; white-space: nowrap; }

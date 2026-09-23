@@ -83,7 +83,7 @@ export default function MarketingMetrics() {
    const effectiveEntries = useMemo(() => {
       const entries = new Map(data.entries.map((entry) => [entryKey(entry.centre_id, entry.platform_id, entry.entry_date), entry]));
       for (const [key, draft] of Object.entries(drafts)) {
-         if (!draft.entry_date.startsWith(month) && draft.entry_date !== previousDate(`${month}-01`)) continue;
+         if (!draft.entry_date.startsWith(month) && !(draft.entry_date >= previousDate(`${month}-01`, 7) && draft.entry_date < `${month}-01`)) continue;
          try {
             const subscribers = parseSubscribers(draft.text);
             if (subscribers === null) entries.delete(key);
@@ -138,7 +138,7 @@ export default function MarketingMetrics() {
          await request("", { action: "saveEntries", changes });
          setData((previous) => {
             const entries = new Map(previous.entries.map((entry) => [entryKey(entry.centre_id, entry.platform_id, entry.entry_date), entry]));
-            changes.filter((change) => change.entry_date.startsWith(month) || change.entry_date === previousDate(`${month}-01`)).forEach((change) => {
+            changes.filter((change) => change.entry_date.startsWith(month) || (change.entry_date >= previousDate(`${month}-01`, 7) && change.entry_date < `${month}-01`)).forEach((change) => {
                const key = entryKey(change.centre_id, change.platform_id, change.entry_date);
                if (change.subscribers === null) entries.delete(key);
                else entries.set(key, change as MarketingEntry);
@@ -210,7 +210,7 @@ export default function MarketingMetrics() {
                      const next = new Set(previous);
                      if (checked) next.delete(id); else next.add(id);
                      return next;
-                  })} /><p className={styles.chartHint}>Growth uses each centre’s first and last recorded dates this month. Date ranges appear on the chart so incomplete periods are visible. JPG exports are rendered at 2× resolution.</p></div>}
+                  })} /><p className={styles.chartHint}>The monthly audience growth chart uses each centre’s first and last recorded dates. Growth rate and the platform heatmap use the shared comparison dates. Missing counts stay unrecorded in every chart. JPG exports are rendered at 2× resolution.</p></div>}
             </section>}
       </>}
    </div>;

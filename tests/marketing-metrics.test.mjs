@@ -19,6 +19,14 @@ function load(path, modules = {}) {
 }
 const metrics = load("lib/marketingMetrics.ts");
 const logos = load("lib/marketingLogo.ts");
+const insights = load("lib/marketingInsights.ts", { "./marketingMetrics": metrics });
+const insightCharts = load("components/marketing/MarketingInsightChart.tsx", {
+   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+});
+const Insights = load("components/marketing/MarketingInsights.tsx", {
+   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingInsights": insights,
+   "./MarketingInsightChart": insightCharts, "./marketing.module.css": { default: {} },
+}).default;
 const logo = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
 const { monthDays, parseSubscribers, validateChanges, platformSeries, growthBetween } = metrics;
 const centre_id = "00000000-0000-0000-0000-000000000001";
@@ -297,7 +305,7 @@ test("centre checkboxes exclude centres from every chart and export while allowi
    }).default;
    const Charts = load("components/marketing/MarketingCharts.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "./MarketingChart": { default: Chart }, "./marketing.module.css": { default: {} },
+      "./MarketingChart": { default: Chart }, "./MarketingInsights": { default: Insights }, "./marketing.module.css": { default: {} },
    }).default;
    const centres = [{ id: centre_id, name: "Visible centre", color: "#10b981" }, { id: "hidden", name: "Hidden centre", color: "#6366f1" }];
    const platform = { id: platform_id, name: "Telegram" };
@@ -306,7 +314,7 @@ test("centre checkboxes exclude centres from every chart and export while allowi
    const html = renderToStaticMarkup(React.createElement(Charts, { ...props, excluded: new Set(["hidden"]) }));
    assert.equal((html.match(/type="checkbox"/g) || []).length, 2);
    const charts = [...html.matchAll(/<svg[\s\S]*?<\/svg>/g)].map((match) => match[0]);
-   assert.equal(charts.length, 5);
+   assert.equal(charts.length, 8); // Existing five, growth rate, heatmap, and audience share.
    for (const chart of charts) {
       assert.match(chart, /Visible centre/);
       assert.doesNotMatch(chart, /Hidden centre|99,999|199,999/);
@@ -314,6 +322,105 @@ test("centre checkboxes exclude centres from every chart and export while allowi
    const empty = renderToStaticMarkup(React.createElement(Charts, { ...props, excluded: new Set(centres.map((centre) => centre.id)) }));
    assert.match(empty, /Select at least one learning centre/);
    assert.doesNotMatch(empty, /<svg|Export JPG/);
+});
+
+test("insight growth compares exact shared endpoints and leaves zero baselines undefined", () => {
+   const centres = [{ id: centre_id }, { id: "missing" }, { id: "zero" }];
+   const rows = insights.comparisonGrowth(centres, [change(100), change(125, "2026-09-21"),
+      { ...change(50, "2026-09-15"), centre_id: "missing" }, { ...change(75, "2026-09-21"), centre_id: "missing" },
+      { ...change(0), centre_id: "zero" }, { ...change(40, "2026-09-21"), centre_id: "zero" },
+      { ...change(999), platform_id: "other" }], platform_id, "2026-09-14", "2026-09-21");
+   assert.equal(rows[0].percent, 25);
+   assert.equal(rows[0].change, 25);
+   assert.equal(rows[1].change, null);
+   assert.equal(rows[2].change, 40);
+   assert.equal(rows[2].percent, null);
+   assert.equal(insights.comparisonGrowth(centres, [change(100)], platform_id, "2026-09-14", "2026-09-14")[0].change, null);
+});
+
+test("momentum uses exact seven-day endpoints, supports losses, and crosses calendar boundaries", () => {
+   assert.equal(metrics.previousDate("2024-03-01", 7), "2024-02-23");
+   assert.equal(metrics.previousDate("2026-01-01", 7), "2025-12-25");
+   const series = insights.momentumSeries([{ id: centre_id }], [change(100, "2026-08-31"), change(90, "2026-09-07"), change(130, "2026-09-08")], platform_id, ["2026-09-07", "2026-09-08"]);
+   assert.equal(series[0].points[0].value, -10);
+   assert.equal(series[0].points[1].value, null);
+   const zero = insights.momentumSeries([{ id: centre_id }], [change(0), change(0, "2026-09-21")], platform_id, ["2026-09-21"]);
+   assert.equal(zero[0].points[0].value, 0);
+});
+
+test("marketing reads include the prior seven days and paginate all observations for momentum", async () => {
+   const calls = [];
+   const page = Array.from({ length: 1000 }, () => change(100, "2026-08-25"));
+   const route = load("app/api/erp/marketing/route.ts", {
+      "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) } },
+      "@/lib/erp": { erpJsonError: (error) => ({ message: error.message, status: 400 }) },
+      "@/lib/marketingMetrics": metrics, "@/lib/marketingLogo": logos,
+      "@/lib/erpAuth": { requireErpPermission: async () => ({ staff: { role: "admin" } }), getErpPermissions: async () => ({ marketing: ["view"] }) },
+      "@/lib/supabaseAdmin": { supabaseAdmin: { from: (table) => {
+         const query = { select: () => query, order: () => query,
+            gte: (field, value) => { calls.push({ table, field, min: value }); return query; },
+            lte: (field, value) => { calls.push({ table, field, max: value }); return query; },
+            range: async (start) => ({ data: table === "marketing_entries" ? start === 0 ? page : [change(120)] : [], error: null }),
+            then: (resolve) => resolve({ data: [], error: null }),
+         };
+         return query;
+      } } },
+   });
+   const result = await route.GET({ url: "https://app.test/api/erp/marketing?month=2026-09" });
+   assert.equal(result.status, 200);
+   assert.equal(result.body.entries.length, 1001);
+   assert.equal(result.body.canManage, false);
+   assert.equal(calls.filter((call) => call.min === "2026-08-25").length, 2);
+   assert.equal(calls.filter((call) => call.max === "2026-09-30").length, 2);
+});
+
+test("audience shares use a complete fixed cohort and never turn missing or all-zero totals into shares", () => {
+   const centres = [{ id: centre_id }, { id: "second" }];
+   const entries = [change(100), { ...change(300), centre_id: "second" }, change(200, "2026-09-15"),
+      change(0, "2026-09-16"), { ...change(0, "2026-09-16"), centre_id: "second" }];
+   const shares = insights.audienceShareSeries(centres, entries, platform_id, ["2026-09-14", "2026-09-15", "2026-09-16"]);
+   assert.equal(shares[0].points[0].value, 25);
+   assert.equal(shares[1].points[0].value, 75);
+   for (const series of shares) {
+      assert.equal(series.points[1].value, null);
+      assert.equal(series.points[2].value, null);
+   }
+   assert.equal(insights.audienceShareSeries(centres.slice(0, 1), entries, platform_id, ["2026-09-15"])[0].points[0].value, 100);
+});
+
+test("competitor gap preserves direction, requires both counts, and excludes unselected centres", () => {
+   const centres = [{ id: centre_id, name: "Focus" }, { id: "second", name: "Competitor" }];
+   const entries = [change(100), { ...change(150), centre_id: "second" }, change(175, "2026-09-15")];
+   const gap = insights.competitorGapSeries(centres, entries, platform_id, ["2026-09-14", "2026-09-15"], centre_id, "second");
+   assert.equal(gap[0].points[0].value, -50);
+   assert.equal(gap[0].points[1].value, null);
+   assert.equal(insights.competitorGapSeries(centres, entries, platform_id, ["2026-09-14"], "second", centre_id)[0].points[0].value, 50);
+   assert.equal(insights.competitorGapSeries(centres.slice(0, 1), entries, platform_id, ["2026-09-14"], centre_id, "second").length, 0);
+   assert.equal(insights.competitorGapSeries(centres, entries, platform_id, ["2026-09-14"], centre_id, centre_id).length, 0);
+});
+
+test("all five insights render exportable SVGs, shared dates, signed results, and explicit missing cells", () => {
+   const centres = [{ id: centre_id, name: "Focus & Academy", color: "#10b981" }, { id: "second", name: "Competitor", color: "#6366f1" }];
+   const platform = { id: platform_id, name: "Instagram" };
+   const entries = [change(100), change(125, "2026-09-21"), { ...change(200), centre_id: "second" }, { ...change(180, "2026-09-21"), centre_id: "second" }];
+   const props = { centres, entries, platform, platforms: [platform, { id: "empty", name: "Telegram" }], days: monthDays("2026-09"), monthLabel: "September 2026" };
+   const html = renderToStaticMarkup(React.createElement(Insights, props));
+   assert.equal((html.match(/<svg /g) || []).length, 5);
+   for (const title of ["Growth rate comparison", "Growth momentum", "Centre × platform growth", "Share of tracked audience", "Gap to competitor"]) assert.ok(html.includes(title));
+   assert.match(html, /value="2026-09-14"/);
+   assert.match(html, /value="2026-09-21"/);
+   assert.match(html, /\+25%/);
+   assert.match(html, /-10%/);
+   assert.match(html, /-100/);
+   assert.match(html, /No data/);
+   assert.match(html, /Focus &amp; Academy minus Competitor/);
+   assert.doesNotMatch(html, /NaN|Infinity|STATISTICS/);
+   const empty = renderToStaticMarkup(React.createElement(Insights, { ...props, entries: [] }));
+   assert.doesNotMatch(empty, /<svg/);
+   assert.equal((empty.match(/disabled=""/g) || []).length, 5);
+   const zeros = renderToStaticMarkup(React.createElement(Insights, { ...props, entries: entries.map((entry) => ({ ...entry, subscribers: 0 })) }));
+   assert.match(zeros, /N\/A \(starts at 0\)/);
+   assert.doesNotMatch(zeros, /NaN|Infinity/);
 });
 
 test("platform create, replace, remove, and name-only edits preserve intended logo state", async () => {

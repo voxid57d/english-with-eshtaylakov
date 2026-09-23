@@ -30,9 +30,9 @@ export function entryKey(centreId: string, platformId: string, date: string) {
    return `${centreId}|${platformId}|${date}`;
 }
 
-export function previousDate(date: string) {
+export function previousDate(date: string, days = 1) {
    const previous = new Date(`${date}T00:00:00Z`);
-   previous.setUTCDate(previous.getUTCDate() - 1);
+   previous.setUTCDate(previous.getUTCDate() - days);
    return previous.toISOString().slice(0, 10);
 }
 

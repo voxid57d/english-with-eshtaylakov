@@ -1490,6 +1490,15 @@ function TransferModal({ accounts, request, close, refresh, showMessage }: {
    const isCrossCurrency =
       Boolean(fromAccount && toAccount) && fromAccount?.currency !== toAccount?.currency;
 
+   const swapAccounts = () => {
+      setFromAccountId(toAccountId);
+      setToAccountId(fromAccountId);
+      if (isCrossCurrency) {
+         setFromAmount(toAmount);
+         setToAmount(fromAmount);
+      }
+   };
+
    const submit = async (event: React.FormEvent) => {
       event.preventDefault();
       try {
@@ -1518,7 +1527,7 @@ function TransferModal({ accounts, request, close, refresh, showMessage }: {
             {options.length < 2 && <div className={styles.inlineNotice}>Create at least two active accounts before making a transfer.</div>}
             <div className={styles.transferAccounts}>
                <label><span>From</span><select value={fromAccountId} onChange={(event) => setFromAccountId(event.target.value)} required><option value="">Choose account</option>{options.map((account) => <option value={account.id} key={account.id} disabled={account.id === toAccountId}>{account.name} · {account.currency} · {nativeMoney(account.balance, account.currency)}</option>)}</select></label>
-               <span><PiArrowsLeftRightLight /></span>
+               <button type="button" className={styles.swapAccounts} onClick={swapAccounts} disabled={saving || !fromAccount || !toAccount} aria-label="Swap accounts" title="Swap accounts"><PiArrowsLeftRightLight aria-hidden="true" /></button>
                <label><span>To</span><select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)} required><option value="">Choose account</option>{options.map((account) => <option value={account.id} key={account.id} disabled={account.id === fromAccountId}>{account.name} · {account.currency}</option>)}</select></label>
             </div>
             <div className={styles.formGrid}>

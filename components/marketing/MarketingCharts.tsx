@@ -1,6 +1,7 @@
 "use client";
 
 import MarketingChart from "./MarketingChart";
+import MarketingInsights from "./MarketingInsights";
 import type { MarketingCentre, MarketingEntry, MarketingPlatform } from "@/lib/marketingMetrics";
 import styles from "./marketing.module.css";
 
@@ -25,6 +26,7 @@ export default function MarketingCharts({ centres, platforms, entries, platform,
             platformId={platform.id} platformName={platform.name} platformLogo={platform.logo_data_url}
             days={days} date={date} monthLabel={monthLabel} fitTrend
          />)}
+         {platform && <MarketingInsights centres={selected} platforms={platforms} entries={entries} platform={platform} days={days} monthLabel={monthLabel} />}
       </>}
    </>;
 }
