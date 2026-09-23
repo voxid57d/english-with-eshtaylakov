@@ -23,7 +23,7 @@ export default function MarketingCharts({ centres, platforms, entries, platform,
          {platform && (["daily", "change", "trend", "growth"] as const).map((kind) => <MarketingChart
             key={`${platform.id}-${kind}`} kind={kind} centres={selected} entries={entries}
             platformId={platform.id} platformName={platform.name} platformLogo={platform.logo_data_url}
-            days={days} date={date} monthLabel={monthLabel}
+            days={days} date={date} monthLabel={monthLabel} fitTrend
          />)}
       </>}
    </>;
