@@ -125,6 +125,14 @@ Marketing data is shared across the staff workspace. Direct anonymous and
 authenticated database access is denied; server routes check ERP permissions and
 write using the service role. The database save function is service-role-only.
 
+## Personal training
+
+The private workout tracker is at `/train`. Apply
+`supabase/training_schema.sql`, set the server-only `TRAIN_USER_ID` to your
+Supabase account UUID, and deploy. It reuses the existing authentication and theme.
+See [the training guide](docs/training.md) for the full feature list, schema,
+privacy controls, test commands, and deployment checklist.
+
 ## Private finance portal
 
 The unlinked personal finance workspace lives at `/x97-private-portal`. Its URL and
