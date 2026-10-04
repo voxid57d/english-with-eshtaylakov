@@ -1,4 +1,6 @@
 "use client";
+
+import CalendarInput from "@/components/ui/CalendarInput";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -157,7 +159,7 @@ function Editor({ initial, reload }: { initial: Payload; reload: () => void }) {
           <div className={styles.formGrid} style={{ marginTop: 18 }}>
             <label>
               Date
-              <input
+              <CalendarInput aria-label="Workout date"
                 type="date"
                 value={workout.workout_date}
                 required
@@ -175,7 +177,7 @@ function Editor({ initial, reload }: { initial: Payload; reload: () => void }) {
             </label>
             <label>
               Started
-              <input
+              <CalendarInput aria-label="Started at"
                 type="datetime-local"
                 value={localTime(workout.started_at)}
                 onChange={(e) =>
@@ -189,7 +191,7 @@ function Editor({ initial, reload }: { initial: Payload; reload: () => void }) {
             </label>
             <label>
               Finished
-              <input
+              <CalendarInput aria-label="Ended at"
                 type="datetime-local"
                 value={localTime(workout.ended_at)}
                 onChange={(e) =>

@@ -1,5 +1,7 @@
 "use client";
 
+import CalendarInput from "@/components/ui/CalendarInput";
+
 import { getLocalDateString } from "@/lib/localDate";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -518,7 +520,7 @@ export default function KpiManager() {
                      )}
 
                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <input
+                        <CalendarInput aria-label="Period start"
                            type="date"
                            value={targetForm.periodStart}
                            onChange={(event) =>
@@ -530,7 +532,7 @@ export default function KpiManager() {
                            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
                            required
                         />
-                        <input
+                        <CalendarInput aria-label="Period end"
                            type="date"
                            value={targetForm.periodEnd}
                            onChange={(event) =>
@@ -597,7 +599,7 @@ export default function KpiManager() {
                      ))}
                   </select>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                     <input
+                     <CalendarInput aria-label="Progress date"
                         type="date"
                         value={progressForm.entryDate}
                         onChange={(event) =>

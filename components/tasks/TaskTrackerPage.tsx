@@ -1,5 +1,7 @@
 "use client";
 
+import CalendarInput from "@/components/ui/CalendarInput";
+
 import { useLocalToday } from "@/lib/useLocalToday";
 import { getLocalDateString } from "@/lib/localDate";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -780,7 +782,7 @@ export default function TasksPage() {
                            <label className="block text-xs uppercase tracking-[0.16em] text-slate-500">
                               Start
                            </label>
-                           <input
+                           <CalendarInput aria-label="Start date"
                               type="date"
                               value={form.startDate}
                               onChange={(event) =>

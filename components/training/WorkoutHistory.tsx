@@ -1,4 +1,6 @@
 "use client";
+
+import CalendarInput from "@/components/ui/CalendarInput";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -106,7 +108,7 @@ export default function WorkoutHistory() {
         <div className={styles.formGrid}>
           <label>
             Log a past workout
-            <input
+            <CalendarInput aria-label="Log a past workout"
               required
               type="date"
               value={date}

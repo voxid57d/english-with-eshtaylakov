@@ -67,6 +67,9 @@ const links: SidebarLink[] = [
    { href: "/dashboard/settings", label: "Settings", icon: PiGearSixLight, module: "settings" },
 ];
 
+// Temporarily hide these menu entries without changing page access or permissions.
+const hiddenMenuModules = new Set<ErpModule>(["tasks", "shifts", "settings", "staff"]);
+
 type SidebarProps = {
    permissions: Record<string, unknown>;
    isOpenOnMobile: boolean;
@@ -94,6 +97,7 @@ function Sidebar({ isOpenOnMobile, closeMobile, permissions }: SidebarProps) {
 
    const filteredLinks = links.filter(
       (link) =>
+         !hiddenMenuModules.has(link.module) &&
          isErpModuleVisible(link.module) &&
          visibleModules.has(link.module),
    );

@@ -1,5 +1,7 @@
 "use client";
 
+import CalendarInput from "@/components/ui/CalendarInput";
+
 import { useLocalToday } from "@/lib/useLocalToday";
 import { getLocalDateString } from "@/lib/localDate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1498,7 +1500,7 @@ export default function TeachersManager() {
                      </div>
                      <div className="flex flex-wrap items-center gap-2">
                         <button type="button" onClick={() => moveMonth(-1)} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800">Previous</button>
-                        <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
+                        <CalendarInput aria-label="Reporting month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" />
                         <button type="button" onClick={() => moveMonth(1)} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800">Next</button>
                      </div>
                   </div>

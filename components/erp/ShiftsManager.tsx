@@ -1,5 +1,7 @@
 "use client";
 
+import CalendarInput from "@/components/ui/CalendarInput";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
    PiBriefcaseLight,
@@ -1157,7 +1159,7 @@ export default function ShiftsManager() {
                         className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800">
                         Previous month
                      </button>
-                     <input
+                     <CalendarInput aria-label="Payroll month"
                         type="month"
                         value={payrollMonth}
                         onChange={(event) => setPayrollMonth(event.target.value || getLocalDateString().slice(0, 7))}
@@ -1574,7 +1576,7 @@ export default function ShiftsManager() {
                         className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-800">
                         Previous day
                      </button>
-                     <input
+                     <CalendarInput aria-label="Shift date"
                         type="date"
                         value={selectedDate}
                         onChange={(event) => changeSelectedDate(event.target.value)}

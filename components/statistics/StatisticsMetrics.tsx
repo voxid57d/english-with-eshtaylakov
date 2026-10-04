@@ -1,5 +1,7 @@
 "use client";
 
+import CalendarInput from "@/components/ui/CalendarInput";
+
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { CENTRE_COLORS, monthDays } from "@/lib/marketingMetrics";
@@ -160,7 +162,7 @@ export default function StatisticsMetrics() {
       <header className={shared.header}>
          <div><p className={shared.eyebrow}>DAILY PERFORMANCE</p><h1>Statistics<span>.</span></h1><p className={shared.description}>Your daily figures, with a clearer view of what changes.</p></div>
          <div className={shared.headerActions}>
-            <label className={shared.field}>Reporting month<input type="month" min="1900-01" max="2199-12" value={month} disabled={saving} onChange={(event) => changeMonth(event.target.value)} /></label>
+            <label className={shared.field}>Reporting month<CalendarInput aria-label="Reporting month" type="month" min="1900-01" max="2199-12" value={month} disabled={saving} onChange={(event) => changeMonth(event.target.value)} /></label>
             {data.canManage && <button className={shared.secondary} disabled={!ready || saving} onClick={() => setManaging(!managing)}>{managing ? "Close categories" : "+ Categories"}</button>}
          </div>
       </header>

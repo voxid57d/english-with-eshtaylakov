@@ -1,4 +1,6 @@
 "use client";
+
+import CalendarInput from "@/components/ui/CalendarInput";
 import { useState } from "react";
 import {
   MEASUREMENTS,
@@ -128,7 +130,7 @@ function MeasurementEditor({
           <div className={styles.formGrid}>
             <label>
               Date
-              <input
+              <CalendarInput aria-label="Measurement date"
                 required
                 type="date"
                 value={entry.measured_on}

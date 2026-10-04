@@ -1,5 +1,7 @@
 "use client";
 
+import CalendarInput from "@/components/ui/CalendarInput";
+
 import { getLocalDateString } from "@/lib/localDate";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -343,7 +345,7 @@ export default function MetricsManager() {
 
                      <label className="block">
                         <span className="text-sm text-slate-300">Date</span>
-                        <input
+                        <CalendarInput aria-label="Metric date"
                            type="date"
                            value={form.metricDate}
                            onChange={(event) => updateForm("metricDate", event.target.value)}
@@ -428,13 +430,13 @@ export default function MetricsManager() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                     <input
+                     <CalendarInput aria-label="Period start"
                         type="date"
                         value={periodStart}
                         onChange={(event) => setPeriodStart(event.target.value)}
                         className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400"
                      />
-                     <input
+                     <CalendarInput aria-label="Period end"
                         type="date"
                         value={periodEnd}
                         onChange={(event) => setPeriodEnd(event.target.value)}

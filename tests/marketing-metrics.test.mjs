@@ -25,7 +25,9 @@ const insightCharts = load("components/marketing/MarketingInsightChart.tsx", {
    react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
 });
 const calendar = load("lib/marketingCalendar.ts");
-const pickerModules = {
+const sharedPickerModules = { react: React, "react-dom": { createPortal: (child) => child }, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "./CalendarInput.module.css": { default: {} } };
+const SharedPicker = load("components/ui/CalendarInput.tsx", sharedPickerModules).default;
+const pickerModules = { "@/components/ui/CalendarInput": { default: SharedPicker },
    react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "@/lib/marketingCalendar": calendar,
    "@/lib/getSupabaseAccessToken": { getSupabaseAccessToken: async () => "test-token" }, "./marketing.module.css": { default: {} },
 };
@@ -112,21 +114,59 @@ test("line chart hover shows all centres at the nearest date, preserves zero and
 });
 
 test("custom calendar distinguishes complete, partial, empty, and unknown dates and disables invalid endpoints", () => {
-   const OpenPicker = load("components/marketing/MarketingDatePicker.tsx", {
-      ...pickerModules, react: { ...React, useEffect: () => {}, useMemo: (fn) => fn(), useState: (initial) => [initial === false ? true : initial, () => {}] },
+   const OpenPicker = load("components/ui/CalendarInput.tsx", {
+      ...sharedPickerModules, react: { ...React, useEffect: () => {}, useMemo: (fn) => fn(), useState: (initial) => [initial === false ? true : initial, () => {}] },
    }).default;
    const props = { label: "Comparison start", value: "2026-09-14", min: "1900-01-01", max: "2026-09-21", start: "2026-09-14", end: "2026-09-21", entries: [change(0), { ...change(200), centre_id: "second" }, change(120, "2026-09-15")], loadedMonth: "2026-09", centreIds: [centre_id, "second"], platformId: platform_id, platformName: "Telegram", onChange: () => {} };
-   const html = renderToStaticMarkup(React.createElement(OpenPicker, props));
+   const generic = { label: props.label, value: props.value, min: props.min, max: props.max, start: props.start, end: props.end, onChange: props.onChange, recording: { context: "Telegram ? 2 selected centres", known: true, coverage: calendar.calendarCoverage(props.entries, props.centreIds, platform_id), total: 2, noun: "centres", allLabel: "All centres", someLabel: "Some centres" } };
+   const html = renderToStaticMarkup(React.createElement(OpenPicker, generic));
    assert.match(html, /Sep 14, 2026: 2 of 2 centres recorded; complete data/);
    assert.match(html, /Sep 15, 2026: 1 of 2 centres recorded; partial data/);
    assert.match(html, /Sep 16, 2026: No recorded data/);
    assert.match(html, /data-date="2026-09-22"[^>]*disabled=""/);
    assert.match(html, /data-coverage="complete"/);
    assert.match(html, /data-coverage="partial"/);
-   const unknown = renderToStaticMarkup(React.createElement(OpenPicker, { ...props, loadedMonth: "2026-10" }));
+   const unknown = renderToStaticMarkup(React.createElement(OpenPicker, { ...generic, recording: { ...generic.recording, known: false } }));
    assert.match(unknown, /Sep 14, 2026: Checking data/);
    assert.doesNotMatch(unknown, /Sep 14, 2026: No recorded data/);
    assert.match(unknown, /Checking this month/);
+});
+
+test("shared calendar preserves month bounds, required form values, optional clearing, and timestamp times", () => {
+   function setup(props) {
+      const emitted = [];
+      const field = { value: props.value || "" };
+      let stateIndex = 0;
+      let refIndex = 0;
+      const refs = [null, null, { focus: () => {} }, field];
+      const Picker = load("components/ui/CalendarInput.tsx", { ...sharedPickerModules,
+         react: { ...React, useId: () => "calendar-test", useEffect: () => {}, useCallback: (fn) => fn,
+            useState: (initial) => [stateIndex++ === 0 ? true : initial, () => {}], useRef: () => ({ current: refs[refIndex++] }) },
+      }).default;
+      const tree = Picker({ ...props, onChange: (event) => emitted.push(event.target.value) });
+      function find(predicate, node = tree) {
+         if (!React.isValidElement(node)) return [];
+         return [...(predicate(node) ? [node] : []), ...React.Children.toArray(node.props.children).flatMap((child) => find(predicate, child))];
+      }
+      return { tree, find, emitted };
+   }
+   const monthly = setup({ type: "month", value: "2026-09", min: "2026-03", max: "2026-10", name: "reportingMonth", required: true });
+   assert.equal(monthly.find((node) => node.props["data-month"] === "2026-01")[0].props.disabled, true);
+   monthly.find((node) => node.props["data-month"] === "2026-03")[0].props.onClick();
+   assert.deepEqual(monthly.emitted, ["2026-03"]);
+   const formField = monthly.find((node) => node.type === "input")[0];
+   assert.equal(formField.props.name, "reportingMonth");
+   assert.equal(formField.props.required, true);
+   assert.equal(monthly.find((node) => node.type === "button" && node.props.children === "Clear").length, 0);
+   const optional = setup({ type: "date", value: "2026-10-04", min: "2026-10-01", max: "2026-10-31" });
+   optional.find((node) => node.type === "button" && node.props.children === "Clear")[0].props.onClick();
+   assert.deepEqual(optional.emitted, [""]);
+   const timestamp = setup({ type: "datetime-local", value: "2026-10-04T16:30" });
+   timestamp.find((node) => node.props["data-date"] === "2026-10-05")[0].props.onClick();
+   assert.deepEqual(timestamp.emitted, ["2026-10-05T16:30"]);
+   timestamp.find((node) => node.type === "input" && node.props.type === "time")[0].props.onChange({ target: { value: "17:45" } });
+   assert.equal(timestamp.emitted[1], "2026-10-04T17:45");
+   assert.equal(setup({ type: "date", value: "", disabled: true }).find((node) => node.props.role === "dialog").length, 0);
 });
 
 test("subscriber input distinguishes missing data, zero, and grouped counts", () => {

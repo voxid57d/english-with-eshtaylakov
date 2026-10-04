@@ -322,7 +322,11 @@ try {
     .getByRole("navigation", { name: "Training" })
     .getByRole("link", { name: "History", exact: true })
     .click();
-  await page.getByLabel("Log a past workout").fill(past);
+  await page.getByRole("button", { name: /^Log a past workout:/ }).click();
+  await page.getByRole("dialog", { name: "Log a past workout" }).getByLabel("Calendar year").selectOption(past.slice(0, 4));
+  await page.getByRole("dialog", { name: "Log a past workout" }).getByLabel("Calendar month").selectOption(past.slice(5, 7));
+  const pastDate = new Date(`${past}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  await page.getByRole("dialog", { name: "Log a past workout" }).getByRole("button", { name: pastDate, exact: true }).click();
   await page.getByRole("button", { name: "Create / open workout" }).click();
   await page
     .getByRole("heading", { name: "Your workout", exact: true })

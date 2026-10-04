@@ -1,4 +1,6 @@
 "use client";
+
+import CalendarInput from "@/components/ui/CalendarInput";
 import { useState } from "react";
 import Link from "next/link";
 import { useLocalToday } from "@/lib/useLocalToday";
@@ -312,7 +314,7 @@ export default function TrainingProgress({
               <h2>Training days</h2>
               <label>
                 Month
-                <input
+                <CalendarInput aria-label="Calendar month"
                   type="month"
                   value={calendarMonth}
                   onChange={(e) => {

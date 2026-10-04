@@ -165,7 +165,9 @@ const Chart = load("components/marketing/MarketingChart.tsx", {
    "./LineChartInteraction": { default: load("components/marketing/LineChartInteraction.tsx", { react: React, "react/jsx-runtime": jsxRuntime, "./marketing.module.css": { default: {} } }).default },
    "@/lib/marketingMetrics": marketing, "./marketing.module.css": { default: {} },
 }).default;
+const CalendarInput = load("components/ui/CalendarInput.tsx", { react: React, "react-dom": { createPortal: (child) => child }, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": marketing, "./CalendarInput.module.css": { default: {} } }).default;
 const Charts = load("components/statistics/StatisticsCharts.tsx", {
+   "@/components/ui/CalendarInput": { default: CalendarInput }, "@/lib/marketingCalendar": load("lib/marketingCalendar.ts"),
    react: React, "react/jsx-runtime": jsxRuntime, "@/lib/statistics": statistics, "@/lib/marketingMetrics": marketing,
    "@/components/marketing/MarketingChart": { default: Chart },
    "@/components/marketing/marketing.module.css": { default: {} }, "./statistics.module.css": { default: {} },
@@ -177,7 +179,7 @@ test("Statistics shares chart rendering but uses category labels and keeps incom
       entries: [entry(23758000), entry(20000000, "2026-09-15"), entry(100, "2026-09-14", "students")],
       days: marketing.monthDays("2026-09"), date: "2026-09-15", monthLabel: "September 2026", onDateChange: () => {},
    }));
-   assert.equal((html.match(/<svg /g) || []).length, 3);
+   assert.equal((html.match(/role="img"/g) || []).length, 3);
    assert.match(html, /Daily category change/);
    assert.match(html, /Monthly category trends/);
    assert.match(html, /Change over the month/);

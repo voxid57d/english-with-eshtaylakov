@@ -1,5 +1,8 @@
 "use client";
 
+import { calendarCoverage } from "@/lib/marketingCalendar";
+import CalendarInput from "@/components/ui/CalendarInput";
+
 import { useMemo, useState } from "react";
 import MarketingChart, { type ChartPresentation } from "@/components/marketing/MarketingChart";
 import { previousDate } from "@/lib/marketingMetrics";
@@ -34,7 +37,7 @@ export default function StatisticsCharts({ categories, entries, days, date, mont
          <div><h2>Choose what to compare</h2><p>Compare categories with the same unit. Each chart downloads as a JPG.</p></div>
          <div className={shared.filters}>
             <label className={shared.field}>Chart unit<select value={unit || ""} onChange={(event) => setUnitChoice(event.target.value as StatisticUnit)}>{units.map((item) => <option key={item} value={item}>{STATISTIC_UNITS[item]}</option>)}</select></label>
-            <label className={shared.field}>Daily change date<input type="date" min={days[0]} max={days[days.length - 1]} value={date} onChange={(event) => { if (days.includes(event.target.value)) onDateChange(event.target.value); }} /></label>
+            <label className={shared.field}>Daily change date<CalendarInput aria-label="Daily change date" recording={{ context: `${label} ? ${selected.length} selected categories`, known: true, coverage: calendarCoverage(chartEntries, selected.map((item) => item.id), "statistics"), total: selected.length, noun: "categories", allLabel: "All categories", someLabel: "Some categories" }} type="date" min={days[0]} max={days[days.length - 1]} value={date} onChange={(event) => { if (days.includes(event.target.value)) onDateChange(event.target.value); }} /></label>
          </div>
       </div>
       <fieldset className={styles.categoryPicker}>
