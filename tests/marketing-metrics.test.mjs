@@ -20,12 +20,20 @@ function load(path, modules = {}) {
 const metrics = load("lib/marketingMetrics.ts");
 const logos = load("lib/marketingLogo.ts");
 const insights = load("lib/marketingInsights.ts", { "./marketingMetrics": metrics });
+const LineInteraction = load("components/marketing/LineChartInteraction.tsx", { react: React, "react/jsx-runtime": jsxRuntime, "./marketing.module.css": { default: {} } }).default;
 const insightCharts = load("components/marketing/MarketingInsightChart.tsx", {
-   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
 });
+const calendar = load("lib/marketingCalendar.ts");
+const pickerModules = {
+   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "@/lib/marketingCalendar": calendar,
+   "@/lib/getSupabaseAccessToken": { getSupabaseAccessToken: async () => "test-token" }, "./marketing.module.css": { default: {} },
+};
+const DatePicker = load("components/marketing/MarketingDatePicker.tsx", pickerModules).default;
 const Insights = load("components/marketing/MarketingInsights.tsx", {
    react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingInsights": insights,
-   "./MarketingInsightChart": insightCharts, "./marketing.module.css": { default: {} },
+   "@/lib/marketingMetrics": metrics, "@/lib/getSupabaseAccessToken": { getSupabaseAccessToken: async () => "test-token" },
+   "./MarketingInsightChart": insightCharts, "./MarketingDatePicker": { default: DatePicker }, "./marketing.module.css": { default: {} },
 }).default;
 const logo = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
 const { monthDays, parseSubscribers, validateChanges, platformSeries, growthBetween } = metrics;
@@ -39,6 +47,86 @@ test("monthly sheets use calendar dates including leap years and year boundaries
    assert.equal(monthDays("2026-09").at(-1), "2026-09-30");
    assert.equal(monthDays("2026-12").at(-1), "2026-12-31");
    for (const month of ["2026-13", "2026-00", "2026-2", "bad", "0000-01"]) assert.throws(() => monthDays(month));
+});
+
+test("insight ranges cross months, leap days, and years without shifting calendar dates", () => {
+   assert.deepEqual([...metrics.dateRangeDays("2024-02-28", "2024-03-02")], ["2024-02-28", "2024-02-29", "2024-03-01", "2024-03-02"]);
+   assert.deepEqual([...metrics.dateRangeDays("2026-12-31", "2027-01-02")], ["2026-12-31", "2027-01-01", "2027-01-02"]);
+   for (const [start, end] of [["2026-02-30", "2026-03-02"], ["2026-10-04", "2026-09-01"], ["", "2026-10-04"]]) assert.throws(() => metrics.dateRangeDays(start, end));
+   const growth = insights.comparisonGrowth([{ id: centre_id }], [change(100, "2026-08-01"), change(150, "2026-10-04")], platform_id, "2026-08-01", "2026-10-04");
+   assert.equal(growth[0].percent, 50);
+   assert.equal(insights.comparisonGrowth([{ id: centre_id }], [change(100, "2026-08-02"), change(150, "2026-10-04")], platform_id, "2026-08-01", "2026-10-04")[0].change, null);
+});
+
+test("calendar coverage respects selected centres and platform and includes explicit zero", () => {
+   const counts = calendar.calendarCoverage([change(0), change(100), { ...change(200), centre_id: "second" }, change(120, "2026-09-15"), { ...change(400, "2026-09-15"), platform_id: "other" }, { ...change(500, "2026-09-15"), centre_id: "excluded" }], [centre_id, "second"], platform_id);
+   assert.equal(counts.get("2026-09-14").count, 2);
+   assert.equal(counts.get("2026-09-14").complete, true);
+   assert.equal(counts.get("2026-09-15").count, 1);
+   assert.equal(counts.get("2026-09-15").complete, false);
+   assert.equal(counts.has("2026-09-16"), false);
+});
+
+test("line chart hover shows all centres at the nearest date, preserves zero and missing values, and supports keyboard and touch", () => {
+   let activeDate = null;
+   const Interactive = load("components/marketing/LineChartInteraction.tsx", {
+      react: { ...React, useId: () => "hover-test", useState: () => [activeDate, (next) => { activeDate = next; }] },
+      "react/jsx-runtime": jsxRuntime, "./marketing.module.css": { default: {} },
+   }).default;
+   const days = ["2026-09-30", "2026-10-01", "2026-10-02"];
+   const props = { days, left: 190, height: 620, label: "Growth momentum", unit: "Seven-day net subscribers", signed: true,
+      series: [
+         { id: "a", name: "First Academy", color: "#10b981", points: days.map((date) => ({ date, value: 1250 })) },
+         { id: "b", name: "Second Academy", color: "#f59e0b", points: days.map((date) => ({ date, value: 0 })) },
+         { id: "c", name: "Third Academy", color: "#fb7185", points: days.map((date) => ({ date, value: null })) },
+      ], children: React.createElement("svg", { width: 1100, height: 620 }, React.createElement("title", {}, "Chart")),
+   };
+   const render = () => Interactive(props);
+   const pointer = (clientX, pointerType = "mouse") => ({ clientX, clientY: 150, pointerType, currentTarget: { querySelector: () => ({ getBoundingClientRect: () => ({ left: 100, top: 50, width: 550, height: 310 }) }) } });
+   render().props.onPointerMove(pointer(615));
+   assert.equal(activeDate, "2026-10-02");
+   const html = renderToStaticMarkup(render());
+   assert.match(html, /role="tooltip"/);
+   assert.match(html, /Oct 2, 2026/);
+   assert.match(html, /First Academy<\/span><b>\+1,250<\/b>/);
+   assert.match(html, /Second Academy<\/span><b>0<\/b>/);
+   assert.match(html, /Third Academy<\/span><b>No data<\/b>/);
+   assert.match(html, /translateX\(calc\(-100% - 12px\)\)/);
+   render().props.onPointerLeave({ pointerType: "touch" });
+   assert.equal(activeDate, "2026-10-02");
+   render().props.onKeyDown({ key: "ArrowLeft", preventDefault: () => {} });
+   assert.equal(activeDate, "2026-10-01");
+   render().props.onKeyDown({ key: "Home", preventDefault: () => {} });
+   assert.equal(activeDate, "2026-09-30");
+   render().props.onKeyDown({ key: "Escape", preventDefault: () => {} });
+   assert.equal(activeDate, null);
+   render().props.onPointerDown(pointer(195, "touch"));
+   assert.equal(activeDate, "2026-09-30");
+   render().props.onPointerLeave({ pointerType: "mouse" });
+   assert.equal(activeDate, null);
+   assert.doesNotMatch(renderToStaticMarkup(render()), /role="tooltip"/);
+   activeDate = "2026-10-02";
+   const percent = renderToStaticMarkup(Interactive({ ...props, percent: true, signed: false }));
+   assert.match(percent, /1,250%/);
+   assert.doesNotMatch(percent, /\+1,250/);
+});
+
+test("custom calendar distinguishes complete, partial, empty, and unknown dates and disables invalid endpoints", () => {
+   const OpenPicker = load("components/marketing/MarketingDatePicker.tsx", {
+      ...pickerModules, react: { ...React, useEffect: () => {}, useMemo: (fn) => fn(), useState: (initial) => [initial === false ? true : initial, () => {}] },
+   }).default;
+   const props = { label: "Comparison start", value: "2026-09-14", min: "1900-01-01", max: "2026-09-21", start: "2026-09-14", end: "2026-09-21", entries: [change(0), { ...change(200), centre_id: "second" }, change(120, "2026-09-15")], loadedMonth: "2026-09", centreIds: [centre_id, "second"], platformId: platform_id, platformName: "Telegram", onChange: () => {} };
+   const html = renderToStaticMarkup(React.createElement(OpenPicker, props));
+   assert.match(html, /Sep 14, 2026: 2 of 2 centres recorded; complete data/);
+   assert.match(html, /Sep 15, 2026: 1 of 2 centres recorded; partial data/);
+   assert.match(html, /Sep 16, 2026: No recorded data/);
+   assert.match(html, /data-date="2026-09-22"[^>]*disabled=""/);
+   assert.match(html, /data-coverage="complete"/);
+   assert.match(html, /data-coverage="partial"/);
+   const unknown = renderToStaticMarkup(React.createElement(OpenPicker, { ...props, loadedMonth: "2026-10" }));
+   assert.match(unknown, /Sep 14, 2026: Checking data/);
+   assert.doesNotMatch(unknown, /Sep 14, 2026: No recorded data/);
+   assert.match(unknown, /Checking this month/);
 });
 
 test("subscriber input distinguishes missing data, zero, and grouped counts", () => {
@@ -92,7 +180,7 @@ test("daily changes use the previous calendar day, including leap and year bound
 test("daily change exports display signed increases, decreases, zero, and missing pairs", () => {
    const Chart = load("components/marketing/MarketingChart.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
    }).default;
    const centres = ["up", "down", "zero", "missing"].map((id) => ({ id, name: id, color: "#10b981" }));
    const entries = centres.flatMap((centre, index) => [
@@ -137,7 +225,7 @@ test("daily total audience sums platforms for the exact date and preserves missi
 test("total audience chart includes all-platform totals and coverage in its export SVG", () => {
    const Chart = load("components/marketing/MarketingChart.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
    }).default;
    const html = renderToStaticMarkup(React.createElement(Chart, {
       kind: "total", centres: [{ id: centre_id, name: "IELTS ZONE", color: "#10b981" }],
@@ -159,7 +247,7 @@ function routeHarness({ deny = false, dbError = null, allowLinkWrites = false, a
    const route = load("app/api/erp/marketing/route.ts", {
       "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) } },
       "@/lib/erp": { erpJsonError: (error) => ({ message: error.message, status: error.message === "Forbidden." ? 403 : 400 }) },
-      "@/lib/marketingMetrics": metrics,
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction },
       "@/lib/marketingLogo": logos,
       "@/lib/erpAuth": {
          requireErpPermission: async (_req, module, action) => { calls.push({ module, action }); if (deny) throw new Error("Forbidden."); return { user: { id: "actor" }, staff: { role: "admin" } }; },
@@ -252,7 +340,7 @@ test("invalid profile URLs never reach the database", async () => {
 test("platform names open saved URLs in a new tab and only managers can add or edit links", () => {
    const Component = load("components/marketing/PlatformProfileLink.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
    }).default;
    const props = { centreName: "IELTS ZONE", platformName: "Telegram", onSave: async () => {} };
    const render = (extra) => renderToStaticMarkup(React.createElement(Component, { ...props, ...extra }));
@@ -270,7 +358,7 @@ test("platform names open saved URLs in a new tab and only managers can add or e
 test("all export charts render valid standalone SVGs with accessible titles and no invalid coordinates", () => {
    const Chart = load("components/marketing/MarketingChart.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
    }).default;
    const centres = [{ id: centre_id, name: "Centre & Academy", color: "#10b981" }];
    for (const kind of ["daily", "trend", "growth"]) {
@@ -301,7 +389,7 @@ test("platform logos accept bounded PNG data and reject external images, SVGs, a
 test("centre checkboxes exclude centres from every chart and export while allowing an empty selection", () => {
    const Chart = load("components/marketing/MarketingChart.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
    }).default;
    const Charts = load("components/marketing/MarketingCharts.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
@@ -313,7 +401,7 @@ test("centre checkboxes exclude centres from every chart and export while allowi
       entries: [change(100), change(120, "2026-09-15"), { ...change(99999), centre_id: "hidden" }, { ...change(199999, "2026-09-15"), centre_id: "hidden" }] };
    const html = renderToStaticMarkup(React.createElement(Charts, { ...props, excluded: new Set(["hidden"]) }));
    assert.equal((html.match(/type="checkbox"/g) || []).length, 2);
-   const charts = [...html.matchAll(/<svg[\s\S]*?<\/svg>/g)].map((match) => match[0]);
+   const charts = [...html.matchAll(/<svg[^>]*role="img"[\s\S]*?<\/svg>/g)].map((match) => match[0]);
    assert.equal(charts.length, 8); // Existing five, growth rate, heatmap, and audience share.
    for (const chart of charts) {
       assert.match(chart, /Visible centre/);
@@ -372,6 +460,62 @@ test("marketing reads include the prior seven days and paginate all observations
    assert.equal(result.body.canManage, false);
    assert.equal(calls.filter((call) => call.min === "2026-08-25").length, 2);
    assert.equal(calls.filter((call) => call.max === "2026-09-30").length, 2);
+   calls.length = 0;
+   const ranged = await route.GET({ url: "https://app.test/api/erp/marketing?start=2026-08-01&end=2026-10-04" });
+   assert.equal(ranged.status, 200);
+   assert.equal(ranged.body.entries.length, 1001);
+   assert.equal(calls.filter((call) => call.min === "2026-07-25").length, 2);
+   assert.equal(calls.filter((call) => call.max === "2026-10-04").length, 2);
+   for (const query of ["start=2026-10-04&end=2026-08-01", "start=2026-02-30&end=2026-10-04", "start=2026-08-01"]) {
+      calls.length = 0;
+      assert.equal((await route.GET({ url: `https://app.test/api/erp/marketing?${query}` })).status, 400);
+      assert.equal(calls.length, 0);
+   }
+});
+
+test("multi-month insight charts use full date ticks and keep long ranges readable", () => {
+   const days = metrics.dateRangeDays("2026-08-01", "2026-10-04");
+   const html = renderToStaticMarkup(React.createElement(insightCharts.InsightLines, {
+      title: "Trend", subtitle: "August to October", toolbar: "Test", footer: "Test", filename: "test.jpg", emptyMessage: "No data",
+      days, series: metrics.platformSeries([{ id: centre_id, name: "Centre", color: "#10b981" }], [change(100, days[0]), change(150, days.at(-1))], platform_id, days), axisLabel: "Subscribers",
+   }));
+   assert.match(html, />26-08-01<\/text>/);
+   assert.match(html, />26-10-04<\/text>/);
+   assert.ok((html.match(/y="451"/g) || []).length <= 10);
+   assert.doesNotMatch(html, /NaN|Infinity/);
+});
+
+test("insight date controls accept other months and range charts preserve sheet edits and cleared cells", () => {
+   let selectedRange = { month: "2026-10", start: "2026-08-01", end: "2026-10-04" };
+   let loadedKey = "2026-08-01|2026-10-04";
+   const RangeInsights = load("components/marketing/MarketingInsights.tsx", {
+      react: { ...React, useEffect: () => {}, useMemo: (fn) => fn(), useState: (initial) => {
+         if (initial && typeof initial === "object" && "month" in initial) return [selectedRange, (next) => { selectedRange = next; }];
+         if (initial && typeof initial === "object" && "key" in initial) return [{ key: loadedKey, entries: [change(100, "2026-08-01"), change(125, "2026-10-04")], error: "" }, () => {}];
+         return [initial, () => {}];
+      } },
+      "react/jsx-runtime": jsxRuntime, "@/lib/marketingInsights": insights, "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction },
+      "@/lib/getSupabaseAccessToken": { getSupabaseAccessToken: async () => "test-token" },
+      "./MarketingInsightChart": insightCharts, "./MarketingDatePicker": { default: DatePicker }, "./marketing.module.css": { default: {} },
+   }).default;
+   const props = { centres: [{ id: centre_id, name: "Centre", color: "#10b981" }], platform: { id: platform_id, name: "Telegram" }, platforms: [{ id: platform_id, name: "Telegram" }], days: monthDays("2026-10"), monthLabel: "October 2026", entries: [change(150, "2026-10-04")] };
+   const tree = RangeInsights(props);
+   const controls = tree.props.children[0].props.children[1].props.children;
+   assert.equal(controls[0].props.min, "1900-01-01");
+   assert.equal(controls[1].props.max, "2199-12-31");
+   controls[0].props.onChange("2026-07-01");
+   assert.equal(selectedRange.start, "2026-07-01");
+   selectedRange.start = "2026-08-01";
+   const html = renderToStaticMarkup(tree);
+   assert.match(html, /\+50%/);
+   assert.match(html, /26-08-01/);
+   const cleared = renderToStaticMarkup(RangeInsights({ ...props, entries: [] }));
+   assert.match(cleared, /Both dates required|Choose two different dates/);
+   assert.doesNotMatch(cleared, /\+25%/);
+   loadedKey = "old-range";
+   const pending = renderToStaticMarkup(RangeInsights(props));
+   assert.match(pending, /Loading this date range/);
+   assert.doesNotMatch(pending, /role="img"/);
 });
 
 test("audience shares use a complete fixed cohort and never turn missing or all-zero totals into shares", () => {
@@ -405,10 +549,10 @@ test("all five insights render exportable SVGs, shared dates, signed results, an
    const entries = [change(100), change(125, "2026-09-21"), { ...change(200), centre_id: "second" }, { ...change(180, "2026-09-21"), centre_id: "second" }];
    const props = { centres, entries, platform, platforms: [platform, { id: "empty", name: "Telegram" }], days: monthDays("2026-09"), monthLabel: "September 2026" };
    const html = renderToStaticMarkup(React.createElement(Insights, props));
-   assert.equal((html.match(/<svg /g) || []).length, 5);
+   assert.equal((html.match(/role="img"/g) || []).length, 5);
    for (const title of ["Growth rate comparison", "Growth momentum", "Centre × platform growth", "Share of tracked audience", "Gap to competitor"]) assert.ok(html.includes(title));
-   assert.match(html, /value="2026-09-14"/);
-   assert.match(html, /value="2026-09-21"/);
+   assert.match(html, /Sep 14, 2026/);
+   assert.match(html, /Sep 21, 2026/);
    assert.match(html, /\+25%/);
    assert.match(html, /-10%/);
    assert.match(html, /-100/);
@@ -416,7 +560,7 @@ test("all five insights render exportable SVGs, shared dates, signed results, an
    assert.match(html, /Focus &amp; Academy minus Competitor/);
    assert.doesNotMatch(html, /NaN|Infinity|STATISTICS/);
    const empty = renderToStaticMarkup(React.createElement(Insights, { ...props, entries: [] }));
-   assert.doesNotMatch(empty, /<svg/);
+   assert.doesNotMatch(empty, /role="img"/);
    assert.equal((empty.match(/disabled=""/g) || []).length, 5);
    const zeros = renderToStaticMarkup(React.createElement(Insights, { ...props, entries: entries.map((entry) => ({ ...entry, subscribers: 0 })) }));
    assert.match(zeros, /N\/A \(starts at 0\)/);

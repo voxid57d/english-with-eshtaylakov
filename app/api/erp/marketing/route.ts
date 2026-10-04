@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { erpJsonError } from "@/lib/erp";
 import { getErpPermissions, requireErpPermission } from "@/lib/erpAuth";
-import { monthDays, previousDate, parseProfileLink, validateChanges, type MarketingEntry, type MarketingProfileLink } from "@/lib/marketingMetrics";
+import { dateRangeDays, monthDays, previousDate, parseProfileLink, validateChanges, type MarketingEntry, type MarketingProfileLink } from "@/lib/marketingMetrics";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { validatePlatformLogo } from "@/lib/marketingLogo";
 
@@ -19,7 +19,10 @@ function databaseError(error: { code?: string }) {
 export async function GET(req: Request) {
    try {
       const { staff } = await requireErpPermission(req, "marketing", "view");
-      const days = monthDays(new URL(req.url).searchParams.get("month") || "");
+      const params = new URL(req.url).searchParams;
+      const days = params.has("start") || params.has("end")
+         ? dateRangeDays(params.get("start") || "", params.get("end") || "")
+         : monthDays(params.get("month") || "");
       const [centres, platforms, permissions] = await Promise.all([
          supabaseAdmin.from("marketing_centres").select("id, name, color").order("created_at").order("id"),
          supabaseAdmin.from("marketing_platforms").select("id, name, logo_data_url").order("created_at").order("id"),
@@ -27,7 +30,7 @@ export async function GET(req: Request) {
       ]);
       if (centres.error || platforms.error) throw databaseError((centres.error || platforms.error)!);
       const entries: MarketingEntry[] = [];
-      // Include seven earlier days for daily change and momentum at the month boundary.
+      // Include seven earlier days for daily change and momentum at the range boundary.
       // Supabase caps individual responses; fetch every page of the sheet.
       for (let offset = 0; ; offset += 1000) {
          const result = await supabaseAdmin.from("marketing_entries")

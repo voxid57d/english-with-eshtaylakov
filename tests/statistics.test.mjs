@@ -162,6 +162,7 @@ test("monthly reads fetch all pages and return numeric values with calendar boun
 
 const Chart = load("components/marketing/MarketingChart.tsx", {
    react: React, "react/jsx-runtime": jsxRuntime,
+   "./LineChartInteraction": { default: load("components/marketing/LineChartInteraction.tsx", { react: React, "react/jsx-runtime": jsxRuntime, "./marketing.module.css": { default: {} } }).default },
    "@/lib/marketingMetrics": marketing, "./marketing.module.css": { default: {} },
 }).default;
 const Charts = load("components/statistics/StatisticsCharts.tsx", {

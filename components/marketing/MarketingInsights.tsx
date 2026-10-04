@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
+import { dateRangeDays, previousDate } from "@/lib/marketingMetrics";
 import { audienceShareSeries, comparisonGrowth, competitorGapSeries, momentumSeries } from "@/lib/marketingInsights";
 import type { MarketingCentre, MarketingEntry, MarketingPlatform } from "@/lib/marketingMetrics";
 import { InsightChart, InsightLines, labelLines, signed } from "./MarketingInsightChart";
+import MarketingDatePicker from "./MarketingDatePicker";
 import styles from "./marketing.module.css";
 
 export default function MarketingInsights({ centres, platforms, entries, platform, days, monthLabel }: {
@@ -13,6 +16,8 @@ export default function MarketingInsights({ centres, platforms, entries, platfor
    const [range, setRange] = useState({ month: "", start: "", end: "" });
    const [focusChoice, setFocusChoice] = useState("");
    const [competitorChoice, setCompetitorChoice] = useState("");
+   const [rangeData, setRangeData] = useState<{ key: string; entries: MarketingEntry[]; error: string }>({ key: "", entries: [], error: "" });
+   const [retry, setRetry] = useState(0);
    const month = days[0].slice(0, 7);
    const recordedDays = useMemo(() => {
       const selected = new Set(centres.map((centre) => centre.id));
@@ -21,16 +26,48 @@ export default function MarketingInsights({ centres, platforms, entries, platfor
    }, [centres, entries, platform.id, days]);
    const start = range.month === month ? range.start : recordedDays[0] || days[0];
    const end = range.month === month ? range.end : recordedDays.at(-1) || days[days.length - 1];
+   const trendDays = useMemo(() => range.month === month ? dateRangeDays(start, end) : days, [range.month, month, start, end, days]);
+   const periodLabel = range.month === month ? `${start} → ${end}` : monthLabel;
+   const needsRange = start < days[0] || end > days[days.length - 1];
+   const rangeKey = `${start}|${end}`;
+   const rangeLoading = needsRange && rangeData.key !== rangeKey;
+   const rangeError = needsRange && rangeData.key === rangeKey ? rangeData.error : "";
+   useEffect(() => {
+      if (!needsRange) return;
+      const controller = new AbortController();
+      setRangeData({ key: "", entries: [], error: "" });
+      async function loadRange() {
+         try {
+            const token = await getSupabaseAccessToken();
+            if (controller.signal.aborted) return;
+            const response = await fetch(`/api/erp/marketing?start=${start}&end=${end}`, {
+               cache: "no-store", signal: controller.signal, headers: { Authorization: `Bearer ${token}` },
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "Could not load this date range.");
+            if (!controller.signal.aborted) setRangeData({ key: rangeKey, entries: payload.entries, error: "" });
+         } catch (cause) {
+            if (!controller.signal.aborted) setRangeData({ key: rangeKey, entries: [], error: cause instanceof Error ? cause.message : "Could not load this date range." });
+         }
+      }
+      void loadRange();
+      return () => controller.abort();
+   }, [needsRange, start, end, rangeKey, retry]);
+   const insightEntries = useMemo(() => {
+      if (!needsRange || rangeData.key !== rangeKey) return entries;
+      // The current sheet includes unsaved edits and cleared cells; it owns its loaded dates.
+      return [...rangeData.entries.filter((entry) => entry.entry_date < previousDate(days[0], 7) || entry.entry_date > days[days.length - 1]), ...entries];
+   }, [needsRange, rangeData, rangeKey, entries, days]);
    const focus = centres.find((centre) => centre.id === focusChoice) || centres[0];
    const competitors = centres.filter((centre) => centre.id !== focus?.id);
    const competitor = competitors.find((centre) => centre.id === competitorChoice) || competitors[0];
    const focusId = focus?.id || "";
    const competitorId = competitor?.id || "";
-   const growth = useMemo(() => comparisonGrowth(centres, entries, platform.id, start, end).sort((a, b) => (b.percent ?? -Infinity) - (a.percent ?? -Infinity)), [centres, entries, platform.id, start, end]);
-   const heatmap = useMemo(() => platforms.map((item) => ({ ...item, rows: comparisonGrowth(centres, entries, item.id, start, end) })), [centres, entries, platforms, start, end]);
-   const momentum = useMemo(() => momentumSeries(centres, entries, platform.id, days), [centres, entries, platform.id, days]);
-   const shares = useMemo(() => audienceShareSeries(centres, entries, platform.id, days), [centres, entries, platform.id, days]);
-   const gap = competitorGapSeries(centres, entries, platform.id, days, focusId, competitorId);
+   const growth = useMemo(() => comparisonGrowth(centres, insightEntries, platform.id, start, end).sort((a, b) => (b.percent ?? -Infinity) - (a.percent ?? -Infinity)), [centres, insightEntries, platform.id, start, end]);
+   const heatmap = useMemo(() => platforms.map((item) => ({ ...item, rows: comparisonGrowth(centres, insightEntries, item.id, start, end) })), [centres, insightEntries, platforms, start, end]);
+   const momentum = useMemo(() => momentumSeries(centres, insightEntries, platform.id, trendDays), [centres, insightEntries, platform.id, trendDays]);
+   const shares = useMemo(() => audienceShareSeries(centres, insightEntries, platform.id, trendDays), [centres, insightEntries, platform.id, trendDays]);
+   const gap = competitorGapSeries(centres, insightEntries, platform.id, trendDays, focusId, competitorId);
    const values = growth.flatMap((row) => row.percent === null ? [] : [row.percent]);
    const min = Math.min(0, ...values);
    const max = Math.max(0, ...values);
@@ -38,17 +75,18 @@ export default function MarketingInsights({ centres, platforms, entries, platfor
    const heatScale = Math.max(1, ...heatmap.flatMap((item) => item.rows.flatMap((row) => row.percent === null ? [] : [Math.abs(row.percent)])));
    const heatWidth = Math.max(1100, 310 + platforms.length * 190);
    const columnWidth = (heatWidth - 310) / Math.max(platforms.length, 1);
-   const subtitle = `${platform.name} · ${monthLabel}`;
-   const filename = (kind: string, period = month) => `marketing-${platform.name.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${period}.jpg`;
+   const subtitle = `${platform.name} · ${periodLabel}`;
+   const filename = (kind: string, period = range.month === month ? `${start}-to-${end}` : month) => `marketing-${platform.name.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${period}.jpg`;
 
    return <>
       <div className={styles.chartFilters}>
-         <div><h2>Growth and competitive insights</h2><p>Growth rate and the heatmap compare these exact dates. Trend charts cover {monthLabel}.</p></div>
+         <div><h2>Growth and competitive insights</h2><p>Choose dates across months. Growth rate and the heatmap compare these exact dates. Trend charts cover {periodLabel}.</p></div>
          <div className={styles.filters}>
-            <label className={styles.field}>Comparison start<input type="date" min={days[0]} max={end} value={start} onChange={(event) => { if (days.includes(event.target.value) && event.target.value <= end) setRange({ month, start: event.target.value, end }); }} /></label>
-            <label className={styles.field}>Comparison end<input type="date" min={start} max={days[days.length - 1]} value={end} onChange={(event) => { if (days.includes(event.target.value) && event.target.value >= start) setRange({ month, start, end: event.target.value }); }} /></label>
+            <MarketingDatePicker label="Comparison start" min="1900-01-01" max={end} value={start} start={start} end={end} entries={entries} loadedMonth={month} centreIds={centres.map((centre) => centre.id)} platformId={platform.id} platformName={platform.name} onChange={(date) => setRange({ month, start: date, end })} />
+            <MarketingDatePicker label="Comparison end" min={start} max="2199-12-31" value={end} start={start} end={end} entries={entries} loadedMonth={month} centreIds={centres.map((centre) => centre.id)} platformId={platform.id} platformName={platform.name} onChange={(date) => setRange({ month, start, end: date })} />
          </div>
       </div>
+      {rangeLoading ? <p className={styles.loading} role="status">Loading this date range…</p> : rangeError ? <p className={styles.error} role="alert">{rangeError} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p> : <>
       <InsightChart title="Growth rate comparison" subtitle={`${platform.name} · ${start} → ${end}`} toolbar="06 / GROWTH RATE" filename={filename("growth-rate", `${start}-to-${end}`)}
          footer="Same dates for every centre. Growth % = net change / starting count × 100. A zero starting count has no growth %."
          hasData={growth.some((row) => row.change !== null)} height={235 + centres.length * 80} emptyMessage={`Choose two different dates with recorded counts at both endpoints (${start} and ${end}).`}>
@@ -63,7 +101,7 @@ export default function MarketingInsights({ centres, platforms, entries, platfor
             <text x="310" y={208 + index * 80} fill="#94a3b8" fontSize="12">{row.change === null ? "Both dates required" : `${signed(row.change)} net subscribers`}</text>
          </g>)}
       </InsightChart>
-      <InsightLines title="Growth momentum" subtitle={subtitle} toolbar="07 / SEVEN-DAY MOMENTUM" filename={filename("momentum")} series={momentum} days={days} axisLabel="NET SUBSCRIBERS OVER THE PREVIOUS 7 DAYS"
+      <InsightLines title="Growth momentum" subtitle={subtitle} toolbar="07 / SEVEN-DAY MOMENTUM" filename={filename("momentum")} series={momentum} days={trendDays} axisLabel="NET SUBSCRIBERS OVER THE PREVIOUS 7 DAYS"
          footer="Each point = count on that date minus count exactly 7 days earlier. Both endpoints required; gaps mean missing counts."
          emptyMessage="Record counts on two dates exactly seven days apart to see growth momentum." />
       <InsightChart title="Centre × platform growth" subtitle={`All platforms · ${start} → ${end}`} toolbar="08 / PLATFORM HEATMAP" filename={`marketing-platform-heatmap-${start}-to-${end}.jpg`}
@@ -89,7 +127,7 @@ export default function MarketingInsights({ centres, platforms, entries, platfor
             })}
          </g>)}
       </InsightChart>
-      <InsightLines title="Share of tracked audience" subtitle={subtitle} toolbar="09 / AUDIENCE SHARE" filename={filename("audience-share")} series={shares} days={days} axisLabel="SHARE OF SELECTED CENTRES’ SUBSCRIBER COUNTS (%)" percent
+      <InsightLines title="Share of tracked audience" subtitle={subtitle} toolbar="09 / AUDIENCE SHARE" filename={filename("audience-share")} series={shares} days={trendDays} axisLabel="SHARE OF SELECTED CENTRES’ SUBSCRIBER COUNTS (%)" percent
          footer="Selected centres only, on this platform; not market share or unique people. A day requires every selected count and a positive total."
          emptyMessage="Audience share needs counts for every selected centre on the same date, with a combined total above zero." />
       <div className={styles.chartFilters}>
@@ -99,8 +137,9 @@ export default function MarketingInsights({ centres, platforms, entries, platfor
             <label className={styles.field}>Compare with<select value={competitor?.id || ""} disabled={!competitors.length} onChange={(event) => setCompetitorChoice(event.target.value)}>{!competitors.length && <option value="">Select another centre above</option>}{competitors.map((centre) => <option key={centre.id} value={centre.id}>{centre.name}</option>)}</select></label>
          </div>
       </div>
-      <InsightLines title="Gap to competitor" subtitle={subtitle} toolbar="10 / COMPETITOR GAP" filename={filename(`gap-${focus?.id || "none"}-${competitor?.id || "none"}`)} series={gap} days={days} axisLabel="FOCUS CENTRE MINUS COMPARISON CENTRE (SUBSCRIBERS)"
+      <InsightLines title="Gap to competitor" subtitle={subtitle} toolbar="10 / COMPETITOR GAP" filename={filename(`gap-${focus?.id || "none"}-${competitor?.id || "none"}`)} series={gap} days={trendDays} axisLabel="FOCUS CENTRE MINUS COMPARISON CENTRE (SUBSCRIBERS)"
          footer="Above zero = focus centre ahead; below zero = behind. Only dates with counts for both centres are plotted."
          emptyMessage={competitor ? "Record both selected centres on the same date to see the audience gap." : "Select at least two learning centres above to compare their audiences."} />
+      </>}
    </>;
 }

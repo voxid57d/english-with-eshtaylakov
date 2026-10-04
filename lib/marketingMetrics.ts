@@ -30,6 +30,15 @@ export function entryKey(centreId: string, platformId: string, date: string) {
    return `${centreId}|${platformId}|${date}`;
 }
 
+export function dateRangeDays(start: string, end: string) {
+   for (const date of [start, end]) {
+      if (!monthDays(date.slice(0, 7)).includes(date)) throw new Error("Choose valid start and end dates.");
+   }
+   if (start > end) throw new Error("Start date must be on or before end date.");
+   const length = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
+   return Array.from({ length }, (_, index) => previousDate(start, -index));
+}
+
 export function previousDate(date: string, days = 1) {
    const previous = new Date(`${date}T00:00:00Z`);
    previous.setUTCDate(previous.getUTCDate() - days);

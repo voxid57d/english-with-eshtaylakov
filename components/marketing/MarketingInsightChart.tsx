@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type ReactElement, type SVGProps } from "react";
 import { trendBounds } from "@/lib/marketingMetrics";
 import type { AudienceSeries } from "@/lib/marketingInsights";
+import LineChartInteraction from "./LineChartInteraction";
 import styles from "./marketing.module.css";
 
 export const number = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -12,9 +13,10 @@ export const labelLines = (value: string, length = 30) => {
    return lines.length > 2 ? [lines[0], `${lines[1].slice(0, -1)}…`] : lines;
 };
 
-export function InsightChart({ title, subtitle, toolbar, footer, filename, hasData, emptyMessage, width = 1100, height, children }: {
+export function InsightChart({ title, subtitle, toolbar, footer, filename, hasData, emptyMessage, width = 1100, height, children, interaction }: {
    title: string; subtitle: string; toolbar: string; footer: string; filename: string;
    hasData: boolean; emptyMessage: string; width?: number; height: number; children: ReactNode;
+   interaction?: Omit<Parameters<typeof LineChartInteraction>[0], "children" | "height" | "label">;
 }) {
    const svg = useRef<SVGSVGElement>(null);
    const [exporting, setExporting] = useState(false);
@@ -26,7 +28,9 @@ export function InsightChart({ title, subtitle, toolbar, footer, filename, hasDa
       let sourceUrl: string | undefined;
       let downloadUrl: string | undefined;
       try {
-         sourceUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg.current)], { type: "image/svg+xml;charset=utf-8" }));
+         const exported = svg.current.cloneNode(true) as SVGSVGElement;
+         exported.querySelectorAll("[data-chart-interaction]").forEach((element) => element.remove());
+         sourceUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(exported)], { type: "image/svg+xml;charset=utf-8" }));
          const picture = new Image();
          picture.src = sourceUrl;
          await picture.decode();
@@ -49,10 +53,12 @@ export function InsightChart({ title, subtitle, toolbar, footer, filename, hasDa
       }
    }
 
+   const wrapPlot = (plot: ReactElement<SVGProps<SVGSVGElement>>) => interaction ? <LineChartInteraction {...interaction} height={height} label={title}>{plot}</LineChartInteraction> : plot;
+
    return <article className={styles.chartCard}>
       <div className={styles.chartToolbar}><span>{toolbar}</span><button disabled={!hasData || exporting} onClick={() => void exportJpg()}>{exporting ? "Exporting…" : "↓ Export JPG"}</button></div>
       {!hasData ? <div className={styles.chartEmpty}><h3>{title}</h3><p>{emptyMessage}</p></div> :
-         <div className={styles.chartScroll}><svg ref={svg} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}, ${subtitle}`} style={{ width: "100%", height: "auto", minWidth: width > 1100 ? width : 600, display: "block", fontFamily: "Arial, Helvetica, sans-serif" }}>
+         <div className={styles.chartScroll}>{wrapPlot(<svg ref={svg} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}, ${subtitle}`} style={{ width: "100%", height: "auto", minWidth: width > 1100 ? width : 600, display: "block", fontFamily: "Arial, Helvetica, sans-serif" }}>
             <title>{`${title} — ${subtitle}`}</title><desc>{footer}</desc>
             <rect width={width} height={height} rx="18" fill="#0b1220" />
             <rect x="40" y="38" width="4" height="55" rx="2" fill="#34d399" />
@@ -61,7 +67,7 @@ export function InsightChart({ title, subtitle, toolbar, footer, filename, hasDa
             {children}
             <line x1="40" x2={width - 40} y1={height - 60} y2={height - 60} stroke="#263247" />
             <text x="40" y={height - 38} fill="#94a3b8" fontSize="11">{labelLines(`MARKETING METRICS / ${footer}`, Math.floor((width - 80) / 6.5)).map((line, index) => <tspan key={index} x="40" dy={index ? 17 : 0}>{line}</tspan>)}</text>
-         </svg></div>}
+         </svg>)}</div>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
    </article>;
 }
@@ -79,14 +85,16 @@ export function InsightLines({ title, subtitle, toolbar, footer, filename, empty
    const y = (value: number) => 425 - (value - min) / (max - min) * 260;
    const valueLabel = (value: number) => `${number(value)}${percent ? "%" : ""}`;
    const height = 560 + Math.ceil(series.length / 3) * 60;
-   return <InsightChart {...{ title, subtitle, toolbar, footer, filename, emptyMessage, height }} hasData={values.length > 0}>
+   const acrossMonths = days[0]?.slice(0, 7) !== days.at(-1)?.slice(0, 7);
+   const tickInterval = Math.max(3, Math.ceil(days.length / (acrossMonths ? 8 : 11)));
+   return <InsightChart {...{ title, subtitle, toolbar, footer, filename, emptyMessage, height }} hasData={values.length > 0} interaction={{ series, days, left: 190, unit: axisLabel, percent, signed: !percent }}>
       {[0, 1, 2, 3, 4].map((tick) => {
          const value = min + (max - min) * tick / 4;
          return <g key={tick}><line x1="190" x2="1030" y1={y(value)} y2={y(value)} stroke="#263247" strokeDasharray="4 6" /><text x="174" y={y(value) + 5} textAnchor="end" fill="#94a3b8" fontSize="13">{value.toLocaleString("en-US", { maximumFractionDigits: 4 })}{percent ? "%" : ""}</text></g>;
       })}
       {min <= 0 && max >= 0 && <line x1="190" x2="1030" y1={y(0)} y2={y(0)} stroke="#64748b" />}
       <text x="190" y="137" fill="#94a3b8" fontSize="12">{axisLabel}</text>
-      {days.map((day, index) => (index % 3 === 0 || index === days.length - 1) && <text key={day} x={x(index)} y="451" textAnchor="middle" fill="#94a3b8" fontSize="12">{day.slice(-2)}</text>)}
+      {days.map((day, index) => (index % tickInterval === 0 || index === days.length - 1) && <text key={day} x={x(index)} y="451" textAnchor="middle" fill="#94a3b8" fontSize="12">{acrossMonths ? day.slice(2) : day.slice(-2)}</text>)}
       {series.map((centre, centreIndex) => {
          let previous = false;
          const path = centre.points.map((point, index) => {

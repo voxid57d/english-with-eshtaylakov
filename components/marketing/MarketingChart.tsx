@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactElement, type SVGProps } from "react";
 import { dailyAudienceTotals, dailyChanges, growthBetween, platformSeries, previousDate, trendBounds, type MarketingCentre, type MarketingEntry, type MarketingPlatform } from "@/lib/marketingMetrics";
+import LineChartInteraction from "./LineChartInteraction";
 import styles from "./marketing.module.css";
 
 const format = (value: number) => value.toLocaleString("en-US");
@@ -57,7 +58,9 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
       let sourceUrl: string | undefined;
       let downloadUrl: string | undefined;
       try {
-         const source = new XMLSerializer().serializeToString(svg.current);
+         const exported = svg.current.cloneNode(true) as SVGSVGElement;
+         exported.querySelectorAll("[data-chart-interaction]").forEach((element) => element.remove());
+         const source = new XMLSerializer().serializeToString(exported);
          sourceUrl = URL.createObjectURL(new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
          const picture = new Image();
          picture.src = sourceUrl;
@@ -82,10 +85,12 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
       }
    }
 
+   const wrapPlot = (plot: ReactElement<SVGProps<SVGSVGElement>>) => kind === "trend" ? <LineChartInteraction series={series} days={days} left={trendLeft} height={height} label={title} unit={presentation?.axisLabel ?? "Subscribers"}>{plot}</LineChartInteraction> : plot;
+
    return <article className={styles.chartCard}>
       <div className={styles.chartToolbar}><span>{presentation?.toolbar ?? (kind === "total" ? "01 / TOTAL DAILY AUDIENCE" : kind === "daily" ? "02 / DAILY SNAPSHOT" : kind === "change" ? "03 / DAILY CHANGE" : kind === "trend" ? "04 / MONTHLY TREND" : "05 / GROWTH LEADERBOARD")}</span><button disabled={!hasData || exporting} onClick={() => void exportJpg()}>{exporting ? "Exporting…" : "↓ Export JPG"}</button></div>
       {!hasData ? <div className={styles.chartEmpty}><h3>{title}</h3><p>{presentation?.emptyMessage ?? (kind === "change" ? `Record counts on both ${previousDate(date)} and ${date} for a centre to see its daily change.` : kind === "growth" ? "Record at least two dates for a centre to measure growth." : `Add subscriber counts for ${chartPlatform}${isDaily ? ` on ${date}` : " this month"}.`)}</p></div> :
-         <div className={styles.chartScroll}><svg ref={svg} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}, ${subtitle}`} style={{ width: "100%", height: "auto", minWidth: 600, display: "block", fontFamily: "Arial, Helvetica, sans-serif" }}>
+         <div className={styles.chartScroll}>{wrapPlot(<svg ref={svg} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}, ${subtitle}`} style={{ width: "100%", height: "auto", minWidth: 600, display: "block", fontFamily: "Arial, Helvetica, sans-serif" }}>
             <title>{`${title} — ${subtitle}`}</title>
             <rect width={width} height={height} rx="18" fill="#0b1220" />
             <rect x="40" y="38" width="4" height="55" rx="2" fill="#34d399" />
@@ -124,7 +129,7 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
             <line x1="40" x2="1060" y1={height - 42} y2={height - 42} stroke="#263247" />
             <text x="40" y={height - 20} fill="#64748b" fontSize="11">{presentation ? "STATISTICS" : "MARKETING METRICS"} / {presentation?.footer ?? (kind === "total" ? "Sum across platforms; audiences may overlap. Partial totals use recorded counts only." : kind === "change" ? "Selected day minus previous calendar day; both figures required" : kind === "trend" ? "Gaps indicate unrecorded days" : kind === "growth" ? "First to last recorded date per centre; periods may differ" : "Recorded counts on the selected date only")}</text>
             <text x="1060" y={height - 20} textAnchor="end" fill="#94a3b8" fontSize="11">{monthLabel.toUpperCase()}</text>
-         </svg></div>}
+         </svg>)}</div>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
    </article>;
 }
