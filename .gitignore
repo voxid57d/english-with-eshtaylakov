@@ -40,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Android finance app (local signing key must be kept for APK updates)
+/android-finance/.gradle/
+/android-finance/**/build/
+/android-finance/local.properties
+/android-finance/.signing/
+/artifacts/android-finance/

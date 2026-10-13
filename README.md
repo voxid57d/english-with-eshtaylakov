@@ -144,6 +144,11 @@ user ID.
    environment variables.
 3. Sign in at the hidden URL using that user's Google account.
 
+A personal Android app in `android-finance/` opens only the finance portal on
+launch and reuses the browser's saved account session, with no extra app PIN.
+See [Android build/install instructions](android-finance/README.md). Deploy
+`public/.well-known/assetlinks.json` with the site to enable fullscreen display.
+
 The USD/UZS display rate comes from the official Central Bank of Uzbekistan API.
 USD transactions keep the rate used when they were recorded, so historical totals
 do not change when today's rate changes.

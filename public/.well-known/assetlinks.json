@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "uz.eshtaylakov.finance",
+      "sha256_cert_fingerprints": [
+        "44:C1:79:16:04:B3:94:C8:CA:57:09:ED:CD:2B:B9:D9:78:69:34:72:2B:04:E1:38:E1:87:BB:7A:8A:85:B2:52"
+      ]
+    }
+  }
+]
