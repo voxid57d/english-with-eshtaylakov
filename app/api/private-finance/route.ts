@@ -11,7 +11,7 @@ import {
    isMonthStart,
    privateFinanceError,
    requirePositiveAmount,
-   requirePrivateFinanceUser,
+   getFinanceOwner,
    type FinanceAccountType,
    type FinanceCurrency,
    type FinanceDebtDirection,
@@ -308,7 +308,7 @@ async function getOwnedAccount(userId: string, accountId: string) {
 
 export async function GET(req: Request) {
    try {
-      const user = await requirePrivateFinanceUser(req);
+      const user = getFinanceOwner();
       const period = monthBounds(new URL(req.url).searchParams.get("month"));
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tashkent", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
       const comparisonPeriod = financeComparisonPeriod(period.month, today);
@@ -507,7 +507,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
    try {
-      const user = await requirePrivateFinanceUser(req);
+      const user = getFinanceOwner();
       const body = await req.json();
 
       if (body?.action === "account") {
@@ -793,7 +793,7 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
    try {
-      const user = await requirePrivateFinanceUser(req);
+      const user = getFinanceOwner();
       const body = await req.json();
 
       if (body?.action === "transaction") {
@@ -895,7 +895,7 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
    try {
-      const user = await requirePrivateFinanceUser(req);
+      const user = getFinanceOwner();
       const body = await req.json();
       const id = cleanFinanceText(body.id, 60);
       if (!id) throw new Error("Record id is required.");

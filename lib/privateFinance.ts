@@ -1,5 +1,3 @@
-import { requireAuthenticatedUser } from "@/lib/serverAuth";
-
 export const FINANCE_ENTRY_TYPES = ["expense", "income", "savings"] as const;
 export const FINANCE_CURRENCIES = ["UZS", "USD"] as const;
 export const FINANCE_ACCOUNT_TYPES = [
@@ -56,23 +54,17 @@ export function isMonthStart(value: unknown): value is string {
    return isIsoDate(value) && value.endsWith("-01");
 }
 
-export async function requirePrivateFinanceUser(req: Request) {
-   const user = await requireAuthenticatedUser(req);
+export function getFinanceOwner() {
    const allowedUserId = process.env.PRIVATE_FINANCE_USER_ID?.trim();
 
    if (!allowedUserId) {
-      const error = new Error("Private finance access is not configured.");
+      const error = new Error("Finance storage owner is not configured.");
       Object.assign(error, { status: 503 });
       throw error;
    }
 
-   if (user.id !== allowedUserId) {
-      const error = new Error("You do not have access to this private space.");
-      Object.assign(error, { status: 403 });
-      throw error;
-   }
-
-   return user;
+   // The finance link is public. Keep all data scoped to its configured owner.
+   return { id: allowedUserId, email: null };
 }
 
 export function privateFinanceError(error: unknown, fallback: string) {

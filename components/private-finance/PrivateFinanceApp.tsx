@@ -22,12 +22,10 @@ import {
    PiHeartLight,
    PiHouseLineLight,
    PiHouseLight,
-   PiLockKeyLight,
    PiMoneyLight,
    PiPiggyBankLight,
    PiPencilSimpleLight,
    PiPlusLight,
-   PiSignOutLight,
    PiShoppingBagLight,
    PiStethoscopeLight,
    PiTagLight,
@@ -40,11 +38,9 @@ import {
    PiXLight,
 } from "react-icons/pi";
 import type { IconType } from "react-icons";
-import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { getLocalDateString } from "@/lib/localDate";
 import { compareFinanceMonths, type financeComparisonPeriod } from "@/lib/financeComparison";
 import { financeCategoryTotals } from "@/lib/financeTotals";
-import { supabase } from "@/lib/supabaseClient";
 import type {
    FinanceAccountType,
    FinanceCurrency,
@@ -161,7 +157,7 @@ type FinancePayload = {
 
 type View = "overview" | "accounts" | "transactions" | "debts" | "plans" | "categories";
 type Modal = "transaction" | "transfer" | "account" | "category" | "budget" | "debt" | "debt-payment" | "debt-history" | null;
-type AccessState = "loading" | "ready" | "signed-out" | "denied" | "error";
+type AccessState = "loading" | "ready" | "error";
 const TYPE_META: Record<
    FinanceEntryType,
    { label: string; shortLabel: string; icon: IconType; sign: string }
@@ -276,38 +272,23 @@ export default function PrivateFinanceApp() {
    const [month, setMonth] = useState(currentMonth);
    const [displayCurrency, setDisplayCurrency] = useState<FinanceCurrency>("UZS");
    const [filter, setFilter] = useState<FinanceEntryType | "all">("all");
-   const [busy, setBusy] = useState(false);
    const [message, setMessage] = useState<string | null>(null);
    const loadData = useCallback(async () => {
       try {
          setMessage(null);
-         const token = await getSupabaseAccessToken();
          const response = await fetch(`/api/private-finance?month=${month}`, {
-            headers: { Authorization: `Bearer ${token}` },
             cache: "no-store",
          });
          const data = await response.json();
          if (!response.ok) {
-            if (response.status === 401) {
-               setAccess("signed-out");
-               return;
-            }
-            if (response.status === 403) {
-               setAccess("denied");
-               return;
-            }
             throw new Error(data.error || "Could not open your finance space.");
          }
          setPayload(data);
          setAccess("ready");
       } catch (error) {
          const text = error instanceof Error ? error.message : "Could not open this page.";
-         if (text.includes("sign in") || text.includes("session")) {
-            setAccess("signed-out");
-         } else {
-            setMessage(text);
-            setAccess("error");
-         }
+         setMessage(text);
+         setAccess("error");
       }
    }, [month]);
 
@@ -317,11 +298,9 @@ export default function PrivateFinanceApp() {
 
    const request = useCallback(
       async (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => {
-         const token = await getSupabaseAccessToken();
          const response = await fetch("/api/private-finance", {
             method,
             headers: {
-               Authorization: `Bearer ${token}`,
                "Content-Type": "application/json",
             },
             body: JSON.stringify(body),
@@ -377,50 +356,25 @@ export default function PrivateFinanceApp() {
       return { ...result, available };
    }, [payload?.accounts, payload?.transactions, rate, toUzs]);
 
-   const signIn = async () => {
-      setBusy(true);
-      setMessage(null);
-      await supabase.auth.signInWithOAuth({
-         provider: "google",
-         options: {
-            redirectTo: `${window.location.origin}/auth/callback?next=/x97-private-portal`,
-         },
-      });
-      setBusy(false);
-   };
-
-   const signOut = async () => {
-      await supabase.auth.signOut();
-      setPayload(null);
-      setAccess("signed-out");
-   };
-
    if (access !== "ready" || !payload) {
       return (
          <main className={styles.gate}>
             <section className={styles.gateCard}>
-               <div className={styles.gateIcon}><PiLockKeyLight /></div>
-               <p className={styles.eyebrow}>Private space</p>
-               <h1>{access === "denied" ? "Access not granted" : "Your money, in one quiet place."}</h1>
+               <div className={styles.gateIcon}><PiWalletLight /></div>
+               <p className={styles.eyebrow}>Personal finance</p>
+               <h1>Your money, in one quiet place.</h1>
                <p>
                   {access === "loading"
-                     ? "Checking your secure session…"
-                     : access === "denied"
-                       ? "This account is not the owner of this private finance space."
-                       : message || "Sign in with the approved Google account to continue."}
+                     ? "Loading your finances…"
+                     : message || "Could not load your finances."}
                </p>
                {access === "loading" ? (
                   <div className={styles.loader} aria-label="Loading" />
-               ) : access === "signed-out" ? (
-                  <button className={styles.primaryButton} onClick={signIn} disabled={busy}>
-                     <PiLockKeyLight /> {busy ? "Opening…" : "Unlock with Google"}
-                  </button>
                ) : access === "error" ? (
                   <button className={styles.secondaryButton} onClick={() => void loadData()}>
                      Try again
                   </button>
                ) : null}
-               <span className={styles.privateNote}>Encrypted in transit · Private by account</span>
             </section>
          </main>
       );
@@ -449,8 +403,7 @@ export default function PrivateFinanceApp() {
             </nav>
             <div className={styles.sideFooter}>
                <div className={styles.avatar}>{initials(payload.user.email)}</div>
-               <div><b>{payload.user.email?.split("@")[0] || "Owner"}</b><small>Private owner</small></div>
-               <button onClick={signOut} title="Sign out"><PiSignOutLight /></button>
+               <div><b>Personal finance</b><small>Quiet Money</small></div>
             </div>
          </aside>
 

@@ -135,17 +135,18 @@ privacy controls, test commands, and deployment checklist.
 
 ## Private finance portal
 
-The unlinked personal finance workspace lives at `/x97-private-portal`. Its URL and
-`noindex` metadata are only privacy layers; API access is restricted to one Supabase
-user ID.
+The unlinked personal finance workspace lives at `/x97-private-portal` and opens
+without signing in. Anyone with the URL can view and change its finance records.
+The URL and `noindex` metadata do not provide access protection. All queries and
+writes remain scoped to the configured storage owner.
 
 1. Run `supabase/private_finance_schema.sql` in the Supabase SQL editor.
 2. Add `PRIVATE_FINANCE_USER_ID=<supabase-auth-user-uuid>` to the local and deployed
    environment variables.
-3. Sign in at the hidden URL using that user's Google account.
+3. Open the finance URL directly; no Google account or password is required.
 
 A personal Android app in `android-finance/` opens only the finance portal on
-launch and reuses the browser's saved account session, with no extra app PIN.
+launch, with no sign-in or extra app PIN.
 See [Android build/install instructions](android-finance/README.md). Deploy
 `public/.well-known/assetlinks.json` with the site to enable fullscreen display.
 

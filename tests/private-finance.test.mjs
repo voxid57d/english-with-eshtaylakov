@@ -4,11 +4,11 @@ import vm from "node:vm";
 import { test } from "node:test";
 import ts from "typescript";
 
-function load(path, modules = {}) {
+function load(path, modules = {}, env = { PRIVATE_FINANCE_USER_ID: "owner" }) {
    const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
    const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } });
    const exports = {};
-   vm.runInNewContext(outputText, { exports, URL, Intl, Date, Error, process: { env: { PRIVATE_FINANCE_USER_ID: "owner" } }, require: (name) => {
+   vm.runInNewContext(outputText, { exports, URL, Intl, Date, Error, process: { env }, require: (name) => {
       if (!(name in modules)) throw new Error(`Unexpected import: ${name}`);
       return modules[name];
    } });
@@ -16,7 +16,27 @@ function load(path, modules = {}) {
 }
 
 const comparison = load("lib/financeComparison.ts");
-const finance = load("lib/privateFinance.ts", { "@/lib/serverAuth": { requireAuthenticatedUser: async () => ({ id: "owner" }) } });
+const finance = load("lib/privateFinance.ts");
+
+test("the open finance link selects the configured data owner without authentication", () => {
+   assert.equal(finance.getFinanceOwner().id, "owner");
+   assert.equal(finance.getFinanceOwner().email, null);
+});
+
+test("all finance endpoints fail before storage access if the data owner is missing", async () => {
+   const unconfiguredFinance = load("lib/privateFinance.ts", {}, {});
+   const route = load("app/api/private-finance/route.ts", {
+      "next/server": { NextResponse: { json: (data, init) => ({ data, status: init?.status || 200 }) } },
+      "@/lib/supabaseAdmin": { supabaseAdmin: { from() { throw new Error("Storage must not be queried"); } } },
+      "@/lib/privateFinance": unconfiguredFinance,
+      "@/lib/financeComparison": comparison,
+   });
+   for (const method of ["GET", "POST", "PATCH", "DELETE"]) {
+      const response = await route[method]({ url: "https://example.com/api/private-finance", json: async () => ({}) });
+      assert.equal(response.status, 503);
+      assert.equal(response.data.error, "Finance storage owner is not configured.");
+   }
+});
 
 test("comparison periods handle year boundaries, leap years, and matching days", () => {
    const january = comparison.financeComparisonPeriod("2026-01", "2026-09-20");
