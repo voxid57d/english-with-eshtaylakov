@@ -1,6 +1,7 @@
 "use client";
 
 import CalendarInput from "@/components/ui/CalendarInput";
+import FinanceBackups from "./FinanceBackups";
 
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import {
@@ -141,7 +142,7 @@ type ExchangeRate = {
    source: string;
 } | null;
 
-type FinancePayload = {
+export type FinancePayload = {
    comparisonPeriod: ReturnType<typeof financeComparisonPeriod>;
    previousTransactions: FinanceTransaction[];
    user: { id: string; email: string | null };
@@ -155,7 +156,7 @@ type FinancePayload = {
    exchangeRate: ExchangeRate;
 };
 
-type View = "overview" | "accounts" | "transactions" | "debts" | "plans" | "categories";
+type View = "overview" | "accounts" | "transactions" | "debts" | "plans" | "categories" | "backups";
 type Modal = "transaction" | "transfer" | "account" | "category" | "budget" | "debt" | "debt-payment" | "debt-history" | null;
 type AccessState = "loading" | "ready" | "error";
 const TYPE_META: Record<
@@ -218,6 +219,7 @@ const NAV_ITEMS: Array<{ id: View; label: string; icon: IconType }> = [
    { id: "debts", label: "Debts", icon: PiCoinsLight },
    { id: "plans", label: "Plans & goals", icon: PiChartDonutLight },
    { id: "categories", label: "Categories", icon: PiTagLight },
+   { id: "backups", label: "Backups", icon: PiArchiveLight },
 ];
 
 function currentMonth() {
@@ -259,10 +261,16 @@ function initials(email: string | null) {
    return (email?.split("@")[0]?.slice(0, 2) || "ME").toUpperCase();
 }
 
-export default function PrivateFinanceApp() {
+export type FinanceTransport = {
+   load: (month: string) => Promise<FinancePayload>;
+   request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
+};
+
+export default function PrivateFinanceApp({ offline = false, transport }: { offline?: boolean; transport?: FinanceTransport } = {}) {
    const [access, setAccess] = useState<AccessState>("loading");
    const [payload, setPayload] = useState<FinancePayload | null>(null);
    const [view, setView] = useState<View>("overview");
+   useEffect(() => { window.scrollTo(0, 0); }, [view]);
    const [modal, setModal] = useState<Modal>(null);
    const [categoryParent, setCategoryParent] = useState<Category | null>(null);
    const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null);
@@ -273,9 +281,23 @@ export default function PrivateFinanceApp() {
    const [displayCurrency, setDisplayCurrency] = useState<FinanceCurrency>("UZS");
    const [filter, setFilter] = useState<FinanceEntryType | "all">("all");
    const [message, setMessage] = useState<string | null>(null);
+   useEffect(() => {
+      if (!offline) return;
+      window.FinanceBack = () => {
+         if (modal) { setModal(null); setTransactionToEdit(null); return true; }
+         if (view !== "overview") { setView("overview"); return true; }
+         return false;
+      };
+      return () => { delete window.FinanceBack; };
+   }, [offline, modal, view]);
    const loadData = useCallback(async () => {
       try {
          setMessage(null);
+         if (transport) {
+            setPayload(await transport.load(month));
+            setAccess("ready");
+            return;
+         }
          const response = await fetch(`/api/private-finance?month=${month}`, {
             cache: "no-store",
          });
@@ -290,7 +312,7 @@ export default function PrivateFinanceApp() {
          setMessage(text);
          setAccess("error");
       }
-   }, [month]);
+   }, [month, transport]);
 
    useEffect(() => {
       void loadData();
@@ -298,6 +320,7 @@ export default function PrivateFinanceApp() {
 
    const request = useCallback(
       async (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => {
+         if (transport) return transport.request(method, body);
          const response = await fetch("/api/private-finance", {
             method,
             headers: {
@@ -309,7 +332,7 @@ export default function PrivateFinanceApp() {
          if (!response.ok) throw new Error(data.error || "Something went wrong.");
          return data;
       },
-      [],
+      [transport],
    );
 
    const rate = payload?.exchangeRate?.rate || 1;
@@ -415,22 +438,23 @@ export default function PrivateFinanceApp() {
                   <button onClick={() => setMonth(shiftMonth(month, 1))} aria-label="Next month"><PiCaretRightLight /></button>
                </div>
                <div className={styles.topActions}>
-                  <div className={styles.ratePill} title="Official Central Bank rate">
+                  {!offline && <div className={styles.ratePill} title="Official Central Bank rate">
                      <span>$</span>
                      <div><small>1 USD</small><b>{payload.exchangeRate ? `${new Intl.NumberFormat("en-US").format(rate)} UZS` : "Rate unavailable"}</b></div>
                      {payload.exchangeRate && <em className={payload.exchangeRate.change >= 0 ? styles.rateUp : styles.rateDown}>{payload.exchangeRate.change >= 0 ? "+" : ""}{payload.exchangeRate.change.toFixed(2)}</em>}
-                  </div>
-                  <div className={styles.currencyToggle}>
+                  </div>}
+                  {!offline && <div className={styles.currencyToggle}>
                      {(["UZS", "USD"] as const).map((currency) => (
                         <button key={currency} className={displayCurrency === currency ? styles.currencyActive : ""} onClick={() => setDisplayCurrency(currency)}>{currency}</button>
                      ))}
-                  </div>
+                  </div>}
                   <button className={styles.transferButton} onClick={() => setModal("transfer")}><PiArrowsLeftRightLight /> Transfer</button>
                   <button className={styles.addButton} onClick={() => setModal("transaction")}><PiPlusLight /> Add transaction</button>
                </div>
             </header>
 
             {message && <div className={styles.toast}>{message}<button onClick={() => setMessage(null)}><PiXLight /></button></div>}
+            {view === "backups" && <FinanceBackups offline={offline} refresh={loadData} />}
 
             <div className={styles.mobileNav}>
                {NAV_ITEMS.map((item) => {
@@ -579,6 +603,7 @@ export default function PrivateFinanceApp() {
          )}
          {modal === "account" && (
             <AccountModal
+               uzsOnly={offline}
                request={request}
                close={() => setModal(null)}
                refresh={loadData}
@@ -601,6 +626,7 @@ export default function PrivateFinanceApp() {
          )}
          {modal === "budget" && (
             <BudgetModal
+               uzsOnly={offline}
                categories={payload.categories}
                month={month}
                request={request}
@@ -1383,7 +1409,8 @@ function TransactionModal({ transaction, accounts, categories, rate, request, cl
    );
 }
 
-function AccountModal({ request, close, refresh, showMessage }: {
+function AccountModal({ request, close, refresh, showMessage, uzsOnly = false }: {
+   uzsOnly?: boolean;
    request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
    close: () => void;
    refresh: () => Promise<void>;
@@ -1416,7 +1443,7 @@ function AccountModal({ request, close, refresh, showMessage }: {
             <label><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} placeholder={accountType === "person" ? "e.g. Wife's wallet" : "e.g. Cash or Visa card"} autoFocus required /></label>
             <label><span>Account type</span><select value={accountType} onChange={(event) => setAccountType(event.target.value as FinanceAccountType)}>{(Object.entries(ACCOUNT_META) as Array<[FinanceAccountType, { label: string; glyph: string }]>).map(([type, meta]) => <option value={type} key={type}>{meta.label}</option>)}</select></label>
             {accountType === "person" && <p className={styles.planExplanation}>Use this for money held and spent by your wife or another family member.</p>}
-            <fieldset><legend>Currency</legend><div className={styles.typePicker}>{(["UZS", "USD"] as const).map((item) => <button type="button" key={item} className={currency === item ? styles.typeActive : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div></fieldset>
+            {!uzsOnly && <fieldset><legend>Currency</legend><div className={styles.typePicker}>{(["UZS", "USD"] as const).map((item) => <button type="button" key={item} className={currency === item ? styles.typeActive : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div></fieldset>}
             <label><span>Current opening balance</span><input type="number" step="0.01" inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} required /></label>
             <fieldset><legend>Color</legend><div className={styles.colorChoices}>{COLORS.map((item) => <button type="button" key={item} className={color === item ? styles.choiceActive : ""} style={{ background: item }} onClick={() => setColor(item)} aria-label={`Choose ${item}`} />)}</div></fieldset>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving}>{saving ? "Creating…" : "Create account"}</button></div>
@@ -1654,7 +1681,8 @@ function DebtHistoryModal({ debts, payments, close }: {
    );
 }
 
-function BudgetModal({ categories, month, request, close, refresh, showMessage }: {
+function BudgetModal({ categories, month, request, close, refresh, showMessage, uzsOnly = false }: {
+   uzsOnly?: boolean;
    categories: Category[];
    month: string;
    request: (method: "POST" | "PATCH" | "DELETE", body: Record<string, unknown>) => Promise<unknown>;
@@ -1684,7 +1712,7 @@ function BudgetModal({ categories, month, request, close, refresh, showMessage }
          <form onSubmit={submit} className={styles.form}>
             <label><span>Category</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required><option value="">Choose a category</option>{options.map((category) => <option key={category.id} value={category.id}>{category.entryType === "savings" ? "Goal · " : "Limit · "}{category.name}</option>)}</select></label>
             <p className={styles.planExplanation}>{selected?.entryType === "savings" ? "This is the amount you want to save this month." : "This is the most you plan to spend this month."}</p>
-            <div className={styles.amountField}><label><span>Planned amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.currencySelect}>{(["UZS", "USD"] as const).map((item) => <button type="button" key={item} className={currency === item ? styles.currencyActive : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div></div>
+            <div className={styles.amountField}><label><span>Planned amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label>{uzsOnly ? <div className={styles.amountCurrency}>UZS</div> : <div className={styles.currencySelect}>{(["UZS", "USD"] as const).map((item) => <button type="button" key={item} className={currency === item ? styles.currencyActive : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div>}</div>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !categoryId}>{saving ? "Saving…" : "Save plan"}</button></div>
          </form>
       </ModalShell>

@@ -47,3 +47,4 @@ next-env.d.ts
 /android-finance/local.properties
 /android-finance/.signing/
 /artifacts/android-finance/
+/android-finance/app/src/main/assets/finance/

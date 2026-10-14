@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET" />
-    <queries>
-        <package android:name="com.android.chrome" />
-        <intent>
-            <action android:name="android.support.customtabs.action.CustomTabsService" />
-        </intent>
-    </queries>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -15,28 +9,13 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@style/FinanceTheme">
-        <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
+        <service android:name=".FinanceBackupJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
         <activity
             android:name=".FinanceActivity"
             android:exported="true">
-            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL"
-                android:value="https://eshtaylakov.uz/x97-private-portal" />
-            <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
-                android:resource="@color/finance_background" />
-            <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
-                android:resource="@color/finance_background" />
-            <meta-data android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY"
-                android:value="customtabs" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="eshtaylakov.uz"
-                    android:pathPrefix="/x97-private-portal" />
             </intent-filter>
         </activity>
     </application>

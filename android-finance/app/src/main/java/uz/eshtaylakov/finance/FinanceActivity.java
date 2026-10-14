@@ -1,149 +1,140 @@
 package uz.eshtaylakov.finance;
-
-import android.app.Activity;
+import androidx.activity.ComponentActivity;
+import androidx.activity.OnBackPressedCallback;
 import android.content.Intent;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
-import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.util.Log;
-import android.view.Gravity;
-import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.ProgressBar;
+import android.webkit.*;
+import android.widget.FrameLayout;
 import android.widget.TextView;
-import androidx.browser.customtabs.CustomTabsCallback;
-import androidx.browser.customtabs.CustomTabsIntent;
-import androidx.browser.trusted.TrustedWebActivityIntentBuilder;
-import com.google.androidbrowserhelper.trusted.TwaLauncher;
+import org.json.JSONObject;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.*;
 
-/** Keeps a visible recovery screen if the browser cannot complete the launch. */
-public class FinanceActivity extends Activity {
-    static final Uri FINANCE_URL = Uri.parse("https://eshtaylakov.uz/x97-private-portal");
-    private static final String CHROME = "com.android.chrome";
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private TwaLauncher launcher;
-    private TextView status;
-    private ProgressBar progress;
-    private boolean browserOpened;
-    private final Runnable timeout = () -> showError(
-            "Chrome did not finish opening. Tap Open in browser to continue.");
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        showLaunchScreen();
-        // Allow Android to draw the recovery screen before binding to the browser.
-        handler.post(this::openFinance);
-    }
-
-    private void showLaunchScreen() {
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setGravity(Gravity.CENTER);
-        int padding = (int) (32 * getResources().getDisplayMetrics().density);
-        layout.setPadding(padding, padding, padding, padding);
-        layout.setBackgroundColor(Color.rgb(16, 19, 24));
-        TextView title = new TextView(this);
-        title.setText("Private Finance");
-        title.setTextSize(26);
-        title.setTextColor(Color.WHITE);
-        title.setGravity(Gravity.CENTER);
-        layout.addView(title);
-        progress = new ProgressBar(this);
-        layout.addView(progress);
-        status = new TextView(this);
-        status.setText("Opening your finance space…");
-        status.setTextColor(Color.LTGRAY);
-        status.setGravity(Gravity.CENTER);
-        status.setPadding(0, padding / 2, 0, padding / 2);
-        layout.addView(status);
-        Button openBrowser = new Button(this);
-        openBrowser.setText("Open in browser");
-        openBrowser.setOnClickListener(view -> openBrowser());
-        layout.addView(openBrowser);
-        setContentView(layout);
-    }
-
-    protected TwaLauncher createLauncher() {
-        return isChromeEnabled() ? new TwaLauncher(this, CHROME) : new TwaLauncher(this);
-    }
-
-    protected void openFinance() {
-        if (isFinishing() || browserOpened) return;
+/** All content comes from the APK. No remote pages or browser handoff. */
+public class FinanceActivity extends ComponentActivity {
+    static final String LOCAL_URL = "https://appassets.androidplatform.net/assets/finance/index.html";
+    private static final int EXPORT = 1, IMPORT = 2, FOLDER = 3;
+    WebView web;
+    private final ExecutorService files = Executors.newSingleThreadExecutor();
+    private String pendingExport;
+    @Override protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() { handleBack(); }
+        });
         try {
-            launcher = createLauncher();
-            handler.postDelayed(timeout, 12000);
-            launcher.launch(new TrustedWebActivityIntentBuilder(FINANCE_URL),
-                    new CustomTabsCallback(), null, this::onBrowserOpened,
-                    (context, builder, provider, completed) -> openBrowser());
-        } catch (RuntimeException error) {
-            Log.e("PrivateFinance", "Could not launch finance", error);
-            openBrowser();
-        }
-    }
-
-    private boolean isChromeEnabled() {
-        try {
-            ApplicationInfo info = getPackageManager().getApplicationInfo(CHROME, 0);
-            return info.enabled;
-        } catch (PackageManager.NameNotFoundException missing) {
-            return false;
-        }
-    }
-
-    protected void openBrowser() {
-        if (browserOpened || isFinishing()) return;
-        handler.removeCallbacks(timeout);
-        try {
-            // Resolve a root URL that our finance-only intent filter cannot intercept.
-            // Then explicitly target that browser to prevent reopening this app in a loop.
-            String browserPackage = isChromeEnabled() ? CHROME : null;
-            if (browserPackage == null) {
-                Intent probe = new Intent(Intent.ACTION_VIEW,
-                        Uri.parse("https://eshtaylakov.uz/"));
-                probe.addCategory(Intent.CATEGORY_BROWSABLE);
-                for (ResolveInfo browser : getPackageManager().queryIntentActivities(probe, 0)) {
-                    if (!getPackageName().equals(browser.activityInfo.packageName)) {
-                        browserPackage = browser.activityInfo.packageName;
-                        break;
+            web = new WebView(this);
+            FrameLayout layout = new FrameLayout(this);
+            layout.setOnApplyWindowInsetsListener((view, insets) -> {
+                view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom()); return insets;
+            });
+            layout.addView(web); setContentView(layout);
+            web.setBackgroundColor(0xfff5f3ee);
+            web.getSettings().setJavaScriptEnabled(true);
+            web.getSettings().setDomStorageEnabled(true);
+            web.getSettings().setAllowFileAccess(false);
+            web.getSettings().setAllowContentAccess(false);
+            web.getSettings().setBlockNetworkLoads(true);
+            web.setWebChromeClient(new WebChromeClient());
+            web.addJavascriptInterface(new Bridge(), "FinanceNative");
+            web.setWebViewClient(new WebViewClient() {
+                @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) { return true; }
+                @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                    Uri url = request.getUrl(); String path = url.getPath();
+                    if ("https".equals(url.getScheme()) && "appassets.androidplatform.net".equals(url.getHost()) &&
+                            ("/assets/finance/index.html".equals(path) || "/assets/finance/app.js".equals(path) || "/assets/finance/app.css".equals(path))) {
+                        try {
+                            String mime = path.endsWith(".js") ? "application/javascript" : path.endsWith(".css") ? "text/css" : "text/html";
+                            return new WebResourceResponse(mime, "UTF-8", getAssets().open(path.substring("/assets/".length())));
+                        } catch (Exception missing) { /* Never fetch missing assets from the network. */ }
                     }
+                    return new WebResourceResponse("text/plain", "UTF-8", 403, "Offline only", null, new ByteArrayInputStream(new byte[0]));
                 }
-            }
-            if (browserPackage == null) {
-                showError("Please install or enable Chrome, then reopen Private Finance.");
-                return;
-            }
-            CustomTabsIntent tab = new CustomTabsIntent.Builder().build();
-            tab.intent.setPackage(browserPackage);
-            tab.launchUrl(this, FINANCE_URL);
-            onBrowserOpened();
+            });
+            web.loadUrl(LOCAL_URL);
+            files.execute(() -> {
+                if (FinanceStorage.hasFolder(this)) {
+                    try { FinanceBackupJob.schedule(this); } catch (RuntimeException error) { event("backup", "error", error.getMessage()); }
+                }
+                FinanceStorage.backupIfDue(this, false);
+            });
         } catch (RuntimeException error) {
-            Log.e("PrivateFinance", "Browser fallback failed", error);
-            showError("Could not open Chrome. Open Chrome once, then try Open in browser.");
+            TextView message = new TextView(this); message.setPadding(32, 64, 32, 32);
+            message.setText("Could not start the offline interface. Update Android System WebView and reopen. Your saved files have not been removed."); setContentView(message);
         }
     }
-
-    private void onBrowserOpened() {
-        browserOpened = true;
-        handler.removeCallbacks(timeout);
-        finish();
+    private void event(String kind, String key, String value) {
+        try {
+            JSONObject detail = new JSONObject().put("kind", kind).put(key, value);
+            String script = "window.dispatchEvent(new CustomEvent('finance-native',{detail:" + detail + "}));";
+            runOnUiThread(() -> { if (web != null && !isFinishing()) web.evaluateJavascript(script, null); });
+        } catch (Exception ignored) { }
     }
-
-    private void showError(String message) {
-        if (isFinishing() || browserOpened) return;
-        progress.setVisibility(android.view.View.GONE);
-        status.setText(message);
+    public class Bridge {
+        @JavascriptInterface public String readState() {
+            try { return FinanceStorage.read(FinanceActivity.this); } catch (Exception error) { return FinanceStorage.result(false, error.getMessage()); }
+        }
+        @JavascriptInterface public String saveState(String value) {
+            try { FinanceStorage.write(FinanceActivity.this, value, false); return FinanceStorage.result(true, null); } catch (Exception error) { return FinanceStorage.result(false, error.getMessage()); }
+        }
+        @JavascriptInterface public String restoreState(String value) {
+            try { FinanceStorage.write(FinanceActivity.this, value, true); files.execute(() -> FinanceStorage.backupIfDue(FinanceActivity.this, true)); return FinanceStorage.result(true, null); } catch (Exception error) { return FinanceStorage.result(false, error.getMessage()); }
+        }
+        @JavascriptInterface public String recoveryState() {
+            try { return FinanceStorage.readRecovery(FinanceActivity.this); } catch (Exception error) { return FinanceStorage.result(false, error.getMessage()); }
+        }
+        @JavascriptInterface public String backupStatus() { return FinanceStorage.status(FinanceActivity.this); }
+        @JavascriptInterface public void exportBackup() {
+            runOnUiThread(() -> {
+                try {
+                    pendingExport = FinanceStorage.read(FinanceActivity.this);
+                    Intent picker = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json");
+                    picker.putExtra(Intent.EXTRA_TITLE, "quiet-money-" + FinanceStorage.today() + ".json"); startActivityForResult(picker, EXPORT);
+                } catch (Exception error) { event("export", "error", "Could not start export: " + error.getMessage()); }
+            });
+        }
+        @JavascriptInterface public void importBackup() {
+            runOnUiThread(() -> { try { startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), IMPORT); }
+                catch (RuntimeException error) { event("import", "error", "Could not open the file picker."); } });
+        }
+        @JavascriptInterface public void chooseBackupFolder() {
+            runOnUiThread(() -> { try { startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), FOLDER); }
+                catch (RuntimeException error) { event("folder", "error", "Could not open the folder picker."); } });
+        }
+        @JavascriptInterface public void backupNow() { files.execute(() -> {
+            boolean ok = FinanceStorage.backupIfDue(FinanceActivity.this, true); event("backup", ok ? "message" : "error", ok ? "Backup saved." : "Backup failed. Check the folder and try again.");
+        }); }
     }
-
-    @Override
-    protected void onDestroy() {
-        handler.removeCallbacksAndMessages(null);
-        if (launcher != null) launcher.destroy();
-        super.onDestroy();
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (result != RESULT_OK || data == null || data.getData() == null) { pendingExport = null; return; }
+        Uri uri = data.getData(); String export = pendingExport; pendingExport = null;
+        files.execute(() -> {
+            try {
+                if (request == EXPORT) {
+                    if (export == null) throw new IllegalStateException("Export was interrupted. Please try again.");
+                    try (OutputStream stream = getContentResolver().openOutputStream(uri, "wt")) {
+                        if (stream == null) throw new IllegalStateException("Could not open export file."); stream.write(export.getBytes(StandardCharsets.UTF_8));
+                    }
+                    event("export", "message", "Backup exported. Keep a copy outside this phone.");
+                } else if (request == IMPORT) {
+                    try (InputStream stream = getContentResolver().openInputStream(uri)) { event("import", "text", FinanceStorage.readStream(stream)); }
+                } else if (request == FOLDER) {
+                    int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    if ((flags & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION)) != (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION)) throw new IllegalStateException("The chosen folder must allow reading and writing.");
+                    getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); FinanceStorage.setFolder(this, uri); FinanceBackupJob.schedule(this);
+                    boolean ok = FinanceStorage.backupIfDue(this, true); event("folder", ok ? "message" : "error", ok ? "Daily backups enabled. First backup saved." : "Folder selected, but the first backup failed. Check permissions.");
+                }
+            } catch (Exception error) { event("files", "error", error.getMessage() == null ? "File operation failed." : error.getMessage()); }
+        });
+    }
+    private void handleBack() {
+        if (web != null) web.evaluateJavascript("window.FinanceBack ? window.FinanceBack() : false", closed -> { if (!"true".equals(closed)) finish(); });
+        else finish();
+    }
+    @Override protected void onDestroy() {
+        if (web != null) { web.removeJavascriptInterface("FinanceNative"); web.destroy(); web = null; } files.shutdown(); super.onDestroy();
     }
 }

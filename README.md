@@ -145,10 +145,10 @@ writes remain scoped to the configured storage owner.
    environment variables.
 3. Open the finance URL directly; no Google account or password is required.
 
-A personal Android app in `android-finance/` opens only the finance portal on
-launch, with no sign-in or extra app PIN.
-See [Android build/install instructions](android-finance/README.md). Deploy
-`public/.well-known/assetlinks.json` with the site to enable fullscreen display.
+A personal Android app in `android-finance/` bundles the finance interface,
+opens without sign-in, and stores UZS-only records completely offline. It includes
+export/restore and daily backups to a chosen folder. See
+[Android install and website-data migration instructions](android-finance/README.md).
 
 The USD/UZS display rate comes from the official Central Bank of Uzbekistan API.
 USD transactions keep the rate used when they were recorded, so historical totals

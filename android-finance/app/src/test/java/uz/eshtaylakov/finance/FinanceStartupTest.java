@@ -1,59 +1,32 @@
 package uz.eshtaylakov.finance;
-
-import android.content.Intent;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.*;
 import static org.robolectric.Shadows.shadowOf;
-import android.app.Application;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageInfo;
-import org.robolectric.RuntimeEnvironment;
-import com.google.androidbrowserhelper.trusted.TwaLauncher;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.robolectric.Robolectric;
-import org.robolectric.RobolectricTestRunner;
+import org.robolectric.*;
 import org.robolectric.annotation.Config;
+import org.json.JSONObject;
+import android.content.Context;
+import android.content.pm.PackageManager;
 
-@RunWith(RobolectricTestRunner.class)
-@Config(sdk = 28)
+@RunWith(RobolectricTestRunner.class) @Config(sdk = 28)
 public class FinanceStartupTest {
-    @Test
-    public void launcherCanStartWithoutAnInstalledBrowser() {
-        Intent launch = new Intent(Intent.ACTION_MAIN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try (var controller = Robolectric.buildActivity(FinanceActivity.class, launch)) {
-            controller.setup();
-            shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertFalse(controller.get().isFinishing());
+    @Test public void opensBundledInterfaceWithoutInternetPermissionOrBrowser() {
+        try (var activity = Robolectric.buildActivity(FinanceActivity.class).setup()) {
+            assertFalse(activity.get().isFinishing()); assertNotNull(activity.get().web);
+            assertEquals(FinanceActivity.LOCAL_URL, shadowOf(activity.get().web).getLastLoadedUrl());
+            assertNull(shadowOf(activity.get()).getNextStartedActivity());
+            assertEquals(PackageManager.PERMISSION_DENIED, activity.get().checkSelfPermission("android.permission.INTERNET"));
         }
     }
-
-    public static class FailingLauncherActivity extends FinanceActivity {
-        @Override
-        protected TwaLauncher createLauncher() {
-            throw new IllegalStateException("Simulated startup failure");
-        }
-    }
-
-    @Test
-    public void startupFailureFallsBackToChromeAtTheFinanceUrl() {
-        Application app = RuntimeEnvironment.getApplication();
-        ApplicationInfo chrome = new ApplicationInfo();
-        chrome.packageName = "com.android.chrome";
-        chrome.enabled = true;
-        PackageInfo chromePackage = new PackageInfo();
-        chromePackage.packageName = chrome.packageName;
-        chromePackage.applicationInfo = chrome;
-        shadowOf(app.getPackageManager()).installPackage(chromePackage);
-        Intent launch = new Intent(Intent.ACTION_MAIN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        // An incoming URL must never redirect the finance app to another section or domain.
-        launch.setData(android.net.Uri.parse("https://example.org/"));
-        try (var controller = Robolectric.buildActivity(FailingLauncherActivity.class, launch)) {
-            controller.setup();
-            shadowOf(android.os.Looper.getMainLooper()).idle();
-            Intent browser = shadowOf(controller.get()).getNextStartedActivity();
-            assertEquals("com.android.chrome", browser.getPackage());
-            assertEquals(FinanceActivity.FINANCE_URL, browser.getData());
-        }
+    @Test public void restoreKeepsRecoveryAndBadWriteLeavesDataIntact() throws Exception {
+        Context context = RuntimeEnvironment.getApplication();
+        JSONObject first = new JSONObject(FinanceStorage.read(context)); first.put("exportedAt", "2026-10-13T00:00:00Z");
+        FinanceStorage.write(context, first.toString(), false);
+        JSONObject second = new JSONObject(first.toString()); second.put("exportedAt", "2026-10-14T00:00:00Z");
+        FinanceStorage.write(context, second.toString(), true);
+        assertEquals(first.toString(), FinanceStorage.readRecovery(context));
+        try { FinanceStorage.write(context, "{}", true); fail("Invalid backup accepted"); } catch (Exception expected) { }
+        assertEquals(second.toString(), FinanceStorage.read(context)); assertEquals(first.toString(), FinanceStorage.readRecovery(context));
     }
 }

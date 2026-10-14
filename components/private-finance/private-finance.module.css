@@ -18,6 +18,12 @@
    color-scheme: light;
 }
 
+.backupPanel { margin: 28px auto; max-width: 850px; padding: 24px; }
+.backupPanel h1, .backupPanel h2 { font-family: Georgia, serif; }
+.backupPanel p { line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.backupActions { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+.backupCard { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; margin: 24px 0; }
+
 :global(body:has(.financeApp)),
 :global(body:has(.gate)) {
    background: #f5f3ee;
@@ -444,7 +450,7 @@
    .debtSummaryGrid,
    .debtColumns { grid-template-columns: 1fr; }
    .debtActions { justify-content: flex-start; margin: -16px 0 18px; }
-   .mobileNav { position: fixed; inset: auto 0 0; z-index: 40; display: grid; grid-template-columns: repeat(6,1fr); border-top: 1px solid var(--line); background: rgba(255,254,251,.96); padding: 7px 4px max(7px,env(safe-area-inset-bottom)); backdrop-filter: blur(12px); }
+   .mobileNav { position: fixed; inset: auto 0 0; z-index: 40; display: grid; grid-template-columns: repeat(7,1fr); border-top: 1px solid var(--line); background: rgba(255,254,251,.96); padding: 7px 4px max(7px,env(safe-area-inset-bottom)); backdrop-filter: blur(12px); }
    .mobileNav button { display: flex; min-height: 45px; align-items: center; justify-content: center; flex-direction: column; gap: 3px; border: 0; background: transparent; padding: 3px; color: var(--muted); font-size: 8px; }
    .mobileNav button svg { font-size: 19px; }
    .mobileNav .mobileActive { color: var(--green); font-weight: 800; }

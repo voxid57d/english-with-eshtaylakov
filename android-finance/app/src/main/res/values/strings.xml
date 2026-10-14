@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Private Finance</string>
-    <color name="finance_background">#101318</color>
+    <color name="finance_background">#F5F3EE</color>
     <string name="asset_statements" translatable="false">[{\"relation\":[\"delegate_permission/common.handle_all_urls\"],\"target\":{\"namespace\":\"web\",\"site\":\"https://eshtaylakov.uz\"}}]</string>
 </resources>
