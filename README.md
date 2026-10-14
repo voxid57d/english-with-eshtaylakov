@@ -145,10 +145,10 @@ writes remain scoped to the configured storage owner.
    environment variables.
 3. Open the finance URL directly; no Google account or password is required.
 
-A personal Android app in `android-finance/` bundles the finance interface,
-opens without sign-in, and stores UZS-only records completely offline. It includes
-export/restore and daily backups to a chosen folder. See
-[Android install and website-data migration instructions](android-finance/README.md).
+Quiet Money is maintained as a separate native Android project in
+`D:\IT\FINANCEAPP`. It stores UZS-only records offline, supports JSON
+import/export and daily backups, and can import this website's finance export.
+Its source, signing key and APKs are outside this website repository.
 
 The USD/UZS display rate comes from the official Central Bank of Uzbekistan API.
 USD transactions keep the rate used when they were recorded, so historical totals

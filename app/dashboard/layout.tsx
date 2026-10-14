@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 
 import BrandLogo from "@/components/BrandLogo";
 import Navbar from "@/components/Navbar";
-import Sidebar from "@/components/Sidebar";
 import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { supabase } from "@/lib/supabaseClient";
 import { confirmPageLeave } from "@/lib/unsavedChanges";
@@ -39,7 +38,6 @@ export default function DashboardLayout({
    const [viewer, setViewer] = useState<DashboardViewer | null>(null);
    const [pendingViewer, setPendingViewer] = useState<PendingViewer | null>(null);
    const [isLoadingUser, setIsLoadingUser] = useState(true);
-   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
    const router = useRouter();
 
    useEffect(() => {
@@ -141,14 +139,6 @@ export default function DashboardLayout({
       router.push("/");
    }, [router]);
 
-   const handleOpenSidebar = useCallback(() => {
-      setIsSidebarOpen(true);
-   }, []);
-
-   const handleCloseSidebar = useCallback(() => {
-      setIsSidebarOpen(false);
-   }, []);
-
    if (pendingViewer) {
       return (
          <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
@@ -197,15 +187,10 @@ export default function DashboardLayout({
             username={viewer.fullName ?? undefined}
             roleLabel={viewer.roleLabel ?? undefined}
             onLogout={handleLogOut}
-            onToggleSidebar={handleOpenSidebar}
+            permissions={viewer.permissions}
          />
 
          <div className="flex flex-1">
-            <Sidebar
-               permissions={viewer.permissions}
-               isOpenOnMobile={isSidebarOpen}
-               closeMobile={handleCloseSidebar}
-            />
             <DashboardContent>{children}</DashboardContent>
          </div>
       </main>

@@ -2,6 +2,7 @@
 
 import CalendarInput from "@/components/ui/CalendarInput";
 import FinanceBackups from "./FinanceBackups";
+import AmountInput from "./AmountInput";
 
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import {
@@ -408,7 +409,7 @@ export default function PrivateFinanceApp({ offline = false, transport }: { offl
    );
 
    return (
-      <div className={styles.financeApp}>
+      <div className={`${styles.financeApp} ${offline ? styles.offlineApp : ""}`}>
          <aside className={styles.sidebar}>
             <div className={styles.brand}>
                <span className={styles.brandMark}><PiWalletLight /></span>
@@ -1400,7 +1401,7 @@ function TransactionModal({ transaction, accounts, categories, rate, request, cl
             <label><span>Category</span><select value={parentCategoryId} onChange={(event) => setParentCategoryId(event.target.value)} required><option value="">Choose a category</option>{parentOptions.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
             {!parentOptions.length && <button type="button" className={styles.inlineNotice} disabled>Add a {TYPE_META[type].shortLabel.toLowerCase()} category first</button>}
             {subcategoryOptions.length > 0 && <label><span>Subcategory <em>optional</em></span><select value={subcategoryId} onChange={(event) => setSubcategoryId(event.target.value)}><option value="">No subcategory</option>{subcategoryOptions.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>}
-            <div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{currency || "—"}</div></div>
+            <div className={styles.amountField}><label><span>Amount</span><AmountInput value={amount} onValueChange={setAmount} /></label><div className={styles.amountCurrency}>{currency || "—"}</div></div>
             {currency === "USD" && <p className={styles.rateHint}>{savedRate > 0 ? `Saved using 1 USD = ${new Intl.NumberFormat("en-US").format(savedRate)} UZS` : "USD exchange rate unavailable. Please try again later."}</p>}
             <div className={styles.formGrid}><label><span>Date</span><CalendarInput aria-label="Transaction date" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="A short reminder" /></label></div>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || (!accountId && !allowUnassigned) || !categoryId || (currency === "USD" && savedRate <= 0)}>{saving ? "Saving…" : transaction ? "Save changes" : "Save transaction"}</button></div>
@@ -1444,7 +1445,7 @@ function AccountModal({ request, close, refresh, showMessage, uzsOnly = false }:
             <label><span>Account type</span><select value={accountType} onChange={(event) => setAccountType(event.target.value as FinanceAccountType)}>{(Object.entries(ACCOUNT_META) as Array<[FinanceAccountType, { label: string; glyph: string }]>).map(([type, meta]) => <option value={type} key={type}>{meta.label}</option>)}</select></label>
             {accountType === "person" && <p className={styles.planExplanation}>Use this for money held and spent by your wife or another family member.</p>}
             {!uzsOnly && <fieldset><legend>Currency</legend><div className={styles.typePicker}>{(["UZS", "USD"] as const).map((item) => <button type="button" key={item} className={currency === item ? styles.typeActive : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div></fieldset>}
-            <label><span>Current opening balance</span><input type="number" step="0.01" inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} required /></label>
+            <label><span>Current opening balance</span><AmountInput value={openingBalance} onValueChange={setOpeningBalance} min={-1e15} /></label>
             <fieldset><legend>Color</legend><div className={styles.colorChoices}>{COLORS.map((item) => <button type="button" key={item} className={color === item ? styles.choiceActive : ""} style={{ background: item }} onClick={() => setColor(item)} aria-label={`Choose ${item}`} />)}</div></fieldset>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving}>{saving ? "Creating…" : "Create account"}</button></div>
          </form>
@@ -1513,8 +1514,8 @@ function TransferModal({ accounts, request, close, refresh, showMessage }: {
                <label><span>To</span><select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)} required><option value="">Choose account</option>{options.map((account) => <option value={account.id} key={account.id} disabled={account.id === fromAccountId}>{account.name} · {account.currency}</option>)}</select></label>
             </div>
             <div className={styles.formGrid}>
-               <div className={styles.amountField}><label><span>Amount sent</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={fromAmount} onChange={(event) => setFromAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{fromAccount?.currency || "—"}</div></div>
-               {isCrossCurrency && <div className={styles.amountField}><label><span>Amount received</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={toAmount} onChange={(event) => setToAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{toAccount?.currency}</div></div>}
+               <div className={styles.amountField}><label><span>Amount sent</span><AmountInput value={fromAmount} onValueChange={setFromAmount} /></label><div className={styles.amountCurrency}>{fromAccount?.currency || "—"}</div></div>
+               {isCrossCurrency && <div className={styles.amountField}><label><span>Amount received</span><AmountInput value={toAmount} onValueChange={setToAmount} /></label><div className={styles.amountCurrency}>{toAccount?.currency}</div></div>}
             </div>
             {isCrossCurrency && Number(fromAmount) > 0 && Number(toAmount) > 0 && <p className={styles.rateHint}>Transfer rate: 1 {fromAccount?.currency} = {(Number(toAmount) / Number(fromAmount)).toLocaleString("en-US", { maximumFractionDigits: 4 })} {toAccount?.currency}</p>}
             <div className={styles.formGrid}><label><span>Date</span><CalendarInput aria-label="Transfer date" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="e.g. Weekly household money" /></label></div>
@@ -1604,7 +1605,7 @@ function DebtModal({ direction, accounts, request, close, refresh, showMessage }
          <form onSubmit={submit} className={styles.form}>
             <label><span>Person</span><input value={personName} onChange={(event) => setPersonName(event.target.value)} maxLength={80} placeholder="e.g. Aziz" autoFocus required /></label>
             <label><span>{isReceivable ? "Money comes from" : "Money goes into"}</span><select value={accountId} onChange={(event) => setAccountId(event.target.value)} required><option value="">Choose an account</option>{options.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.currency}</option>)}</select></label>
-            <div className={styles.formGrid}><div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{account?.currency || "—"}</div></div><label><span>Date</span><CalendarInput aria-label="Issued on" type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} required /></label></div>
+            <div className={styles.formGrid}><div className={styles.amountField}><label><span>Amount</span><AmountInput value={amount} onValueChange={setAmount} /></label><div className={styles.amountCurrency}>{account?.currency || "—"}</div></div><label><span>Date</span><CalendarInput aria-label="Issued on" type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} required /></label></div>
             <div className={styles.formGrid}><label><span>Due date <em>optional</em></span><CalendarInput aria-label="Due date" type="date" min={issuedOn} value={dueOn} onChange={(event) => setDueOn(event.target.value)} /></label><label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="A short reminder" /></label></div>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !accountId}>{saving ? "Saving…" : isReceivable ? "Record loan" : "Record borrowing"}</button></div>
          </form>
@@ -1644,7 +1645,7 @@ function DebtPaymentModal({ debt, accounts, request, close, refresh, showMessage
          <form onSubmit={submit} className={styles.form}>
             <div className={styles.parentCategoryPreview}><span className={styles.categoryGlyph}><PiCoinsLight /></span><div><small>{isReceivable ? "Returning to" : "Paid from"}</small><b>{debt.personName} · {nativeMoney(debt.remainingAmount, debt.currency)} remaining</b></div></div>
             <label><span>{isReceivable ? "Deposit into" : "Pay from"}</span><select value={accountId} onChange={(event) => setAccountId(event.target.value)} required><option value="">Choose a {debt.currency} account</option>{options.map((account) => <option key={account.id} value={account.id}>{account.name} · {nativeMoney(account.balance, account.currency)}</option>)}</select></label>
-            <div className={styles.formGrid}><div className={styles.amountField}><label><span>Amount</span><input type="number" min="0.01" max={debt.remainingAmount} step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label><div className={styles.amountCurrency}>{debt.currency}</div></div><label><span>Date</span><CalendarInput aria-label="Payment date" type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} required /></label></div>
+            <div className={styles.formGrid}><div className={styles.amountField}><label><span>Amount</span><AmountInput value={amount} onValueChange={setAmount} max={debt.remainingAmount} /></label><div className={styles.amountCurrency}>{debt.currency}</div></div><label><span>Date</span><CalendarInput aria-label="Payment date" type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} required /></label></div>
             <label><span>Note <em>optional</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="A short reminder" /></label>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !accountId}>{saving ? "Saving…" : "Record payment"}</button></div>
          </form>
@@ -1712,7 +1713,7 @@ function BudgetModal({ categories, month, request, close, refresh, showMessage, 
          <form onSubmit={submit} className={styles.form}>
             <label><span>Category</span><select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required><option value="">Choose a category</option>{options.map((category) => <option key={category.id} value={category.id}>{category.entryType === "savings" ? "Goal · " : "Limit · "}{category.name}</option>)}</select></label>
             <p className={styles.planExplanation}>{selected?.entryType === "savings" ? "This is the amount you want to save this month." : "This is the most you plan to spend this month."}</p>
-            <div className={styles.amountField}><label><span>Planned amount</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></label>{uzsOnly ? <div className={styles.amountCurrency}>UZS</div> : <div className={styles.currencySelect}>{(["UZS", "USD"] as const).map((item) => <button type="button" key={item} className={currency === item ? styles.currencyActive : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div>}</div>
+            <div className={styles.amountField}><label><span>Planned amount</span><AmountInput value={amount} onValueChange={setAmount} /></label>{uzsOnly ? <div className={styles.amountCurrency}>UZS</div> : <div className={styles.currencySelect}>{(["UZS", "USD"] as const).map((item) => <button type="button" key={item} className={currency === item ? styles.currencyActive : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div>}</div>
             <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={close}>Cancel</button><button className={styles.primaryButton} disabled={saving || !categoryId}>{saving ? "Saving…" : "Save plan"}</button></div>
          </form>
       </ModalShell>

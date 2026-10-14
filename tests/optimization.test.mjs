@@ -42,7 +42,7 @@ test("indexed finance totals match the original calculation for parent and child
    assert.equal(financeCategoryTotals([], toUzs).size, 0);
 });
 
-const { default: Sidebar } = load("components/Sidebar.tsx", {
+const { default: DashboardNavigation } = load("components/DashboardNavigation.tsx", {
    react: React,
    "react/jsx-runtime": jsxRuntime,
    "next/link": { default: ({ children, ...props }) => React.createElement("a", props, children) },
@@ -51,15 +51,14 @@ const { default: Sidebar } = load("components/Sidebar.tsx", {
    "@/lib/erpVisibility": { isErpModuleVisible: () => true },
 });
 
-test("sidebar preserves view permissions using the profile already loaded by its parent", () => {
-   const html = renderToStaticMarkup(React.createElement(Sidebar, {
-      isOpenOnMobile: false, closeMobile() {},
+test("header navigation preserves view permissions using the profile already loaded by its parent", () => {
+   const html = renderToStaticMarkup(React.createElement(DashboardNavigation, {
       permissions: { tasks: ["view"], marketing: ["view", "manage"], staff: ["manage"], settings: "view" },
    }));
-   assert.match(html, /href="\/dashboard\/tasks"/);
+   assert.doesNotMatch(html, /href="\/dashboard\/tasks"/);
    assert.match(html, /href="\/dashboard\/marketing"/);
    assert.doesNotMatch(html, /href="\/dashboard\/staff"/);
    assert.doesNotMatch(html, /href="\/dashboard\/settings"/);
-   const empty = renderToStaticMarkup(React.createElement(Sidebar, { isOpenOnMobile: false, closeMobile() {}, permissions: {} }));
+   const empty = renderToStaticMarkup(React.createElement(DashboardNavigation, { permissions: {} }));
    assert.doesNotMatch(empty, /href="\/dashboard/);
 });

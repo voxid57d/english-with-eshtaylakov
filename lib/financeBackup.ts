@@ -177,6 +177,8 @@ export function financePayload(backup: FinanceBackup, month: string, today: stri
          exchangeRateToUzs: Number(row.exchange_rate_to_uzs), entryDate: row.entry_date, note: row.note || null };
    };
    const period = financeComparisonPeriod(month, today);
+   const repayments = new Map<string, number>();
+   for (const payment of debtPayments) repayments.set(String(payment.debt_id), (repayments.get(String(payment.debt_id)) || 0) + Number(payment.amount));
    return {
       user: { id: "local", email: null }, exchangeRate: null, comparisonPeriod: period,
       accounts: accounts.map(row => ({ id: row.id, name: row.name, accountType: row.account_type, currency: row.currency, openingBalance: Number(row.opening_balance), balance: balances.get(row.id), color: row.color, active: row.active })),
@@ -185,7 +187,7 @@ export function financePayload(backup: FinanceBackup, month: string, today: stri
       previousTransactions: transactions.filter(row => String(row.entry_date) >= period.previousStart && String(row.entry_date) <= period.previousEnd).map(mapTransaction),
       transfers: sorted(transfers.filter(row => String(row.transfer_date).startsWith(month)), "transfer_date").map(row => ({ id: row.id, fromAccountId: row.from_account_id, toAccountId: row.to_account_id, fromAccountName: accountNames.get(row.from_account_id as string), toAccountName: accountNames.get(row.to_account_id as string), fromAmount: Number(row.from_amount), toAmount: Number(row.to_amount), fromCurrency: row.from_currency, toCurrency: row.to_currency, transferDate: row.transfer_date, note: row.note || null })),
       budgets: budgets.filter(row => String(row.month_start).startsWith(month)).map(row => ({ id: row.id, categoryId: row.category_id, monthStart: row.month_start, amount: Number(row.amount), currency: row.currency })),
-      debts: sorted(debts, "issued_on").map(row => ({ id: row.id, personName: row.person_name, direction: row.direction, accountId: row.account_id, accountName: accountNames.get(row.account_id as string), principalAmount: Number(row.principal_amount), remainingAmount: round(Number(row.principal_amount) - debtPayments.filter(payment => payment.debt_id === row.id).reduce((sum, payment) => sum + Number(payment.amount), 0)), currency: row.currency, issuedOn: row.issued_on, dueOn: row.due_on || null, note: row.note || null })),
+      debts: sorted(debts, "issued_on").map(row => ({ id: row.id, personName: row.person_name, direction: row.direction, accountId: row.account_id, accountName: accountNames.get(row.account_id as string), principalAmount: Number(row.principal_amount), remainingAmount: round(Number(row.principal_amount) - (repayments.get(row.id) || 0)), currency: row.currency, issuedOn: row.issued_on, dueOn: row.due_on || null, note: row.note || null })),
       debtPayments: sorted(debtPayments, "payment_date").map(row => ({ id: row.id, debtId: row.debt_id, accountId: row.account_id, accountName: accountNames.get(row.account_id as string), amount: Number(row.amount), paymentDate: row.payment_date, note: row.note || null })),
    } as FinancePayload;
 }

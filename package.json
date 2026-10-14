@@ -8,9 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test tests/*.test.mjs",
-    "test:training-browser": "node tests/training-browser.mjs",
-    "android:bundle": "node android-finance/build-web.mjs",
-    "test:finance-browser": "node tests/offline-finance-browser.mjs"
+    "test:training-browser": "node tests/training-browser.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.84.0",

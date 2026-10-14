@@ -6,13 +6,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { LuLogOut } from "react-icons/lu";
 import BrandLogo from "@/components/BrandLogo";
+import DashboardNavigation from "@/components/DashboardNavigation";
 
 type NavbarProps = {
    user: Pick<User, "email" | "user_metadata">;
    username?: string;
    roleLabel?: string;
    onLogout: () => void;
-   onToggleSidebar: () => void;
+   permissions: Record<string, unknown>;
 };
 
 function Navbar({
@@ -20,30 +21,15 @@ function Navbar({
    username,
    roleLabel,
    onLogout,
-   onToggleSidebar,
+   permissions,
 }: NavbarProps) {
    const displayName = username ?? "";
    const fallbackIdentity = user.email ?? "User";
    const avatarLetter = (username || fallbackIdentity)[0]?.toUpperCase();
 
    return (
-      <header className="flex items-center justify-between px-3 md:px-6 py-2 border-b border-slate-800">
-         <div className="flex items-center gap-2">
-            <button
-               onClick={onToggleSidebar}
-               className="md:hidden inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full
-                  border border-emerald-400/70 bg-slate-900/90
-                  text-slate-100 shadow-sm shadow-emerald-900/40
-                  hover:bg-emerald-500 hover:text-slate-950 hover:border-emerald-300
-                  transition">
-               <span className="flex flex-col gap-[3px]">
-                  <span className="w-3.5 h-[2px] rounded-full bg-current" />
-                  <span className="w-3.5 h-[2px] rounded-full bg-current" />
-                  <span className="w-3.5 h-[2px] rounded-full bg-current" />
-               </span>
-               <span className="inline text-xs font-medium">Menu</span>
-            </button>
-
+      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-x-5 gap-y-2 bg-slate-950 px-3 md:px-6 py-2 border-b border-slate-800">
+         <div className="flex shrink-0 items-center gap-2">
             <Link
                href="/dashboard"
                className="hover:opacity-90 transition cursor-pointer">
@@ -52,7 +38,9 @@ function Navbar({
             </Link>
          </div>
 
-         <div className="flex items-center gap-1.5 md:gap-3 flex-nowrap">
+         <DashboardNavigation permissions={permissions} />
+
+         <div className="ml-auto flex shrink-0 items-center gap-1.5 md:gap-3 flex-nowrap">
             {displayName && (
                <Link
                   href="/username"

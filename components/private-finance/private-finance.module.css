@@ -24,13 +24,13 @@
 .backupActions { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
 .backupCard { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; margin: 24px 0; }
 
-:global(body:has(.financeApp)),
-:global(body:has(.gate)) {
+:global(body):has(.financeApp),
+:global(body):has(.gate) {
    background: #f5f3ee;
 }
 
-:global(body:has(.financeApp) .theme-toggle),
-:global(body:has(.gate) .theme-toggle) {
+:global(body):has(.financeApp) :global(.theme-toggle),
+:global(body):has(.gate) :global(.theme-toggle) {
    display: none;
 }
 
@@ -519,4 +519,19 @@
    .summaryIcon { transition: none; }
    .summaryCard:hover,
    .summaryCard:hover .summaryIcon { transform: none; }
+}
+
+/* Android applies system-bar/keyboard insets outside the WebView already. */
+.offlineApp .topbar, .offlineApp .modalBackdrop, .offlineApp .mobileNav { backdrop-filter: none; }
+.offlineApp .content, .offlineApp .summaryCard, .offlineApp .modalBackdrop,
+.offlineApp .progressTrack > span, .offlineApp .planTrack > span { animation: none; }
+.offlineApp .modal, .offlineApp .toast { animation-duration: 100ms; }
+.offlineApp .transactionRow, .offlineApp .transferRow { content-visibility: auto; contain-intrinsic-size: auto 60px; }
+@media (max-width: 760px) {
+   .offlineApp .mobileNav { padding: 4px; height: 54px; background: #fffefb; }
+   .offlineApp .mobileNav button { min-height: 44px; }
+   .offlineApp .main { padding-bottom: 64px; }
+}
+@media (max-width: 480px) {
+   .offlineApp .modal { padding-bottom: 20px; }
 }
