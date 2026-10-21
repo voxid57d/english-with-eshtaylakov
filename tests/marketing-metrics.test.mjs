@@ -98,7 +98,9 @@ test("line chart hover shows all centres at the nearest date, preserves zero and
    assert.match(html, /First Academy<\/span><b>\+1,250<\/b>/);
    assert.match(html, /Second Academy<\/span><b>0<\/b>/);
    assert.match(html, /Third Academy<\/span><b>No data<\/b>/);
-   assert.match(html, /translateX\(calc\(-100% - 12px\)\)/);
+   assert.doesNotMatch(html, /translateX|position:absolute/);
+   render().props.onPointerMove(pointer(640)); // Cross the plot's right edge towards the panel.
+   assert.equal(activeDate, "2026-10-02");
    render().props.onPointerLeave({ pointerType: "touch" });
    assert.equal(activeDate, "2026-10-02");
    render().props.onKeyDown({ key: "ArrowLeft", preventDefault: () => {} });

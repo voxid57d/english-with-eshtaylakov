@@ -26,10 +26,8 @@ export default function LineChartInteraction({ children, series, days, left, rig
       const bounds = svg.getBoundingClientRect();
       const px = (event.clientX - bounds.left) / bounds.width * width;
       const py = (event.clientY - bounds.top) / bounds.height * height;
-      if (px < left || px > right || py < top || py > bottom) {
-         if (event.pointerType !== "touch") setActiveDate(null);
-         return;
-      }
+      // Keep the selected date visible while moving from the plot to its details panel.
+      if (px < left || px > right || py < top || py > bottom) return;
       const next = Math.max(0, Math.min(days.length - 1, Math.round((px - left) / (right - left) * (days.length - 1))));
       setActiveDate(days[next]);
    }
@@ -44,19 +42,25 @@ export default function LineChartInteraction({ children, series, days, left, rig
          const next = event.key === "Home" ? 0 : event.key === "End" ? days.length - 1 : Math.max(0, Math.min(days.length - 1, (index < 0 ? days.indexOf(firstRecorded) : index) + (event.key === "ArrowLeft" ? -1 : 1)));
          setActiveDate(days[next]);
       }}>
-      {cloneElement(children, {}, children.props.children,
-         <g key="interaction" data-chart-interaction="true">
-            {active && <line x1={position} x2={position} y1={top} y2={bottom} stroke="#94a3b8" strokeDasharray="4 4" pointerEvents="none" />}
-            <rect x={left} y={top} width={right - left} height={bottom - top} fill="transparent" style={{ cursor: "crosshair" }} />
-         </g>)}
-      {active && <div id={id} role="tooltip" className={styles.lineTooltip} style={{ left: `${position / width * 100}%`, top: `${top / height * 100}%`, transform: position > (left + right) / 2 ? "translateX(calc(-100% - 12px))" : "translateX(12px)" }}
-         onPointerMove={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-         <strong>{new Date(`${activeDate}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</strong>
-         <span className={styles.lineTooltipUnit}>{unit}</span>
-         <ul>{tooltipRows.map((centre) => {
-            const { value } = centre;
-            return <li key={centre.id}><i style={{ background: centre.color }} /><span>{centre.name}</span><b>{value === null ? "No data" : `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}${percent ? "%" : ""}`}</b></li>;
-         })}</ul>
-      </div>}
+      <div className={styles.lineInteractionLayout}>
+         <div className={styles.linePlot}>
+            {cloneElement(children, {}, children.props.children,
+               <g key="interaction" data-chart-interaction="true">
+                  {active && <line x1={position} x2={position} y1={top} y2={bottom} stroke="#94a3b8" strokeDasharray="4 4" pointerEvents="none" />}
+                  <rect x={left} y={top} width={right - left} height={bottom - top} fill="transparent" style={{ cursor: "crosshair" }} />
+               </g>)}
+         </div>
+         <div className={styles.lineDetails}
+            onPointerMove={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+            {active ? <div id={id} role="tooltip" className={styles.lineTooltip}>
+               <strong>{new Date(`${activeDate}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</strong>
+               <span className={styles.lineTooltipUnit}>{unit}</span>
+               <ul>{tooltipRows.map((centre) => {
+                  const { value } = centre;
+                  return <li key={centre.id}><i style={{ background: centre.color }} /><span>{centre.name}</span><b>{value === null ? "No data" : `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}${percent ? "%" : ""}`}</b></li>;
+               })}</ul>
+            </div> : <p className={styles.lineDetailsHint}>Hover over the graph, tap a date, or use the arrow keys to see the ranked values here.</p>}
+         </div>
+      </div>
    </div>;
 }
