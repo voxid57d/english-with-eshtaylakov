@@ -125,34 +125,21 @@ Marketing data is shared across the staff workspace. Direct anonymous and
 authenticated database access is denied; server routes check ERP permissions and
 write using the service role. The database save function is service-role-only.
 
-## Personal training
+## Retired personal web apps
 
-The private workout tracker is at `/train`. Apply
-`supabase/training_schema.sql`, set the server-only `TRAIN_USER_ID` to your
-Supabase account UUID, and deploy. It reuses the existing authentication and theme.
-See [the training guide](docs/training.md) for the full feature list, schema,
-privacy controls, test commands, and deployment checklist.
+The training workspace (`/train`) and private finance portal
+(`/x97-private-portal`), including their APIs, were removed from the website
+on October 21, 2026. Those URLs now return 404.
 
-## Private finance portal
+Finance and training are maintained as separate offline apps. Quiet Money's native
+Android project is in `D:\IT\FINANCEAPP`; it does not depend on this website.
+Shared finance components, import/export helpers, and offline tests remain here
+for offline tooling, but are not exposed by any website route. The self-contained
+[Android training build prompt](docs/training-android-build-prompt.md) is retained.
 
-The unlinked personal finance workspace lives at `/x97-private-portal` and opens
-without signing in. Anyone with the URL can view and change its finance records.
-The URL and `noindex` metadata do not provide access protection. All queries and
-writes remain scoped to the configured storage owner.
-
-1. Run `supabase/private_finance_schema.sql` in the Supabase SQL editor.
-2. Add `PRIVATE_FINANCE_USER_ID=<supabase-auth-user-uuid>` to the local and deployed
-   environment variables.
-3. Open the finance URL directly; no Google account or password is required.
-
-Quiet Money is maintained as a separate native Android project in
-`D:\IT\FINANCEAPP`. It stores UZS-only records offline, supports JSON
-import/export and daily backups, and can import this website's finance export.
-Its source, signing key and APKs are outside this website repository.
-
-The USD/UZS display rate comes from the official Central Bank of Uzbekistan API.
-USD transactions keep the rate used when they were recorded, so historical totals
-do not change when today's rate changes.
+The existing Supabase finance and training schemas and stored records are retained.
+This removal does not run any database migration or delete data. The website no
+longer needs `TRAIN_USER_ID` or `PRIVATE_FINANCE_USER_ID`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

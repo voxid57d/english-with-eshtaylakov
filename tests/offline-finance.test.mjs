@@ -8,14 +8,13 @@ function load(path, modules = {}) {
    const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
    const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } });
    const exports = {};
-   vm.runInNewContext(outputText, { exports, URL, Intl, Date, Error, process: { env: { PRIVATE_FINANCE_USER_ID: "owner" } }, require: name => {
+   vm.runInNewContext(outputText, { exports, URL, Intl, Date, Error, require: name => {
       if (!(name in modules)) throw new Error(`Unexpected import: ${name}`); return modules[name];
    } });
    return exports;
 }
 const comparison = load("lib/financeComparison.ts");
 const lib = load("lib/financeBackup.ts", { "./financeComparison": comparison });
-const finance = load("lib/privateFinance.ts");
 const account = (id, currency = "UZS", opening_balance = 0) => ({ id, name: id, account_type: "cash", currency, opening_balance, color: "#657568", active: true });
 const category = (id = "food", entry_type = "expense") => ({ id, name: id, entry_type, parent_category_id: null, color: "#E26D5A", icon: "food", active: true });
 const tx = (id, account_id = "cash", currency = "UZS", amount = 100) => ({ id, account_id, category_id: "food", entry_type: "expense", currency, amount, exchange_rate_to_uzs: currency === "USD" ? 10000 : 1, entry_date: "2026-09-10", note: "Lunch" });
@@ -77,18 +76,4 @@ test("all local actions persist a coherent UZS ledger and rejected writes leave 
    assert.equal(lib.financeBalances(state).get("id-1"), 750);
    request("PATCH", { action: "category", id: "id-3", name: "Food", icon: "food", active: false });
    assert.equal(state.tables.categories[0].active, false);
-});
-
-test("website export paginates every table and keeps more than 1000 records", async () => {
-   const fixtureData = lib.emptyFinanceBackup().tables;
-   fixtureData.accounts = [account("cash")]; fixtureData.categories = [category()];
-   fixtureData.transactions = Array.from({ length: 1001 }, (_, i) => tx(`transaction-${i}`));
-   const queries = [];
-   const admin = { from(table) {
-      const key = table === "finance_debt_payments" ? "debtPayments" : table.replace("finance_", "");
-      const chain = { select() { return chain; }, eq(field, value) { assert.equal(field, "owner_user_id"); assert.equal(value, "owner"); return chain; }, order() { return chain; }, async range(start, end) { queries.push([key, start]); return { data: fixtureData[key].slice(start, end + 1), error: null }; } }; return chain;
-   } };
-   const route = load("app/api/private-finance/backup/route.ts", { "next/server": { NextResponse: { json: (data, init) => ({ data, status: init?.status || 200 }) } }, "@/lib/supabaseAdmin": { supabaseAdmin: admin }, "@/lib/privateFinance": finance, "@/lib/financeBackup": lib });
-   const response = await route.GET(); assert.equal(response.status, 200); assert.equal(response.data.tables.transactions.length, 1001);
-   assert.ok(queries.some(([key, start]) => key === "transactions" && start === 1000));
 });

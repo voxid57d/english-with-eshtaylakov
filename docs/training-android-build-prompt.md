@@ -216,7 +216,7 @@ Implement meaningful unit/database tests and representative Compose UI tests. De
 
 Deliver the complete Android Studio project, Gradle wrapper/configuration, database schema/migrations, tests, a debug APK, and a concise README covering build, install, use, data storage, backup/restore, and release signing. Never include private signing keys or website credentials.
 
-Implement the full feature set without placeholder screens, mocked production repositories, or TODO-only features. If the original repository is available, inspect `docs/training.md`, `lib/training.ts`, `components/training/`, `app/api/train/route.ts`, `supabase/training_schema.sql`, and `tests/training*.mjs` for reference. The specification above remains sufficient when those files are unavailable.
+Implement the full feature set without placeholder screens, mocked production repositories, or TODO-only features. The training website was retired on October 21, 2026. If the original repository is available, its Git history before that removal contains the original screens, validation, API, and tests; `supabase/training_schema.sql` is also retained for reference. The specification above remains sufficient when those files are unavailable.
 
 Run the appropriate Gradle build, unit tests, lint, and connected/UI tests when an emulator/device is available. Inspect the merged manifest for network permissions and verify first-run airplane-mode behavior on a fresh install. Report exactly what ran, what passed, and any concrete environment limitation; do not claim an APK or device verification that was not produced.
 
