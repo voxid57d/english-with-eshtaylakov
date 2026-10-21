@@ -32,10 +32,15 @@ const pickerModules = { "@/components/ui/CalendarInput": { default: SharedPicker
    "@/lib/getSupabaseAccessToken": { getSupabaseAccessToken: async () => "test-token" }, "./marketing.module.css": { default: {} },
 };
 const DatePicker = load("components/marketing/MarketingDatePicker.tsx", pickerModules).default;
+const marketingChartModules = {
+   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics,
+   "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
+};
+const AudienceChart = load("components/marketing/MarketingChart.tsx", marketingChartModules).default;
 const Insights = load("components/marketing/MarketingInsights.tsx", {
    react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingInsights": insights,
    "@/lib/marketingMetrics": metrics, "@/lib/getSupabaseAccessToken": { getSupabaseAccessToken: async () => "test-token" },
-   "./MarketingInsightChart": insightCharts, "./MarketingDatePicker": { default: DatePicker }, "./marketing.module.css": { default: {} },
+   "./MarketingInsightChart": insightCharts, "./MarketingDatePicker": { default: DatePicker }, "./MarketingChart": { default: AudienceChart }, "./marketing.module.css": { default: {} },
 }).default;
 const logo = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
 const { monthDays, parseSubscribers, validateChanges, platformSeries, growthBetween } = metrics;
@@ -111,6 +116,95 @@ test("line chart hover shows all centres at the nearest date, preserves zero and
    const percent = renderToStaticMarkup(Interactive({ ...props, percent: true, signed: false }));
    assert.match(percent, /1,250%/);
    assert.doesNotMatch(percent, /\+1,250/);
+});
+
+test("hover rankings follow each date's values with zero above negative values and missing values last", () => {
+   let activeDate = "2026-10-01";
+   const Interactive = load("components/marketing/LineChartInteraction.tsx", {
+      react: { ...React, useId: () => "sorted-hover", useState: () => [activeDate, () => {}] },
+      "react/jsx-runtime": jsxRuntime, "./marketing.module.css": { default: {} },
+   }).default;
+   const days = ["2026-10-01", "2026-10-02"];
+   const series = [
+      { id: "missing", name: "Missing", values: [null, null] },
+      { id: "zero", name: "Zero", values: [0, 0] },
+      { id: "a", name: "Academy A", values: [100, 300] },
+      { id: "b", name: "Academy B", values: [200, 50] },
+      { id: "negative", name: "Negative", values: [-5, -10] },
+   ].map(({ values, ...centre }) => ({ ...centre, color: "#10b981", points: days.map((date, index) => ({ date, value: values[index] })) }));
+   const renderOrder = () => {
+      const html = renderToStaticMarkup(Interactive({ days, series, left: 190, height: 620, label: "Audience", unit: "Subscribers", children: React.createElement("svg") }));
+      return [...html.matchAll(/<li[^>]*><i[^>]*><\/i><span>([^<]+)<\/span>/g)].map((match) => match[1]);
+   };
+   assert.deepEqual(renderOrder(), ["Academy B", "Academy A", "Zero", "Negative", "Missing"]);
+   activeDate = days[1];
+   assert.deepEqual(renderOrder(), ["Academy A", "Academy B", "Zero", "Negative", "Missing"]);
+   assert.deepEqual(series.map((centre) => centre.id), ["missing", "zero", "a", "b", "negative"]);
+});
+
+test("audience trends bridge internal missing days and keep dots on recorded values only", () => {
+   const props = { kind: "trend", centres: [{ id: centre_id, name: "Academy", color: "#10b981" }],
+      entries: [change(0, "2026-09-02"), change(100, "2026-09-04")], platformId: platform_id,
+      platformName: "Telegram", days: metrics.dateRangeDays("2026-09-01", "2026-09-05"), date: "2026-09-05", monthLabel: "September 2026", fitTrend: true };
+   const html = renderToStaticMarkup(React.createElement(AudienceChart, { ...props, connectGaps: true }));
+   const path = html.match(/<path d="([^"]+)"/)[1].trim();
+   assert.match(path, /^M400,425\s+L820,165$/);
+   assert.equal((html.match(/<circle[^>]*r="4"/g) || []).length, 2);
+   assert.match(html, /Lines connect recorded counts/);
+   const disconnected = renderToStaticMarkup(React.createElement(AudienceChart, props));
+   assert.match(disconnected, /<path d="\s*M400,425\s+M820,165\s*"/);
+});
+
+test("audience date-range chart follows both pickers across years and uses loaded entries with draft overrides", () => {
+   let stateIndex = 0;
+   const state = [
+      { month: "2026-09", start: "2026-08-20", end: "2026-09-14" }, "", "",
+      { key: "2026-08-20|2026-09-14", entries: [change(50, "2026-08-20"), change(999, "2026-09-14")], error: "" }, 0,
+   ];
+   const RangeInsights = load("components/marketing/MarketingInsights.tsx", {
+      react: { ...React, useEffect: () => {}, useMemo: (fn) => fn(), useState: () => {
+         const index = stateIndex++;
+         return [state[index], (value) => { state[index] = value; }];
+      } },
+      "react/jsx-runtime": jsxRuntime, "@/lib/marketingInsights": insights, "@/lib/marketingMetrics": metrics,
+      "@/lib/getSupabaseAccessToken": { getSupabaseAccessToken: async () => "test-token" },
+      "./MarketingInsightChart": insightCharts, "./MarketingDatePicker": { default: DatePicker },
+      "./MarketingChart": { default: AudienceChart }, "./marketing.module.css": { default: {} },
+   }).default;
+   const props = { centres: [{ id: centre_id, name: "Academy", color: "#10b981" }], platforms: [],
+      platform: { id: platform_id, name: "Telegram", logo_data_url: logo }, days: monthDays("2026-09"), monthLabel: "September 2026", entries: [change(125)] };
+   function find(type, node) {
+      if (!React.isValidElement(node)) return [];
+      return [...(node.type === type ? [node] : []), ...React.Children.toArray(node.props.children).flatMap((child) => find(type, child))];
+   }
+   const render = () => { stateIndex = 0; return RangeInsights(props); };
+   let tree = render();
+   let chart = find(AudienceChart, tree)[0];
+   assert.equal(chart.props.days[0], "2026-08-20");
+   assert.equal(chart.props.days.at(-1), "2026-09-14");
+   let html = renderToStaticMarkup(chart);
+   assert.match(html, /Audience over time/);
+   assert.match(html, /2026-08-20 → 2026-09-14/);
+   assert.match(html, /Academy · 2026-08-20: 50/);
+   assert.match(html, /Academy · 2026-09-14: 125/);
+   assert.doesNotMatch(html, /999|STATISTICS/);
+   assert.ok(html.includes(`<image href="${logo}"`));
+   find(DatePicker, tree)[0].props.onChange("2025-12-31");
+   tree = render();
+   assert.equal(state[0].start, "2025-12-31");
+   assert.equal(find(AudienceChart, tree).length, 0); // Wait for the new range's data.
+   find(DatePicker, tree)[1].props.onChange("2026-01-02");
+   state[3] = { key: "2025-12-31|2026-01-02", entries: [change(10, "2025-12-31"), change(20, "2026-01-02")], error: "" };
+   chart = find(AudienceChart, render())[0];
+   assert.deepEqual([...chart.props.days], ["2025-12-31", "2026-01-01", "2026-01-02"]);
+   html = renderToStaticMarkup(chart);
+   assert.match(html, />2025-12-31<\/text>/);
+   assert.match(html, />2026-01-02<\/text>/);
+   assert.doesNotMatch(html, /NaN|Infinity/);
+   state[0] = { month: "2026-09", start: "2026-09-14", end: "2026-09-14" };
+   chart = find(AudienceChart, render())[0];
+   assert.deepEqual([...chart.props.days], ["2026-09-14"]);
+   assert.doesNotMatch(renderToStaticMarkup(chart), /NaN|Infinity/);
 });
 
 test("custom calendar distinguishes complete, partial, empty, and unknown dates and disables invalid endpoints", () => {
@@ -442,7 +536,7 @@ test("centre checkboxes exclude centres from every chart and export while allowi
    const html = renderToStaticMarkup(React.createElement(Charts, { ...props, excluded: new Set(["hidden"]) }));
    assert.equal((html.match(/type="checkbox"/g) || []).length, 2);
    const charts = [...html.matchAll(/<svg[^>]*role="img"[\s\S]*?<\/svg>/g)].map((match) => match[0]);
-   assert.equal(charts.length, 8); // Existing five, growth rate, heatmap, and audience share.
+   assert.equal(charts.length, 9); // Existing five, range audience, growth rate, heatmap, and audience share.
    for (const chart of charts) {
       assert.match(chart, /Visible centre/);
       assert.doesNotMatch(chart, /Hidden centre|99,999|199,999/);
@@ -536,7 +630,7 @@ test("insight date controls accept other months and range charts preserve sheet 
       } },
       "react/jsx-runtime": jsxRuntime, "@/lib/marketingInsights": insights, "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction },
       "@/lib/getSupabaseAccessToken": { getSupabaseAccessToken: async () => "test-token" },
-      "./MarketingInsightChart": insightCharts, "./MarketingDatePicker": { default: DatePicker }, "./marketing.module.css": { default: {} },
+      "./MarketingInsightChart": insightCharts, "./MarketingDatePicker": { default: DatePicker }, "./MarketingChart": { default: AudienceChart }, "./marketing.module.css": { default: {} },
    }).default;
    const props = { centres: [{ id: centre_id, name: "Centre", color: "#10b981" }], platform: { id: platform_id, name: "Telegram" }, platforms: [{ id: platform_id, name: "Telegram" }], days: monthDays("2026-10"), monthLabel: "October 2026", entries: [change(150, "2026-10-04")] };
    const tree = RangeInsights(props);
@@ -583,13 +677,13 @@ test("competitor gap preserves direction, requires both counts, and excludes uns
    assert.equal(insights.competitorGapSeries(centres, entries, platform_id, ["2026-09-14"], centre_id, centre_id).length, 0);
 });
 
-test("all five insights render exportable SVGs, shared dates, signed results, and explicit missing cells", () => {
+test("all six insights render exportable SVGs, shared dates, signed results, and explicit missing cells", () => {
    const centres = [{ id: centre_id, name: "Focus & Academy", color: "#10b981" }, { id: "second", name: "Competitor", color: "#6366f1" }];
    const platform = { id: platform_id, name: "Instagram" };
    const entries = [change(100), change(125, "2026-09-21"), { ...change(200), centre_id: "second" }, { ...change(180, "2026-09-21"), centre_id: "second" }];
    const props = { centres, entries, platform, platforms: [platform, { id: "empty", name: "Telegram" }], days: monthDays("2026-09"), monthLabel: "September 2026" };
    const html = renderToStaticMarkup(React.createElement(Insights, props));
-   assert.equal((html.match(/role="img"/g) || []).length, 5);
+   assert.equal((html.match(/role="img"/g) || []).length, 6);
    for (const title of ["Growth rate comparison", "Growth momentum", "Centre × platform growth", "Share of tracked audience", "Gap to competitor"]) assert.ok(html.includes(title));
    assert.match(html, /Sep 14, 2026/);
    assert.match(html, /Sep 21, 2026/);
@@ -601,7 +695,7 @@ test("all five insights render exportable SVGs, shared dates, signed results, an
    assert.doesNotMatch(html, /NaN|Infinity|STATISTICS/);
    const empty = renderToStaticMarkup(React.createElement(Insights, { ...props, entries: [] }));
    assert.doesNotMatch(empty, /role="img"/);
-   assert.equal((empty.match(/disabled=""/g) || []).length, 5);
+   assert.equal((empty.match(/disabled=""/g) || []).length, 6);
    const zeros = renderToStaticMarkup(React.createElement(Insights, { ...props, entries: entries.map((entry) => ({ ...entry, subscribers: 0 })) }));
    assert.match(zeros, /N\/A \(starts at 0\)/);
    assert.doesNotMatch(zeros, /NaN|Infinity/);

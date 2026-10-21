@@ -16,6 +16,9 @@ export default function LineChartInteraction({ children, series, days, left, rig
    const position = left + Math.max(index, 0) / Math.max(days.length - 1, 1) * (right - left);
    const recordedDates = new Set(series.flatMap((centre) => centre.points.filter((point) => point.value !== null).map((point) => point.date)));
    const firstRecorded = days.find((date) => recordedDates.has(date)) || days[0];
+   const tooltipRows = active ? series.map((centre) => ({
+      ...centre, value: centre.points.find((point) => point.date === activeDate)?.value ?? null,
+   })).sort((a, b) => a.value === null ? (b.value === null ? 0 : 1) : b.value === null ? -1 : b.value - a.value) : [];
 
    function inspect(event: PointerEvent<HTMLDivElement>) {
       const svg = event.currentTarget.querySelector("svg");
@@ -50,8 +53,8 @@ export default function LineChartInteraction({ children, series, days, left, rig
          onPointerMove={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
          <strong>{new Date(`${activeDate}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</strong>
          <span className={styles.lineTooltipUnit}>{unit}</span>
-         <ul>{series.map((centre) => {
-            const value = centre.points.find((point) => point.date === activeDate)?.value ?? null;
+         <ul>{tooltipRows.map((centre) => {
+            const { value } = centre;
             return <li key={centre.id}><i style={{ background: centre.color }} /><span>{centre.name}</span><b>{value === null ? "No data" : `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}${percent ? "%" : ""}`}</b></li>;
          })}</ul>
       </div>}

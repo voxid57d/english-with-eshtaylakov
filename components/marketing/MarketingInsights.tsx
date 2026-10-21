@@ -7,6 +7,7 @@ import { audienceShareSeries, comparisonGrowth, competitorGapSeries, momentumSer
 import type { MarketingCentre, MarketingEntry, MarketingPlatform } from "@/lib/marketingMetrics";
 import { InsightChart, InsightLines, labelLines, signed } from "./MarketingInsightChart";
 import MarketingDatePicker from "./MarketingDatePicker";
+import MarketingChart from "./MarketingChart";
 import styles from "./marketing.module.css";
 
 export default function MarketingInsights({ centres, platforms, entries, platform, days, monthLabel }: {
@@ -27,6 +28,7 @@ export default function MarketingInsights({ centres, platforms, entries, platfor
    const start = range.month === month ? range.start : recordedDays[0] || days[0];
    const end = range.month === month ? range.end : recordedDays.at(-1) || days[days.length - 1];
    const trendDays = useMemo(() => range.month === month ? dateRangeDays(start, end) : days, [range.month, month, start, end, days]);
+   const audienceDays = useMemo(() => dateRangeDays(start, end), [start, end]);
    const periodLabel = range.month === month ? `${start} → ${end}` : monthLabel;
    const needsRange = start < days[0] || end > days[days.length - 1];
    const rangeKey = `${start}|${end}`;
@@ -87,6 +89,8 @@ export default function MarketingInsights({ centres, platforms, entries, platfor
          </div>
       </div>
       {rangeLoading ? <p className={styles.loading} role="status">Loading this date range…</p> : rangeError ? <p className={styles.error} role="alert">{rangeError} <button onClick={() => setRetry((value) => value + 1)}>Retry</button></p> : <>
+      <MarketingChart kind="trend" centres={centres} entries={insightEntries} platformId={platform.id} platformName={platform.name} platformLogo={platform.logo_data_url}
+         days={audienceDays} date={end} monthLabel={`${start} → ${end}`} period="range" fitTrend connectGaps />
       <InsightChart title="Growth rate comparison" subtitle={`${platform.name} · ${start} → ${end}`} toolbar="06 / GROWTH RATE" filename={filename("growth-rate", `${start}-to-${end}`)}
          footer="Same dates for every centre. Growth % = net change / starting count × 100. A zero starting count has no growth %."
          hasData={growth.some((row) => row.change !== null)} height={235 + centres.length * 80} emptyMessage={`Choose two different dates with recorded counts at both endpoints (${start} and ${end}).`}>

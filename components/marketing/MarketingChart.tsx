@@ -17,11 +17,11 @@ export type ChartPresentation = {
    footer: string; filename: string; emptyMessage: string;
 };
 
-export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = emptyPlatforms, days, date, monthLabel, presentation, fitTrend = false }: {
+export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = emptyPlatforms, days, date, monthLabel, presentation, fitTrend = false, connectGaps = false, period = "month" }: {
    kind: "total" | "daily" | "change" | "trend" | "growth"; centres: MarketingCentre[]; entries: MarketingEntry[];
    platformId: string; platformName: string; days: string[]; date: string; monthLabel: string;
    platformLogo?: string | null; platforms?: MarketingPlatform[];
-   presentation?: ChartPresentation; fitTrend?: boolean;
+   presentation?: ChartPresentation; fitTrend?: boolean; connectGaps?: boolean; period?: "month" | "range";
 }) {
    const svg = useRef<SVGSVGElement>(null);
    const [exporting, setExporting] = useState(false);
@@ -51,6 +51,10 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
    const x = (index: number) => trendLeft + index / Math.max(days.length - 1, 1) * (1030 - trendLeft);
    const y = (value: number) => 425 - (value - min) / (max - min) * 260;
    const bx = (value: number) => 285 + (value - min) / (max - min) * 610;
+   const crossesYear = days[0]?.slice(0, 4) !== days.at(-1)?.slice(0, 4);
+   const crossesMonth = days[0]?.slice(0, 7) !== days.at(-1)?.slice(0, 7);
+   const tickStep = Math.max(1, Math.ceil((days.length - 1) / (crossesYear ? 7 : 10)));
+   const dateTick = (day: string) => crossesYear ? day : crossesMonth ? day.slice(5) : day.slice(-2);
 
    async function exportJpg() {
       if (!svg.current) return;
@@ -75,7 +79,7 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
          downloadUrl = URL.createObjectURL(blob);
          const anchor = document.createElement("a");
          anchor.href = downloadUrl;
-         anchor.download = presentation?.filename ?? `marketing-${chartPlatform.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${isDaily ? date : days[0].slice(0, 7)}.jpg`;
+         anchor.download = presentation?.filename ?? `marketing-${chartPlatform.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${isDaily ? date : period === "range" ? `${days[0]}-to-${days.at(-1)}` : days[0].slice(0, 7)}.jpg`;
          document.body.appendChild(anchor); anchor.click(); anchor.remove();
       } catch (cause) { setError(cause instanceof Error ? cause.message : "JPG export failed. Please retry."); }
       finally {
@@ -88,8 +92,8 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
    const wrapPlot = (plot: ReactElement<SVGProps<SVGSVGElement>>) => kind === "trend" ? <LineChartInteraction series={series} days={days} left={trendLeft} height={height} label={title} unit={presentation?.axisLabel ?? "Subscribers"}>{plot}</LineChartInteraction> : plot;
 
    return <article className={styles.chartCard}>
-      <div className={styles.chartToolbar}><span>{presentation?.toolbar ?? (kind === "total" ? "01 / TOTAL DAILY AUDIENCE" : kind === "daily" ? "02 / DAILY SNAPSHOT" : kind === "change" ? "03 / DAILY CHANGE" : kind === "trend" ? "04 / MONTHLY TREND" : "05 / GROWTH LEADERBOARD")}</span><button disabled={!hasData || exporting} onClick={() => void exportJpg()}>{exporting ? "Exporting…" : "↓ Export JPG"}</button></div>
-      {!hasData ? <div className={styles.chartEmpty}><h3>{title}</h3><p>{presentation?.emptyMessage ?? (kind === "change" ? `Record counts on both ${previousDate(date)} and ${date} for a centre to see its daily change.` : kind === "growth" ? "Record at least two dates for a centre to measure growth." : `Add subscriber counts for ${chartPlatform}${isDaily ? ` on ${date}` : " this month"}.`)}</p></div> :
+      <div className={styles.chartToolbar}><span>{presentation?.toolbar ?? (kind === "total" ? "01 / TOTAL DAILY AUDIENCE" : kind === "daily" ? "02 / DAILY SNAPSHOT" : kind === "change" ? "03 / DAILY CHANGE" : kind === "trend" ? period === "range" ? "DATE RANGE / AUDIENCE OVER TIME" : "04 / MONTHLY TREND" : "05 / GROWTH LEADERBOARD")}</span><button disabled={!hasData || exporting} onClick={() => void exportJpg()}>{exporting ? "Exporting…" : "↓ Export JPG"}</button></div>
+      {!hasData ? <div className={styles.chartEmpty}><h3>{title}</h3><p>{presentation?.emptyMessage ?? (kind === "change" ? `Record counts on both ${previousDate(date)} and ${date} for a centre to see its daily change.` : kind === "growth" ? "Record at least two dates for a centre to measure growth." : `Add subscriber counts for ${chartPlatform}${isDaily ? ` on ${date}` : period === "range" ? ` between ${days[0]} and ${days.at(-1)}` : " this month"}.`)}</p></div> :
          <div className={styles.chartScroll}>{wrapPlot(<svg ref={svg} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}, ${subtitle}`} style={{ width: "100%", height: "auto", minWidth: 600, display: "block", fontFamily: "Arial, Helvetica, sans-serif" }}>
             <title>{`${title} — ${subtitle}`}</title>
             <rect width={width} height={height} rx="18" fill="#0b1220" />
@@ -100,11 +104,11 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
             {kind === "trend" ? <>
                {[0, 1, 2, 3, 4].map((tick) => <g key={tick}><line x1={trendLeft} x2="1030" y1={y(min + (max - min) * tick / 4)} y2={y(min + (max - min) * tick / 4)} stroke="#263247" strokeDasharray="4 6" /><text x={trendLeft - 16} y={y(min + (max - min) * tick / 4) + 5} textAnchor="end" fill="#94a3b8" fontSize="13">{tickLabel(min + (max - min) * tick / 4)}</text></g>)}
                <text x={trendLeft} y="137" fill="#94a3b8" fontSize="12">{presentation?.axisLabel ?? "SUBSCRIBERS"}</text>
-               {days.map((day, index) => (index % 3 === 0 || index === days.length - 1) && <text key={day} x={x(index)} y="451" textAnchor="middle" fill="#94a3b8" fontSize="12">{day.slice(-2)}</text>)}
+               {days.map((day, index) => (index === days.length - 1 || (index % tickStep === 0 && days.length - 1 - index >= tickStep / 2)) && <text key={day} x={x(index)} y="451" textAnchor="middle" fill="#94a3b8" fontSize="12">{dateTick(day)}</text>)}
                {series.map((centre, centreIndex) => {
                   let previous = false;
                   const path = centre.points.map((point, index) => {
-                     if (point.value === null) { previous = false; return ""; }
+                     if (point.value === null) { if (!connectGaps) previous = false; return ""; }
                      const part = `${previous ? "L" : "M"}${x(index)},${y(point.value)}`;
                      previous = true; return part;
                   }).join(" ");
@@ -127,7 +131,7 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
                </g>)}
             </>}
             <line x1="40" x2="1060" y1={height - 42} y2={height - 42} stroke="#263247" />
-            <text x="40" y={height - 20} fill="#64748b" fontSize="11">{presentation ? "STATISTICS" : "MARKETING METRICS"} / {presentation?.footer ?? (kind === "total" ? "Sum across platforms; audiences may overlap. Partial totals use recorded counts only." : kind === "change" ? "Selected day minus previous calendar day; both figures required" : kind === "trend" ? "Gaps indicate unrecorded days" : kind === "growth" ? "First to last recorded date per centre; periods may differ" : "Recorded counts on the selected date only")}</text>
+            <text x="40" y={height - 20} fill="#64748b" fontSize="11">{presentation ? "STATISTICS" : "MARKETING METRICS"} / {presentation?.footer ?? (kind === "total" ? "Sum across platforms; audiences may overlap. Partial totals use recorded counts only." : kind === "change" ? "Selected day minus previous calendar day; both figures required" : kind === "trend" ? connectGaps ? "Lines connect recorded counts across missing days; dots mark recorded values." : "Gaps indicate unrecorded days" : kind === "growth" ? "First to last recorded date per centre; periods may differ" : "Recorded counts on the selected date only")}</text>
             <text x="1060" y={height - 20} textAnchor="end" fill="#94a3b8" fontSize="11">{monthLabel.toUpperCase()}</text>
          </svg>)}</div>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
