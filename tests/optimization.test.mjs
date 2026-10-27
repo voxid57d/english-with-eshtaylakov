@@ -18,30 +18,6 @@ function load(path, modules = {}) {
    return exports;
 }
 
-const { financeCategoryTotals } = load("lib/financeTotals.ts");
-
-test("indexed finance totals match the original calculation for parent and child categories", () => {
-   const rows = Array.from({ length: 500 }, (_, index) => ({
-      categoryId: `child-${index % 15}`,
-      parentCategoryId: index % 4 === 0 ? null : `parent-${index % 3}`,
-      amount: (index + 1) * 0.17,
-      currency: index % 2 ? "USD" : "UZS",
-      exchangeRateToUzs: 12500 + index,
-   }));
-   rows.push({ categoryId: "same", parentCategoryId: "same", amount: 12, currency: "UZS", exchangeRateToUzs: 1 });
-   const toUzs = (row) => row.amount * (row.currency === "USD" ? row.exchangeRateToUzs : 1);
-   const snapshot = JSON.stringify(rows);
-   let conversions = 0;
-   const totals = financeCategoryTotals(rows, (row) => { conversions++; return toUzs(row); });
-   for (const categoryId of [...rows.map((row) => row.categoryId), "parent-0", "parent-1", "parent-2", "empty"]) {
-      const original = rows.filter((row) => row.categoryId === categoryId || row.parentCategoryId === categoryId).reduce((sum, row) => sum + toUzs(row), 0);
-      assert.equal(totals.get(categoryId) || 0, original);
-   }
-   assert.equal(conversions, rows.length);
-   assert.equal(JSON.stringify(rows), snapshot);
-   assert.equal(financeCategoryTotals([], toUzs).size, 0);
-});
-
 const { default: DashboardNavigation } = load("components/DashboardNavigation.tsx", {
    react: React,
    "react/jsx-runtime": jsxRuntime,

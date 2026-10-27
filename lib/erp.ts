@@ -237,6 +237,7 @@ export type TeacherGroupLevel = {
 
 export type TeacherLessonGroup = {
    id: string;
+   group_series_id: string;
    teacher_id: string;
    level_id: string;
    lms_group_name: string | null;

@@ -271,6 +271,7 @@ create table if not exists public.teacher_group_levels (
 
 create table if not exists public.teacher_lesson_groups (
    id uuid primary key default gen_random_uuid(),
+   group_series_id uuid not null default gen_random_uuid(),
    teacher_id uuid not null references public.teacher_profiles(id) on delete cascade,
    level_id uuid not null references public.teacher_group_levels(id) on delete restrict,
    lms_group_name text,
@@ -554,6 +555,7 @@ alter table if exists public.teacher_profiles
    add column if not exists lms_teacher_url text;
 
 alter table if exists public.teacher_lesson_groups
+   add column if not exists group_series_id uuid not null default gen_random_uuid(),
    add column if not exists is_intake boolean not null default false,
    add column if not exists lms_group_name text,
    add column if not exists lms_group_id text,

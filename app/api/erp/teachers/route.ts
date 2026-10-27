@@ -40,6 +40,14 @@ function assertDbResult(result: { error: unknown }, message: string) {
    }
 }
 
+function assertGroupMutation(result: { error: { code?: string; message?: string } | null }) {
+   if (!result.error) return;
+   if (result.error.code === "PGRST202" || result.error.code === "42883") {
+      throw new Error("Apply supabase/teacher_group_periods.sql before managing group periods.");
+   }
+   throw new Error(result.error.code === "P0001" ? result.error.message : "Failed to save the group period. Refresh and try again.");
+}
+
 function isTimeString(value: string) {
    return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
@@ -132,6 +140,7 @@ function toLevel(row: LevelRow) {
 function toGroup(row: GroupRow) {
    return {
       id: row.id,
+      seriesId: row.group_series_id,
       teacherId: row.teacher_id,
       teacherName: row.teacher_profiles?.full_name ?? "Teacher",
       levelId: row.level_id,
@@ -188,6 +197,23 @@ function getMonthBoundsFromParam(month: string | null) {
    };
 }
 
+async function loadGroupPeriods() {
+   const rows: GroupRow[] = [];
+   // History grows with each level; do not silently truncate it at PostgREST's row limit.
+   for (let offset = 0; ; offset += 500) {
+      const result = await supabaseAdmin
+         .from("teacher_lesson_groups")
+         .select("id, group_series_id, teacher_id, level_id, lms_group_name, lms_group_id, starts_on, ends_on, starts_at, ends_at, weekdays, active_students_count, active, is_intake, archived_on, created_at, updated_at, teacher_profiles(id, full_name), teacher_group_levels(id, name)")
+         .order("id", { ascending: true })
+         .range(offset, offset + 499);
+      if (result.error) return { data: [], error: result.error };
+      rows.push(...(result.data as unknown as GroupRow[]));
+      if (result.data.length < 500) break;
+   }
+   rows.sort((a, b) => Number(b.active) - Number(a.active) || a.starts_at.localeCompare(b.starts_at));
+   return { data: rows, error: null };
+}
+
 async function loadPayload(req: Request) {
    const { staff } = await requireErpPermission(req, "teachers", "view");
    const canManage = await canErp(staff.role, "teachers", "manage");
@@ -215,11 +241,7 @@ async function loadPayload(req: Request) {
          .select("id, name, active, created_at, updated_at")
          .order("active", { ascending: false })
          .order("name", { ascending: true }),
-      supabaseAdmin
-         .from("teacher_lesson_groups")
-         .select("id, teacher_id, level_id, lms_group_name, lms_group_id, starts_on, ends_on, starts_at, ends_at, weekdays, active_students_count, active, is_intake, archived_on, created_at, updated_at, teacher_profiles(id, full_name), teacher_group_levels(id, name)")
-         .order("active", { ascending: false })
-         .order("starts_at", { ascending: true }),
+      loadGroupPeriods(),
       supabaseAdmin
          .from("teacher_lesson_covers")
          .select("id, lesson_group_id, cover_date, covering_teacher_id, covering_teacher_name, created_by, created_at, updated_at, teacher_lesson_groups(id, teacher_id, level_id, lms_group_name, lms_group_id, starts_on, ends_on, starts_at, ends_at, weekdays, active_students_count, active, is_intake, archived_on)")
@@ -235,7 +257,7 @@ async function loadPayload(req: Request) {
    ]);
 
    if (teacherResult.error || levelResult.error || groupResult.error || coverResult.error || holidayResult.error) {
-      throw new Error("Failed to load teachers. Apply supabase/erp_core_schema.sql first.");
+      throw new Error("Failed to load teachers. Apply supabase/erp_core_schema.sql and supabase/teacher_group_periods.sql first.");
    }
 
    return {
@@ -381,6 +403,16 @@ export async function POST(req: Request) {
             await supabaseAdmin.from("teacher_lesson_groups").insert(groupPayload(body)),
             "Failed to create lesson group.",
          );
+      } else if (entity === "next_level") {
+         const sourceId = cleanString(body.sourceGroupId);
+         if (!sourceId) throw new Error("Choose a group to advance.");
+         const period = groupPayload({ ...body, active: true, isIntake: false });
+         if (!period.ends_on) throw new Error("Choose the next level ending date.");
+         assertGroupMutation(await supabaseAdmin.rpc("advance_teacher_group", {
+            source_group_id: sourceId,
+            next_period: period,
+            previous_ends_on: validateOptionalDate(body.previousEndsOn, "Current level ending date"),
+         }));
       } else if (entity === "cover") {
          assertDbResult(
             await supabaseAdmin
@@ -425,10 +457,17 @@ export async function PATCH(req: Request) {
             "Failed to update group level.",
          );
       } else if (entity === "group") {
-         assertDbResult(
-            await supabaseAdmin.from("teacher_lesson_groups").update(groupPayload(body)).eq("id", id),
-            "Failed to update lesson group.",
-         );
+         assertGroupMutation(await supabaseAdmin.rpc("save_teacher_group_period", {
+            target_group_id: id,
+            period: groupPayload(body),
+         }));
+      } else if (entity === "group_status") {
+         if (typeof body.active !== "boolean") throw new Error("Choose a valid group status.");
+         assertGroupMutation(await supabaseAdmin.rpc("set_teacher_group_active", {
+            target_group_id: id,
+            enabled: body.active,
+            archive_date: getLocalDateString(),
+         }));
       } else if (entity === "cover") {
          assertDbResult(
             await supabaseAdmin

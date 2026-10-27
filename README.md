@@ -133,13 +133,10 @@ on October 21, 2026. Those URLs now return 404.
 
 Finance and training are maintained as separate offline apps. Quiet Money's native
 Android project is in `D:\IT\FINANCEAPP`; it does not depend on this website.
-Shared finance components, import/export helpers, and offline tests remain here
-for offline tooling, but are not exposed by any website route. The self-contained
-[Android training build prompt](docs/training-android-build-prompt.md) is retained.
-
-The existing Supabase finance and training schemas and stored records are retained.
-This removal does not run any database migration or delete data. The website no
-longer needs `TRAIN_USER_ID` or `PRIVATE_FINANCE_USER_ID`.
+Finance and training source files, tests, documentation, and SQL schema files have
+also been removed from this repository. No database migration was run, so existing
+stored records are untouched. The website no longer needs `TRAIN_USER_ID` or
+`PRIVATE_FINANCE_USER_ID`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { usePathname } from "next/navigation";
 import { PiMoonLight, PiSunLight } from "react-icons/pi";
 
 type ThemeMode = "dark" | "light";
@@ -26,7 +25,6 @@ function subscribe(onChange: () => void) {
 }
 
 export default function ThemeToggle() {
-   const pathname = usePathname();
    const theme = useSyncExternalStore(subscribe, getInitialTheme, () => null);
 
    const toggleTheme = () => {
@@ -41,7 +39,7 @@ export default function ThemeToggle() {
       }
    };
 
-   if (!theme || pathname.startsWith("/x97-private-portal")) return null;
+   if (!theme) return null;
 
    return (
       <button

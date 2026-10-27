@@ -4,7 +4,6 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/train", "/api/train", "/x97-private-portal"],
     },
   };
 }

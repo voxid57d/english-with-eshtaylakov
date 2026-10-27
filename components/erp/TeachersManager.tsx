@@ -4,6 +4,7 @@ import CalendarInput from "@/components/ui/CalendarInput";
 
 import { useLocalToday } from "@/lib/useLocalToday";
 import { getLocalDateString } from "@/lib/localDate";
+import { groupIsOnDate, groupSeries } from "@/lib/teacherGroups";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
    PiArchiveLight,
@@ -40,6 +41,7 @@ type LevelView = {
 
 type GroupView = {
    id: string;
+   seriesId: string;
    teacherId: string;
    teacherName: string;
    levelId: string;
@@ -241,22 +243,6 @@ function timeToMinutes(time: string) {
    return hours * 60 + minutes;
 }
 
-function groupIsOnDate(group: GroupView, date: string) {
-   const isAvailableOnDate = group.active || !group.archivedOn || date < group.archivedOn;
-
-   if (group.isIntake) {
-      return isAvailableOnDate && group.weekdays.includes(getWeekday(date));
-   }
-
-   return (
-      isAvailableOnDate &&
-      !!group.startsOn &&
-      group.startsOn <= date &&
-      (!group.endsOn || group.endsOn >= date) &&
-      group.weekdays.includes(getWeekday(date))
-   );
-}
-
 function weekDayShort(date: string) {
    return new Intl.DateTimeFormat("en", { weekday: "short", timeZone: "UTC" }).format(
       new Date(`${date}T00:00:00.000Z`),
@@ -400,6 +386,8 @@ export default function TeachersManager() {
    const [teacherForm, setTeacherForm] = useState<TeacherForm>(EMPTY_TEACHER_FORM);
    const [levelForm, setLevelForm] = useState<LevelForm>(EMPTY_LEVEL_FORM);
    const [groupForm, setGroupForm] = useState<GroupForm>(() => ({ ...EMPTY_GROUP_FORM, startsOn: getLocalDateString() }));
+   const [nextLevelSource, setNextLevelSource] = useState<GroupView | null>(null);
+   const [previousEndsOn, setPreviousEndsOn] = useState("");
    const [showArchivedGroups, setShowArchivedGroups] = useState(false);
    const [weekStart, setWeekStart] = useState(getWeekStart());
    const [month, setMonth] = useState(getLocalDateString().slice(0, 7));
@@ -425,13 +413,18 @@ export default function TeachersManager() {
       [effectiveCovers, month],
    );
    const groupById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
+   const series = useMemo(() => groupSeries(groups, today), [groups, today]);
+   const currentGroups = useMemo(
+      () => series.flatMap((item) => item.current ? [item.current] : []),
+      [series],
+   );
    const activeRegularGroups = useMemo(
-      () => groups.filter((group) => group.active && !group.isIntake),
-      [groups],
+      () => currentGroups.filter((group) => !group.isIntake),
+      [currentGroups],
    );
    const activeIntakeGroups = useMemo(
-      () => groups.filter((group) => group.active && group.isIntake),
-      [groups],
+      () => currentGroups.filter((group) => group.isIntake),
+      [currentGroups],
    );
    const activeStudentsTotal = useMemo(
       () => activeRegularGroups.reduce((sum, group) => sum + group.activeStudentsCount, 0),
@@ -444,7 +437,7 @@ export default function TeachersManager() {
 
    const groupsByTeacher = useMemo(() => {
       return teachers.map((teacher) => {
-         const teacherGroups = groups.filter((group) => group.teacherId === teacher.id);
+         const teacherGroups = currentGroups.filter((group) => group.teacherId === teacher.id);
          const activeStudentTotal = teacherGroups
             .filter((group) => group.active && !group.isIntake)
             .reduce((sum, group) => sum + group.activeStudentsCount, 0);
@@ -459,7 +452,7 @@ export default function TeachersManager() {
             activeStudentTotal,
          };
       });
-   }, [groups, teachers]);
+   }, [currentGroups, teachers]);
 
    const coverStats = useMemo(() => {
       const asked = new Map<string, number>();
@@ -477,13 +470,13 @@ export default function TeachersManager() {
       return { asked, covered };
    }, [monthlyCovers]);
 
-   const selectedTeacherGroups = useMemo(() => {
-      return groups.filter(
-         (group) =>
-            (!selectedTeacher || group.teacherId === selectedTeacher.id) &&
-            (showArchivedGroups || group.active),
+   const selectedTeacherSeries = useMemo(() => {
+      return series.filter(
+         (item) =>
+            (!selectedTeacher || item.periods.some((period) => period.teacherId === selectedTeacher.id)) &&
+            (showArchivedGroups || item.representative.active),
       );
-   }, [groups, selectedTeacher, showArchivedGroups]);
+   }, [series, selectedTeacher, showArchivedGroups]);
    const coveredLessonsTotal = useMemo(
       () => [...coverStats.covered.values()].reduce((sum, count) => sum + count, 0),
       [coverStats],
@@ -638,8 +631,21 @@ export default function TeachersManager() {
 
    const submitGroup = async (event: React.FormEvent) => {
       event.preventDefault();
-      if (await saveEntity("group", groupForm, groupForm.id ? "PATCH" : "POST")) {
+      if (nextLevelSource && (
+         !previousEndsOn || groupForm.startsOn <= previousEndsOn || !groupForm.endsOn ||
+         groupForm.endsOn < groupForm.startsOn || groupForm.levelId === nextLevelSource.levelId
+      )) {
+         setError("Choose a different level and valid dates starting after the current level ends.");
+         return;
+      }
+      const saved = nextLevelSource
+         ? await saveEntity("next_level", { ...groupForm, sourceGroupId: nextLevelSource.id, previousEndsOn })
+         : await saveEntity("group", groupForm, groupForm.id ? "PATCH" : "POST");
+      if (saved) {
+         if (nextLevelSource) setSuccess("Next level saved. Previous schedules and covers are preserved.");
+         setNextLevelSource(null);
          setGroupForm({ ...EMPTY_GROUP_FORM, startsOn: getLocalDateString() });
+         setActiveEditor(null);
       }
    };
 
@@ -710,6 +716,8 @@ export default function TeachersManager() {
    };
 
    const editGroup = (group: GroupView) => {
+      setNextLevelSource(null);
+      setError(null);
       setGroupForm({
          id: group.id,
          teacherId: group.teacherId,
@@ -732,25 +740,19 @@ export default function TeachersManager() {
       });
    };
 
+   const openNextLevel = (group: GroupView) => {
+      editGroup(group);
+      setNextLevelSource(group);
+      setPreviousEndsOn(group.endsOn || "");
+      let startsOn = group.endsOn ? addDays(group.endsOn, 1) : "";
+      while (startsOn && !group.weekdays.includes(getWeekday(startsOn))) startsOn = addDays(startsOn, 1);
+      setGroupForm((current) => ({ ...current, id: "", levelId: "", startsOn, endsOn: "", active: true, archivedOn: "" }));
+   };
+
    const updateGroupActive = async (group: GroupView, active: boolean) => {
       await saveEntity(
-         "group",
-         {
-            id: group.id,
-            teacherId: group.teacherId,
-            levelId: group.levelId,
-            lmsGroupName: group.lmsGroupName || "",
-            lmsGroupId: group.lmsGroupId || "",
-            startsOn: group.startsOn || "",
-            endsOn: group.endsOn || "",
-            startsAt: group.startsAt,
-            endsAt: group.endsAt,
-            weekdays: group.weekdays,
-            activeStudentsCount: group.activeStudentsCount,
-            active,
-            isIntake: group.isIntake,
-            archivedOn: active ? "" : group.archivedOn || today,
-         },
+         "group_status",
+         { id: group.id, active },
          "PATCH",
       );
    };
@@ -962,21 +964,36 @@ export default function TeachersManager() {
                      <form onSubmit={submitGroup} className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
                         <div className="flex items-center gap-2">
                            <PiChalkboardTeacherLight className="text-emerald-300" size={22} />
-                           <h2 className="text-lg font-semibold text-white">Lesson group</h2>
+                           <h2 className="text-lg font-semibold text-white">{nextLevelSource ? "Next level" : groupForm.id ? "Edit level period" : "Lesson group"}</h2>
                         </div>
+                        {nextLevelSource ? (
+                           <div className="mt-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+                              <p>{nextLevelSource.lmsGroupName || nextLevelSource.levelName}: continuing from {nextLevelSource.levelName}.</p>
+                              <p className="mt-1 text-xs text-slate-400">Previous schedules and covers will stay in the level history. The details below apply to the next level only.</p>
+                              {nextLevelSource.endsOn ? (
+                                 <p className="mt-2 text-xs">Current level ends {formatDateForDisplay(nextLevelSource.endsOn)}.</p>
+                              ) : (
+                                 <div className="mt-3">
+                                    <DateField label="Current level ending date" value={previousEndsOn} onChange={setPreviousEndsOn} required />
+                                 </div>
+                              )}
+                           </div>
+                        ) : groupForm.id ? (
+                           <p className="mt-3 text-sm text-slate-400">Editing corrects this saved period, including its past schedule. Use Next level on the group card to continue the group.</p>
+                        ) : null}
                         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                            <label className="block">
                               <span className="text-sm text-slate-300">Teacher</span>
                               <select value={groupForm.teacherId} onChange={(event) => setGroupForm((current) => ({ ...current, teacherId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" required>
                                  <option value="">Choose teacher</option>
-                                 {activeTeachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.fullName}</option>)}
+                                 {teachers.filter((teacher) => teacher.active || teacher.id === groupForm.teacherId).map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.fullName}</option>)}
                               </select>
                            </label>
                            <label className="block">
                               <span className="text-sm text-slate-300">Level</span>
                               <select value={groupForm.levelId} onChange={(event) => setGroupForm((current) => ({ ...current, levelId: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-emerald-400" required>
                                  <option value="">Choose level</option>
-                                 {levels.filter((level) => level.active).map((level) => <option key={level.id} value={level.id}>{level.name}</option>)}
+                                 {levels.filter((level) => (level.active || level.id === groupForm.levelId) && level.id !== nextLevelSource?.levelId).map((level) => <option key={level.id} value={level.id}>{level.name}</option>)}
                               </select>
                            </label>
                            <label className="block">
@@ -1009,6 +1026,7 @@ export default function TeachersManager() {
                                     label="Ending date"
                                     value={groupForm.endsOn}
                                     onChange={(endsOn) => setGroupForm((current) => ({ ...current, endsOn }))}
+                                    required={Boolean(nextLevelSource)}
                                  />
                               </>
                            )}
@@ -1030,9 +1048,10 @@ export default function TeachersManager() {
                                  </label>
                               </>
                            )}
+                           {!nextLevelSource && (
                            <div className="flex flex-wrap items-center gap-5 self-end rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
                               {!groupForm.isIntake && (
-                                 <label className="inline-flex items-center gap-2">
+                                 !groupForm.id && <label className="inline-flex items-center gap-2">
                                     <input
                                        type="checkbox"
                                        checked={groupForm.active}
@@ -1064,6 +1083,7 @@ export default function TeachersManager() {
                                  <span className="text-sm text-slate-300">Intake</span>
                               </label>
                            </div>
+                           )}
                         </div>
                         <div className="mt-4 flex flex-wrap gap-2">
                            {ERP_WEEKDAYS.map((weekday) => (
@@ -1080,10 +1100,10 @@ export default function TeachersManager() {
                         <div className="mt-5 flex gap-2">
                            <button type="submit" disabled={saving} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:opacity-60">
                               <PiFloppyDiskLight size={18} />
-                              Save group
+                              {nextLevelSource ? "Save next level" : groupForm.id ? "Save period" : "Save group"}
                            </button>
-                           {groupForm.id && (
-                              <button type="button" onClick={() => setGroupForm({ ...EMPTY_GROUP_FORM, startsOn: getLocalDateString() })} className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800">
+                           {(groupForm.id || nextLevelSource) && (
+                              <button type="button" disabled={saving} onClick={() => { setNextLevelSource(null); setGroupForm({ ...EMPTY_GROUP_FORM, startsOn: getLocalDateString() }); setActiveEditor(null); }} className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800">
                                  Cancel
                               </button>
                            )}
@@ -1390,7 +1410,7 @@ export default function TeachersManager() {
                            <div>
                               <h2 className="text-lg font-semibold text-white">Groups</h2>
                               <p className="mt-1 text-sm text-slate-500">
-                                 {showArchivedGroups ? "Showing active and archived groups" : "Showing active groups"}
+                                 {showArchivedGroups ? "Showing all groups and their level history" : "Current, upcoming and completed groups"}
                               </p>
                            </div>
                            <button
@@ -1407,12 +1427,15 @@ export default function TeachersManager() {
                            </button>
                         </div>
                         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-                           {selectedTeacherGroups.length === 0 ? (
+                           {selectedTeacherSeries.length === 0 ? (
                               <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-5 text-sm text-slate-500">
                                  {showArchivedGroups ? "No groups yet." : "No active groups."}
                               </div>
-                           ) : selectedTeacherGroups.map((group) => (
-                              <div key={group.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+                           ) : selectedTeacherSeries.map((item) => {
+                              const group = item.representative;
+                              const nextIsPlanned = item.latest.id !== group.id;
+                              return (
+                              <div key={item.id} data-group-series={item.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-4">
                                  <div className="flex items-start justify-between gap-3">
                                     <div>
                                        <div className="flex flex-wrap items-center gap-2">
@@ -1427,10 +1450,16 @@ export default function TeachersManager() {
                                                 Archived
                                              </span>
                                           )}
+                                          {group.active && !group.isIntake && (
+                                             <span className="rounded-lg border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300">
+                                                {group.endsOn && group.endsOn < today ? "Completed" : group.startsOn && group.startsOn > today ? "Upcoming" : "Current"}
+                                             </span>
+                                          )}
                                        </div>
                                        <p className="mt-1 text-sm text-slate-400">
                                           {group.levelName} | {group.startsAt} - {group.endsAt}
                                        </p>
+                                       {group.teacherId !== selectedTeacher?.id && <p className="mt-1 text-xs text-slate-400">Teacher: {group.teacherName}</p>}
                                        {group.lmsGroupId && (
                                           <p className="mt-1 text-xs text-slate-500">ID {group.lmsGroupId}</p>
                                        )}
@@ -1448,9 +1477,20 @@ export default function TeachersManager() {
                                        <button
                                           type="button"
                                           onClick={() => editGroup(group)}
+                                          disabled={saving}
                                           className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 transition hover:bg-slate-800">
                                           Edit
                                        </button>
+                                       {!group.isIntake && group.active && (
+                                          <button
+                                             type="button"
+                                             onClick={() => openNextLevel(group)}
+                                             disabled={saving || nextIsPlanned}
+                                             title={nextIsPlanned ? "The next level is already planned. You can edit it in Level history." : "Continue this group at its next level"}
+                                             className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs text-emerald-200 transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50">
+                                             {nextIsPlanned ? "Next level planned" : "Next level"}
+                                          </button>
+                                       )}
                                        <button
                                           type="button"
                                           onClick={() => {
@@ -1481,8 +1521,27 @@ export default function TeachersManager() {
                                        </button>
                                     </div>
                                  )}
+                                 {item.periods.length > 1 && (
+                                    <details className="mt-4 border-t border-slate-800 pt-3">
+                                       <summary className="cursor-pointer text-xs font-medium text-slate-300">Level history ({item.periods.length} periods)</summary>
+                                       <ol className="mt-3 space-y-3">
+                                          {item.periods.map((period) => (
+                                             <li key={period.id} className="rounded-lg border border-slate-800 p-3 text-xs text-slate-400">
+                                                <div className="flex items-start justify-between gap-3">
+                                                   <p className="font-medium text-slate-200">{period.levelName} <span className="font-normal text-slate-500">· {!period.active ? "Archived" : period.endsOn && period.endsOn < today ? "Completed" : period.startsOn && period.startsOn > today ? "Upcoming" : "Current"}</span></p>
+                                                   {canManage && <button type="button" disabled={saving} onClick={() => editGroup(period)} className="shrink-0 whitespace-nowrap rounded border border-slate-700 px-2 py-1 text-slate-300 hover:bg-slate-800">Edit period</button>}
+                                                </div>
+                                                <p className="mt-1">{formatDateForDisplay(period.startsOn || "")} to {period.endsOn ? formatDateForDisplay(period.endsOn) : "open"}</p>
+                                                <p className="mt-1">{period.teacherName} | {period.startsAt} - {period.endsAt}</p>
+                                                <p className="mt-1">{period.weekdays.map((day) => ERP_WEEKDAYS.find((weekday) => weekday.value === day)?.label.slice(0, 3)).join(", ")} | {period.activeStudentsCount} students</p>
+                                             </li>
+                                          ))}
+                                       </ol>
+                                    </details>
+                                 )}
                               </div>
-                           ))}
+                              );
+                           })}
                         </div>
                      </div>
                   </div>
