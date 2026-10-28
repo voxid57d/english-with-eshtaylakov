@@ -25,6 +25,15 @@ from a previous teacher's list after a transfer. Dashboard and teacher totals
 include only the period covering today, regardless of whether today is a lesson
 weekday. Future and completed periods contribute no students or groups.
 
+Weekly schedule cards show the group name followed by its level. The inclusive
+level date range is split into five calendar stages: green, lime, yellow,
+orange, and red. Colour uses the displayed lesson date, so earlier weeks keep
+their historical stage and each new level starts green. A one-day period is
+already on its final day and appears red. Open-ended periods stay green and
+intake cards stay blue. Cover lessons use the same progression with an amber
+outline and their existing cover label. Hovering a card shows its full details
+and stage; screen readers also receive the stage number.
+
 **Archive** stops the entire group, including planned periods, from today onward.
 Earlier schedules and covers remain visible. **Restore** restores the group's
 periods using their original date ranges. Holidays continue to hide lessons and

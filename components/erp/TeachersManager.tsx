@@ -4,7 +4,7 @@ import CalendarInput from "@/components/ui/CalendarInput";
 
 import { useLocalToday } from "@/lib/useLocalToday";
 import { getLocalDateString } from "@/lib/localDate";
-import { groupIsOnDate, groupSeries } from "@/lib/teacherGroups";
+import { groupIsOnDate, groupProgressStage, groupSeries } from "@/lib/teacherGroups";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
    PiArchiveLight,
@@ -164,6 +164,13 @@ const EMPTY_GROUP_FORM: GroupForm = {
 const START_HOUR = 8;
 const END_HOUR = 21;
 const HOUR_HEIGHT = 64;
+const LESSON_PROGRESS_COLORS = [
+   "border-emerald-400/60 bg-emerald-100 hover:bg-emerald-200",
+   "border-lime-400/60 bg-lime-100 hover:bg-lime-200",
+   "border-yellow-400/60 bg-yellow-100 hover:bg-yellow-200",
+   "border-orange-400/60 bg-orange-100 hover:bg-orange-200",
+   "border-red-400/60 bg-red-100 hover:bg-red-200",
+];
 const LESSON_TIME_OPTIONS = Array.from({ length: (END_HOUR - START_HOUR + 1) * 2 }, (_, index) => {
    const totalMinutes = START_HOUR * 60 + index * 30;
    const hours = Math.floor(totalMinutes / 60);
@@ -1342,12 +1349,15 @@ export default function TeachersManager() {
                                           const slotKey = `${card.group.startsAt}:${card.group.endsAt}`;
                                           const slotTotal = slotTotals.get(slotKey) || 1;
                                           const slotIndex = slotIndexes.get(slotKey) || 0;
+                                          const progressStage = groupProgressStage(card.group, day);
                                           slotIndexes.set(slotKey, slotIndex + 1);
 
                                           return (
                                              <button
                                                 key={card.key}
                                                 type="button"
+                                                data-progress-stage={progressStage === null ? undefined : progressStage + 1}
+                                                title={`${card.group.lmsGroupName || "Group"} · ${card.group.levelName}\n${card.group.startsAt} - ${card.group.endsAt}${card.group.lmsGroupId ? ` · ID ${card.group.lmsGroupId}` : ""}\n${card.group.startsOn || "Open"} to ${card.group.endsOn || "open"}${progressStage === null ? "" : ` · Stage ${progressStage + 1} of 5 on ${day}`}`}
                                                 onClick={() => canManage && editGroup(card.group)}
                                                 style={{
                                                    top,
@@ -1356,42 +1366,39 @@ export default function TeachersManager() {
                                                    right: `calc(${((slotTotal - slotIndex - 1) / slotTotal) * 100}% + 0.5rem)`,
                                                 }}
                                                    className={[
-                                                      "absolute z-10 overflow-hidden rounded-lg p-2 text-left shadow-lg shadow-slate-950/30 transition",
-                                                      card.variant === "cover"
-                                                         ? "border border-amber-500/35 bg-amber-100 text-slate-950 hover:bg-amber-200"
-                                                         : card.variant === "intake"
-                                                           ? "border border-sky-500/35 bg-sky-100 text-slate-950 hover:bg-sky-200"
-                                                           : "border border-emerald-500/30 bg-emerald-100 text-slate-950 hover:bg-emerald-200",
+                                                      "absolute z-10 flex flex-col items-stretch overflow-hidden rounded-lg border text-left text-slate-950 shadow-lg shadow-slate-950/30 transition [&>p]:shrink-0",
+                                                      height < 64 ? "p-1" : "p-2",
+                                                      height < 96 ? "justify-start" : "justify-center",
+                                                      card.variant === "intake"
+                                                         ? "border-sky-500/35 bg-sky-100 hover:bg-sky-200"
+                                                         : LESSON_PROGRESS_COLORS[progressStage ?? 0],
+                                                      card.variant === "cover" ? "ring-2 ring-amber-500/70" : "",
                                                    ].join(" ")}>
-                                                <p
-                                                   className={[
-                                                      "truncate text-xs font-semibold",
-                                                      card.variant === "cover"
-                                                         ? "text-amber-800"
-                                                         : card.variant === "intake"
-                                                           ? "text-sky-800"
-                                                           : "text-emerald-800",
-                                                   ].join(" ")}>
-                                                   {card.group.lmsGroupName || card.group.levelName}
+                                                <p className={`truncate font-semibold ${height < 64 ? "text-[11px] leading-3" : "text-xs leading-4"}`}>
+                                                   {card.group.lmsGroupName || "Group"}
                                                 </p>
-                                                <p className="mt-1 text-[11px] text-slate-800">
+                                                <p className="mt-0.5 truncate text-[11px] font-medium leading-3 text-slate-800" title={card.group.levelName}>
+                                                   {card.group.levelName}
+                                                </p>
+                                                {progressStage !== null && <span className="sr-only">Stage {progressStage + 1} of 5.</span>}
+                                                <p className="mt-0.5 text-[11px] leading-3.5 text-slate-800">
                                                    {card.group.startsAt} - {card.group.endsAt}
                                                 </p>
                                                 {card.group.lmsGroupId && (
-                                                   <p className="mt-1 truncate text-[10px] text-slate-700">
+                                                   <p className="mt-0.5 truncate text-[10px] leading-3 text-slate-700">
                                                       ID {card.group.lmsGroupId}
                                                    </p>
                                                 )}
                                                 {card.variant === "cover" ? (
-                                                   <p className="mt-1 truncate text-[10px] font-medium text-amber-800">
+                                                   <p className="mt-0.5 truncate text-[10px] font-medium leading-3 text-amber-800">
                                                       Cover for {card.coveringFor}
                                                    </p>
                                                 ) : card.variant === "intake" ? (
-                                                   <p className="mt-1 truncate text-[10px] font-medium text-sky-800">
+                                                   <p className="mt-0.5 truncate text-[10px] font-medium leading-3 text-sky-800">
                                                       Intake
                                                    </p>
                                                 ) : (
-                                                   <p className="mt-1 truncate text-[10px] text-slate-700">
+                                                   <p className="mt-0.5 truncate text-[10px] leading-3 text-slate-700">
                                                       {card.group.startsOn} to {card.group.endsOn || "open"}
                                                    </p>
                                                 )}

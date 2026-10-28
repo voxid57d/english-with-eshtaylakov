@@ -18,7 +18,7 @@ function load(file, modules = {}) {
 
 const dates = load("lib/localDate.ts");
 const erp = load("lib/erp.ts", { "@/lib/localDate": dates });
-const { groupIsOnDate, groupIsWithinDates, groupSeries } = load("lib/teacherGroups.ts");
+const { groupIsOnDate, groupIsWithinDates, groupProgressStage, groupSeries } = load("lib/teacherGroups.ts");
 const old = {
    id: "old", seriesId: "cohort", startsOn: "2026-09-01", endsOn: "2026-10-31",
    weekdays: [1, 3, 5], active: true, archivedOn: null, isIntake: false,
@@ -29,6 +29,37 @@ const next = {
    levelId: "pre-intermediate", teacherId: "teacher-2", activeStudentsCount: 10,
    weekdays: [2, 4, 6],
 };
+
+test("schedule colours divide the inclusive period into five equal calendar stages", () => {
+   const period = { startsOn: "2026-01-01", endsOn: "2026-01-25", isIntake: false };
+   for (let day = 1; day <= 25; day++) {
+      assert.equal(groupProgressStage(period, `2026-01-${String(day).padStart(2, "0")}`), Math.floor((day - 1) / 5));
+   }
+   assert.equal(groupProgressStage(period, "2025-12-31"), 0);
+   assert.equal(groupProgressStage(period, "2026-01-26"), 4);
+});
+
+test("historical lesson colours use the saved level period and reset for the next level", () => {
+   assert.equal(groupProgressStage(old, "2026-09-01"), 0);
+   assert.equal(groupProgressStage(old, "2026-10-28"), 4);
+   assert.equal(groupProgressStage(next, "2026-11-02"), 0);
+   assert.equal(groupProgressStage(next, "2026-12-30"), 4);
+});
+
+test("progress stays stable across leap days, year changes and very short periods", () => {
+   const period = { startsOn: "2024-02-27", endsOn: "2024-03-02", isIntake: false };
+   assert.equal(groupProgressStage(period, "2024-02-29"), 2);
+   assert.equal(groupProgressStage({ ...period, startsOn: "2026-12-30", endsOn: "2027-01-03" }, "2027-01-01"), 2);
+   assert.equal(groupProgressStage({ ...period, startsOn: "2026-10-28", endsOn: "2026-10-28" }, "2026-10-28"), 4);
+   assert.equal(groupProgressStage({ ...period, startsOn: "2026-10-28", endsOn: "2026-10-29" }, "2026-10-28"), 0);
+   assert.equal(groupProgressStage({ ...period, startsOn: "2026-10-28", endsOn: "2026-10-29" }, "2026-10-29"), 4);
+});
+
+test("open-ended periods and intakes have no estimated progress", () => {
+   for (const overrides of [{ startsOn: null }, { endsOn: null }, { isIntake: true }, { endsOn: "2026-08-01" }, { endsOn: "invalid" }]) {
+      assert.equal(groupProgressStage({ ...old, ...overrides }, "2026-10-28"), null);
+   }
+});
 
 test("advancing preserves old lesson dates, levels, teachers and cover lookup IDs", () => {
    const groups = [old, next];
