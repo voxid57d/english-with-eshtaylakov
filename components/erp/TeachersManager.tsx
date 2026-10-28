@@ -165,7 +165,7 @@ const START_HOUR = 8;
 const END_HOUR = 21;
 const HOUR_HEIGHT = 64;
 const LESSON_PROGRESS_COLORS = [
-   "border-emerald-400/60 bg-emerald-100 hover:bg-emerald-200",
+   "border-[#22c55e] bg-[#dcfce7] hover:bg-[#bbf7d0]",
    "border-lime-400/60 bg-lime-100 hover:bg-lime-200",
    "border-yellow-400/60 bg-yellow-100 hover:bg-yellow-200",
    "border-orange-400/60 bg-orange-100 hover:bg-orange-200",
