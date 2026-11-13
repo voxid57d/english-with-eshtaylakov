@@ -155,7 +155,7 @@ test("monthly reads fetch all pages and return numeric values with calendar boun
    assert.equal(response.body.entries.length, 1001);
    assert.equal(response.body.entries[0].value, 12.5);
    assert.ok(calls.some((call) => call.table === "statistics_entries" && call.start === 1000));
-   assert.ok(calls.some((call) => call.op === "gte" && call.value === "2024-01-31"));
+   assert.ok(calls.some((call) => call.op === "gte" && call.value === "2024-01-18"));
    assert.ok(calls.some((call) => call.op === "lte" && call.value === "2024-02-29"));
    assert.equal(response.body.canManage, true);
 });
@@ -224,14 +224,52 @@ test("monthly trends fit selected recorded extrema and show distinct ticks for s
    }
 });
 
-test("statistics retains, updates, and clears the previous month's baseline without importing other months", () => {
-   const original = [entry(100, "2026-08-31"), entry(110, "2026-09-01"), entry(999, "2026-08-30")];
+test("statistics retains, updates, and clears the lookback window before the month without importing older or later figures", () => {
+   const original = [entry(100, "2026-08-31"), entry(110, "2026-09-01"), entry(90, "2026-08-18"), entry(999, "2026-08-17"), entry(5, "2026-10-01")];
    const saved = applyStatisticChanges(original, [entry(120, "2026-09-01")], "2026-09");
-   assert.equal(saved.length, 2);
+   assert.equal(saved.map((row) => row.entry_date).sort().join(), "2026-08-18,2026-08-31,2026-09-01");
    assert.equal(saved.find((row) => row.entry_date === "2026-08-31").value, 100);
    const preview = applyStatisticChanges(saved, [entry(105, "2026-08-31")], "2026-09");
    assert.equal(preview.find((row) => row.entry_date === "2026-08-31").value, 105);
    const cleared = applyStatisticChanges(preview, [entry(null, "2026-08-31")], "2026-09");
-   assert.equal(cleared.length, 1);
-   assert.equal(cleared[0].value, 120);
+   assert.equal(cleared.length, 2);
+});
+
+const observation = (value, day, id = categoryA.id) => ({ centre_id: id, platform_id: "stats", entry_date: day, subscribers: value });
+
+test("daily change skips unrecorded days within the lookback and names the compared date", () => {
+   const centres = [categoryA, categoryB];
+   // Saturday recorded, Sunday skipped, Monday recorded; category B last recorded 9 days earlier.
+   const entries = [observation(100, "2026-11-07"), observation(130, "2026-11-09"), observation(50, "2026-10-31", categoryB.id), observation(60, "2026-11-09", categoryB.id)];
+   const [a, b] = marketing.dailyChanges(centres, entries, "stats", "2026-11-09", 7);
+   assert.equal(a.value, 30);
+   assert.equal(a.since, "2026-11-07");
+   assert.equal(b.value, null);
+   assert.equal(marketing.dailyChanges(centres, entries, "stats", "2026-11-09")[0].value, null);
+   const html = renderToStaticMarkup(React.createElement(Chart, { kind: "change", centres, entries, platformId: "stats", platformName: "UZS",
+      days: marketing.monthDays("2026-11"), date: "2026-11-09", monthLabel: "November 2026", lookback: { change: 7, baseline: 14 } }));
+   assert.match(html, /\+30/);
+   assert.match(html, /vs Sat 11-07 · 2 days earlier/);
+});
+
+test("monthly change starts from the last figure before the month when the first days are missed", () => {
+   const points = [{ date: "2026-10-30", value: 80 }, { date: "2026-10-31", value: null }, { date: "2026-11-01", value: null }, { date: "2026-11-03", value: 90 }, { date: "2026-11-12", value: 100 }];
+   assert.equal(JSON.stringify(marketing.growthWithBaseline(points, "2026-11-01")), JSON.stringify({ change: 20, percent: 25, start: "2026-10-30", end: "2026-11-12" }));
+   assert.equal(marketing.growthWithBaseline(points.slice(0, 3), "2026-11-01"), null);
+   assert.equal(marketing.growthWithBaseline(points.slice(3), "2026-11-01").start, "2026-11-03");
+   const html = renderToStaticMarkup(React.createElement(Chart, { kind: "growth", centres: [categoryA], platformId: "stats", platformName: "UZS",
+      entries: [observation(80, "2026-10-30"), observation(100, "2026-11-12")], days: marketing.monthDays("2026-11"), date: "2026-11-12",
+      monthLabel: "November 2026", lookback: { change: 7, baseline: 14 }, presentation: { title: "Growth", subtitle: "UZS", toolbar: "x", axisLabel: "UZS", footer: "f", filename: "g.jpg", emptyMessage: "none" } }));
+   assert.match(html, /\+20/);
+   assert.match(html, /10-30 → 11-12 · \+25.00%/);
+});
+
+test("trend lines bridge unrecorded days with a dashed segment instead of breaking", () => {
+   const entries = [observation(10, "2026-11-06"), observation(11, "2026-11-07"), observation(13, "2026-11-09")];
+   const props = { kind: "trend", fitTrend: true, centres: [categoryA], entries, platformId: "stats", platformName: "UZS", days: marketing.monthDays("2026-11"), date: "2026-11-09", monthLabel: "November 2026" };
+   const dashed = renderToStaticMarkup(React.createElement(Chart, { ...props, dashGaps: true }));
+   assert.equal((dashed.match(/stroke-dasharray="5 6"/g) || []).length, 1);
+   assert.equal((dashed.match(/<circle[^>]+r="4"/g) || []).length, 3);
+   const broken = renderToStaticMarkup(React.createElement(Chart, props));
+   assert.doesNotMatch(broken, /stroke-dasharray="5 6"/);
 });

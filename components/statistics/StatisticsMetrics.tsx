@@ -133,6 +133,14 @@ export default function StatisticsMetrics() {
       finally { saveLock.current = false; setSaving(false); }
    }
 
+   // Open charts on the latest day with figures when the selected day (often today) is still blank.
+   function openCharts() {
+      setTab("charts");
+      if (draftState.entries.some((entry) => entry.entry_date === date)) return;
+      const latest = draftState.entries.reduce((best, entry) => entry.entry_date.startsWith(month) && entry.entry_date <= date && entry.entry_date > best ? entry.entry_date : best, "");
+      if (latest) setDate(latest);
+   }
+
    function changeMonth(value: string) {
       try {
          const nextDays = monthDays(value);
@@ -192,7 +200,7 @@ export default function StatisticsMetrics() {
          <div className={shared.navigation}>
             <div className={shared.tabs} role="tablist" aria-label="Statistics views">
                <button role="tab" aria-selected={tab === "sheet"} id="statistics-sheet-tab" aria-controls="statistics-panel" onClick={() => setTab("sheet")}>Monthly table</button>
-               <button role="tab" aria-selected={tab === "charts"} id="statistics-charts-tab" aria-controls="statistics-panel" onClick={() => setTab("charts")}>Charts & insights</button>
+               <button role="tab" aria-selected={tab === "charts"} id="statistics-charts-tab" aria-controls="statistics-panel" onClick={openCharts}>Charts & insights</button>
             </div>
             <div className={shared.saveArea}><span aria-live="polite">{draftCount ? `${draftCount} unsaved cells${draftState.invalidKeys.size ? ` · ${draftState.invalidKeys.size} invalid` : ""}` : data.canManage ? "All changes saved" : "View-only access"}</span>
                {data.canManage && <button className={shared.primary} disabled={saving || !draftCount || !!draftState.invalidKeys.size} onClick={() => void saveEntries()}>{saving ? "Saving…" : "Save changes"}</button>}

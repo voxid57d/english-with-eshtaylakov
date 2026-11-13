@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type ReactElement, type SVGProps } from "react";
-import { dailyAudienceTotals, dailyChanges, growthBetween, platformSeries, previousDate, trendBounds, type MarketingCentre, type MarketingEntry, type MarketingPlatform } from "@/lib/marketingMetrics";
+import { dailyAudienceTotals, dailyChanges, dateRangeDays, growthBetween, growthWithBaseline, platformSeries, previousDate, trendBounds, type MarketingCentre, type MarketingEntry, type MarketingPlatform } from "@/lib/marketingMetrics";
 import LineChartInteraction from "./LineChartInteraction";
 import styles from "./marketing.module.css";
 
@@ -9,6 +9,7 @@ const format = (value: number) => value.toLocaleString("en-US");
 const compactFormatter = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 const compact = (value: number) => compactFormatter.format(value);
 const emptyPlatforms: MarketingPlatform[] = [];
+const weekday = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
 const wrap = (text: string, length: number) => text.match(new RegExp(`.{1,${length}}`, "g")) || [text];
 
 // Statistics uses the same chart drawing and JPG exporter with its own labels.
@@ -17,27 +18,39 @@ export type ChartPresentation = {
    footer: string; filename: string; emptyMessage: string;
 };
 
-export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = emptyPlatforms, days, date, monthLabel, presentation, fitTrend = false, connectGaps = false, period = "month" }: {
+export default function MarketingChart({ kind, centres, entries, platformId, platformName, platformLogo, platforms = emptyPlatforms, days, date, monthLabel, presentation, fitTrend = false, connectGaps = false, dashGaps = false, lookback, period = "month" }: {
    kind: "total" | "daily" | "change" | "trend" | "growth"; centres: MarketingCentre[]; entries: MarketingEntry[];
    platformId: string; platformName: string; days: string[]; date: string; monthLabel: string;
    platformLogo?: string | null; platforms?: MarketingPlatform[];
    presentation?: ChartPresentation; fitTrend?: boolean; connectGaps?: boolean; period?: "month" | "range";
+   // Bridge missed days: solid lines join consecutive days, dashed lines cross unrecorded ones.
+   dashGaps?: boolean;
+   // Days to look back: daily change uses the latest earlier figure; growth starts from the latest figure before the period.
+   lookback?: { change: number; baseline: number };
+
 }) {
    const svg = useRef<SVGSVGElement>(null);
    const [exporting, setExporting] = useState(false);
    const [error, setError] = useState("");
    const series = useMemo(() => platformSeries(centres, entries, platformId, days), [centres, entries, platformId, days]);
    const isDaily = kind === "daily" || kind === "total" || kind === "change";
-   const changes = useMemo(() => new Map(dailyChanges(centres, entries, platformId, date).map((centre) => [centre.id, centre.value])), [centres, entries, platformId, date]);
+   const changeLookback = lookback?.change ?? 1;
+   const changes = useMemo(() => new Map(dailyChanges(centres, entries, platformId, date, changeLookback).map((centre) => [centre.id, centre])), [centres, entries, platformId, date, changeLookback]);
+   const periodStart = days[0];
+   const baselineLength = lookback?.baseline ?? 0;
+   const baselineSeries = useMemo(() => periodStart && baselineLength > 0
+      ? new Map(platformSeries(centres, entries, platformId, dateRangeDays(previousDate(periodStart, baselineLength), previousDate(periodStart))).map((centre) => [centre.id, centre.points]))
+      : null, [centres, entries, platformId, periodStart, baselineLength]);
    const totals = useMemo(() => new Map(dailyAudienceTotals(centres, platforms, entries, date).map((centre) => [centre.id, centre])), [centres, platforms, entries, date]);
    const chartPlatform = kind === "total" ? "All platforms" : platformName;
    const title = presentation?.title ?? (kind === "total" ? "Total daily audience" : kind === "daily" ? "Daily audience comparison" : kind === "change" ? "Daily audience change" : kind === "trend" ? "Audience over time" : "Monthly audience growth");
    const subtitle = presentation?.subtitle ?? `${chartPlatform} · ${isDaily ? date : monthLabel}${kind === "change" ? ` vs ${previousDate(date)}` : ""}`;
    const rows = series.map((centre) => {
-      const rawGrowth = growthBetween(centre.points);
-      const firstValue = centre.points.find((point) => point.value !== null)?.value;
+      const baselinePoints = baselineSeries?.get(centre.id);
+      const rawGrowth = baselinePoints ? growthWithBaseline([...baselinePoints, ...centre.points], days[0]) : growthBetween(centre.points);
+      const firstValue = rawGrowth ? [...(baselinePoints ?? []), ...centre.points].find((point) => point.date === rawGrowth.start)?.value : undefined;
       const growth = rawGrowth && presentation ? { ...rawGrowth, change: Number(rawGrowth.change.toFixed(2)), percent: firstValue !== undefined && firstValue !== null && firstValue > 0 ? rawGrowth.percent : null } : rawGrowth;
-      return { ...centre, growth, coverage: totals.get(centre.id), value: kind === "change" ? changes.get(centre.id) ?? null : kind === "total" ? totals.get(centre.id)?.value ?? null : kind === "growth" ? growth?.change ?? null : centre.points.find((point) => point.date === date)?.value ?? null };
+      return { ...centre, growth, since: changes.get(centre.id)?.since ?? null, coverage: totals.get(centre.id), value: kind === "change" ? changes.get(centre.id)?.value ?? null : kind === "total" ? totals.get(centre.id)?.value ?? null : kind === "growth" ? growth?.change ?? null : centre.points.find((point) => point.date === date)?.value ?? null };
    }).sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
    const hasData = kind === "trend" ? series.some((centre) => centre.points.some((point) => point.value !== null)) : rows.some((row) => row.value !== null);
    const width = 1100;
@@ -107,12 +120,16 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
                {days.map((day, index) => (index === days.length - 1 || (index % tickStep === 0 && days.length - 1 - index >= tickStep / 2)) && <text key={day} x={x(index)} y="451" textAnchor="middle" fill="#94a3b8" fontSize="12">{dateTick(day)}</text>)}
                {series.map((centre, centreIndex) => {
                   let previous = false;
+                  let bridge = "";
+                  let last = -1;
                   const path = centre.points.map((point, index) => {
                      if (point.value === null) { if (!connectGaps) previous = false; return ""; }
+                     if (dashGaps && last >= 0 && index - last > 1) { bridge += `M${x(last)},${y(centre.points[last].value!)} L${x(index)},${y(point.value)} `; previous = false; }
                      const part = `${previous ? "L" : "M"}${x(index)},${y(point.value)}`;
-                     previous = true; return part;
+                     previous = true; last = index; return part;
                   }).join(" ");
                   return <g key={centre.id}>
+                     {bridge && <path d={bridge} fill="none" stroke={centre.color} strokeOpacity="0.55" strokeWidth="2" strokeDasharray="5 6" strokeLinecap="round" />}
                      <path d={path} fill="none" stroke={centre.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                      {centre.points.map((point, index) => point.value !== null && <circle key={point.date} cx={x(index)} cy={y(point.value)} r="4" fill={centre.color} stroke="#0b1220" strokeWidth="1.5"><title>{`${centre.name} · ${point.date}: ${format(point.value)}`}</title></circle>)}
                      <circle cx={64 + centreIndex % 3 * 345} cy={490 + Math.floor(centreIndex / 3) * 68} r="5" fill={centre.color} />
@@ -127,6 +144,7 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
                   {row.value !== null && <rect x={Math.min(bx(0), bx(row.value))} y={134 + index * 80} width={Math.max(2, Math.abs(bx(row.value) - bx(0)))} height="27" rx="5" fill={row.color}><title>{`${row.name}: ${format(row.value)}`}</title></rect>}
                   <text x="1048" y={153 + index * 80} textAnchor="end" fill={row.value === null ? "#64748b" : "#f8fafc"} fontSize="17" fontWeight="600">{row.value === null ? "No data" : `${(kind === "growth" || kind === "change") && row.value > 0 ? "+" : ""}${format(row.value)}`}</text>
                   {kind === "total" && row.coverage && <text x="285" y={182 + index * 80} fill={row.coverage.recordedPlatforms < row.coverage.totalPlatforms ? "#fbbf24" : "#94a3b8"} fontSize="12">{row.coverage.recordedPlatforms} / {row.coverage.totalPlatforms} platforms recorded{row.value !== null && row.coverage.recordedPlatforms < row.coverage.totalPlatforms ? " · Partial total" : ""}</text>}
+                  {kind === "change" && lookback && row.since && <text x="285" y={182 + index * 80} fill="#94a3b8" fontSize="12">vs {weekday(row.since)} {row.since.slice(5)}{row.since !== previousDate(date) ? ` · ${Math.round((Date.parse(date) - Date.parse(row.since)) / 86400000)} days earlier` : ""}</text>}
                   {kind === "growth" && row.growth && <text x="285" y={182 + index * 80} fill="#94a3b8" fontSize="12">{row.growth.start.slice(5)} → {row.growth.end.slice(5)} · {row.growth.percent === null ? (presentation ? "% unavailable (non-positive baseline)" : "% unavailable (starts at zero)") : `${row.growth.percent > 0 ? "+" : ""}${row.growth.percent.toFixed(2)}%`}</text>}
                </g>)}
             </>}

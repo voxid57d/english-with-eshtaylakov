@@ -45,11 +45,13 @@ export function previousDate(date: string, days = 1) {
    return previous.toISOString().slice(0, 10);
 }
 
-// Require both calendar dates; never substitute an earlier observation or zero.
-export function dailyChanges(centres: MarketingCentre[], entries: MarketingEntry[], platformId: string, date: string) {
-   return platformSeries(centres, entries, platformId, [previousDate(date), date]).map((centre) => {
-      const [previous, current] = centre.points;
-      return { ...centre, value: previous.value === null || current.value === null ? null : Number((current.value - previous.value).toFixed(2)) };
+// Compare with the latest earlier recording at most `lookback` days back (1 = previous calendar day only).
+// Never substitutes zero; `since` names the date compared against.
+export function dailyChanges(centres: MarketingCentre[], entries: MarketingEntry[], platformId: string, date: string, lookback = 1) {
+   return platformSeries(centres, entries, platformId, dateRangeDays(previousDate(date, Math.max(1, lookback)), date)).map((centre) => {
+      const current = centre.points[centre.points.length - 1].value;
+      const previous = centre.points.slice(0, -1).reverse().find((point) => point.value !== null);
+      return { ...centre, since: previous?.date ?? null, value: previous?.value == null || current === null ? null : Number((current - previous.value).toFixed(2)) };
    });
 }
 
@@ -100,6 +102,14 @@ export function growthBetween(points: { date: string; value: number | null }[]) 
    const first = recorded[0];
    const last = recorded[recorded.length - 1];
    return { change: last.value - first.value, percent: first.value === 0 ? null : (last.value - first.value) / first.value * 100, start: first.date, end: last.date };
+}
+
+// Growth from the latest figure before `periodStart` (when present) to the latest figure in the period,
+// so a missed first day does not shorten the period.
+export function growthWithBaseline(points: { date: string; value: number | null }[], periodStart: string) {
+   const baseline = points.filter((point) => point.date < periodStart && point.value !== null).at(-1);
+   const period = points.filter((point) => point.date >= periodStart);
+   return growthBetween(baseline ? [baseline, ...period] : period);
 }
 
 export function dailyAudienceTotals(centres: MarketingCentre[], platforms: MarketingPlatform[], entries: MarketingEntry[], date: string) {

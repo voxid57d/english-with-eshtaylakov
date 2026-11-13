@@ -8,6 +8,10 @@ export type StatisticChange = Omit<StatisticEntry, "value"> & { value: number | 
 export type StatisticDraft = Omit<StatisticEntry, "value"> & { text: string };
 export type StatisticsData = { categories: StatisticCategory[]; entries: StatisticEntry[]; canManage: boolean };
 export const MAX_STATISTIC_VALUE = 999_999_999_999.99;
+// Days before the month that are loaded so charts can bridge missed days (weekends, forgotten entries).
+export const STATISTIC_LOOKBACK_DAYS = 14;
+// Daily change compares with the latest earlier figure at most this many days back.
+export const STATISTIC_CHANGE_LOOKBACK_DAYS = 7;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function statisticKey(categoryId: string, date: string) { return `${categoryId}|${date}`; }
@@ -58,8 +62,8 @@ export function pasteStatisticCells(text: string, days: string[], categories: St
 }
 
 export function applyStatisticChanges(entries: StatisticEntry[], changes: StatisticChange[], month: string): StatisticEntry[] {
-   const baselineDate = previousDate(`${month}-01`);
-   const inRange = (date: string) => date.startsWith(`${month}-`) || date === baselineDate;
+   const windowStart = previousDate(`${month}-01`, STATISTIC_LOOKBACK_DAYS);
+   const inRange = (date: string) => date.startsWith(`${month}-`) || (date >= windowStart && date < `${month}-01`);
    const next = new Map(entries.filter((entry) => inRange(entry.entry_date)).map((entry) => [statisticKey(entry.category_id, entry.entry_date), entry]));
    for (const change of changes) {
       if (!inRange(change.entry_date)) continue;

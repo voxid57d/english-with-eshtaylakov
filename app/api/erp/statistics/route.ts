@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { erpJsonError } from "@/lib/erp";
 import { getErpPermissions, requireErpPermission } from "@/lib/erpAuth";
 import { monthDays, previousDate } from "@/lib/marketingMetrics";
-import { validateStatisticCategory, validateStatisticChanges, type StatisticCategory, type StatisticEntry } from "@/lib/statistics";
+import { STATISTIC_LOOKBACK_DAYS, validateStatisticCategory, validateStatisticChanges, type StatisticCategory, type StatisticEntry } from "@/lib/statistics";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function failure(error: unknown) {
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
       const entries: StatisticEntry[] = [];
       for (let offset = 0; ; offset += 1000) {
          const result = await supabaseAdmin.from("statistics_entries").select("category_id, entry_date, value")
-            .gte("entry_date", previousDate(days[0])).lte("entry_date", days[days.length - 1])
+            .gte("entry_date", previousDate(days[0], STATISTIC_LOOKBACK_DAYS)).lte("entry_date", days[days.length - 1])
             .order("entry_date").order("category_id").range(offset, offset + 999);
          if (result.error) throw databaseError(result.error);
          entries.push(...result.data.map((entry) => ({ ...entry, value: Number(entry.value) })));

@@ -5,8 +5,7 @@ import CalendarInput from "@/components/ui/CalendarInput";
 
 import { useMemo, useState } from "react";
 import MarketingChart, { type ChartPresentation } from "@/components/marketing/MarketingChart";
-import { previousDate } from "@/lib/marketingMetrics";
-import { STATISTIC_UNITS, type StatisticCategory, type StatisticEntry, type StatisticUnit } from "@/lib/statistics";
+import { STATISTIC_CHANGE_LOOKBACK_DAYS, STATISTIC_LOOKBACK_DAYS, STATISTIC_UNITS, type StatisticCategory, type StatisticEntry, type StatisticUnit } from "@/lib/statistics";
 import shared from "@/components/marketing/marketing.module.css";
 import styles from "./statistics.module.css";
 
@@ -24,12 +23,12 @@ export default function StatisticsCharts({ categories, entries, days, date, mont
    const label = unit ? STATISTIC_UNITS[unit] : "Numbers";
    const presentation = (kind: "change" | "trend" | "growth"): ChartPresentation => ({
       title: kind === "change" ? "Daily category change" : kind === "trend" ? "Monthly category trends" : "Change over the month",
-      subtitle: `${label} · ${kind === "change" ? `${date} vs ${previousDate(date)}` : monthLabel}`,
+      subtitle: `${label} · ${kind === "change" ? `${date} vs previous recorded day` : monthLabel}`,
       toolbar: kind === "change" ? "01 / DAILY CHANGE" : kind === "trend" ? "02 / MONTHLY TRENDS" : "03 / MONTHLY CHANGE",
       axisLabel: label.toUpperCase(),
-      footer: kind === "change" ? "Selected day minus previous calendar day; both figures required" : kind === "trend" ? "Value axis fits selected figures; gaps indicate unrecorded days" : "First to last recorded date per category; periods may differ",
+      footer: kind === "change" ? `Selected day minus the latest earlier figure (up to ${STATISTIC_CHANGE_LOOKBACK_DAYS} days back)` : kind === "trend" ? "Dots are recorded figures; dashed lines bridge unrecorded days" : "From the last figure before the month to the latest recorded figure",
       filename: `statistics-${unit}-${kind}-${kind === "change" ? date : days[0].slice(0, 7)}.jpg`,
-      emptyMessage: kind === "change" ? `Record figures on both ${previousDate(date)} and ${date} for a selected category to see its daily change.` : kind === "growth" ? "Record at least two dates for a selected category to see its change." : "Add figures for the selected categories this month.",
+      emptyMessage: kind === "change" ? `Record a figure on ${date} and one in the ${STATISTIC_CHANGE_LOOKBACK_DAYS} days before it for a selected category to see its daily change.` : kind === "growth" ? "Record at least two dates for a selected category to see its change." : "Add figures for the selected categories this month.",
    });
 
    return <div className={shared.charts}>
@@ -50,8 +49,9 @@ export default function StatisticsCharts({ categories, entries, days, date, mont
       </fieldset>
       {!selected.length ? <p className={shared.loading}>Select at least one category to draw charts.</p> : (["change", "trend", "growth"] as const).map((kind) => <MarketingChart
          key={kind} kind={kind} centres={selected} entries={chartEntries} platformId="statistics" platformName={label}
-         days={days} date={date} monthLabel={monthLabel} presentation={presentation(kind)} fitTrend
+         days={days} date={date} monthLabel={monthLabel} presentation={presentation(kind)} fitTrend dashGaps
+         lookback={{ change: STATISTIC_CHANGE_LOOKBACK_DAYS, baseline: STATISTIC_LOOKBACK_DAYS }}
       />)}
-      <p className={shared.chartHint}>Monthly change compares each category’s first and last recorded dates, shown on the chart. Daily figures are not added together across the month, since balances and cumulative counts may be snapshots.</p>
+      <p className={shared.chartHint}>Missed days (weekends, forgotten entries) don’t break the charts: daily change compares with the latest earlier figure, and monthly change starts from the last figure before the month (or the first one this month). Daily figures are not added together across the month, since balances and cumulative counts may be snapshots.</p>
    </div>;
 }
