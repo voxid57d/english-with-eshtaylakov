@@ -20,9 +20,9 @@ function load(file, modules = {}) {
 const marketing = load("lib/marketingMetrics.ts");
 const statistics = load("lib/statistics.ts", { "@/lib/marketingMetrics": marketing });
 const { parseStatistic, validateStatisticCategory, validateStatisticReading, statisticInstant, statisticDate, statisticTime, statisticMonthWindow, dayChange, monthChange, dayPoints, changeSincePrevious } = statistics;
-const categoryA = { id: "00000000-0000-0000-0000-000000000001", name: "Active debt", unit: "UZS", color: "#10b981" };
-const categoryB = { id: "00000000-0000-0000-0000-000000000002", name: "Finished debt", unit: "UZS", color: "#6366f1" };
-const students = { id: "00000000-0000-0000-0000-000000000003", name: "Students", unit: "number", color: "#ff0000" };
+const categoryA = { id: "00000000-0000-0000-0000-000000000001", name: "Active debt", unit: "UZS", color: "#10b981", kind: "total", direction: "up" };
+const categoryB = { id: "00000000-0000-0000-0000-000000000002", name: "Finished debt", unit: "UZS", color: "#6366f1", kind: "total", direction: "neutral" };
+const students = { id: "00000000-0000-0000-0000-000000000003", name: "Students", unit: "number", color: "#ff0000", kind: "monthly", direction: "up" };
 let nextId = 0;
 // A check-in at a Tashkent date and time holding the given category figures.
 const reading = (date, time, values, note = null) => ({ id: `00000000-0000-0000-0001-${String(++nextId).padStart(12, "0")}`, recorded_at: statisticInstant(date, time), note, values });
@@ -79,20 +79,20 @@ const week = [
 ];
 
 test("change on the day compares the latest entry with the last entry of an earlier day, skipping empty days", () => {
-   const change = dayChange(week, categoryA.id, "2026-11-09");
+   const change = dayChange(week, categoryA, "2026-11-09");
    assert.equal(change.value, 130);
    assert.equal(change.change, 30);
    assert.equal(change.since, week[0].recorded_at);
    assert.equal(change.stepChange, 20);
    assert.equal(change.stepSince, week[1].recorded_at);
-   assert.equal(dayChange(week, categoryB.id, "2026-11-09").change, 5);
-   assert.equal(dayChange(week, categoryA.id, "2026-11-08"), null);
+   assert.equal(dayChange(week, categoryB, "2026-11-09").change, 5);
+   assert.equal(dayChange(week, categoryA, "2026-11-08"), null);
    const sparse = [reading("2026-10-30", "10:00", { [categoryA.id]: 1 }), reading("2026-11-09", "10:00", { [categoryA.id]: 5 })];
-   assert.equal(dayChange(sparse, categoryA.id, "2026-11-09").change, null);
-   assert.equal(dayChange(sparse, categoryA.id, "2026-11-09").stepChange, 4);
-   assert.equal(changeSincePrevious(week, week[2].id, categoryA.id), 20);
-   assert.equal(changeSincePrevious(week, week[2].id, categoryB.id), 5);
-   assert.equal(changeSincePrevious(week, week[0].id, categoryA.id), null);
+   assert.equal(dayChange(sparse, categoryA, "2026-11-09").change, null);
+   assert.equal(dayChange(sparse, categoryA, "2026-11-09").stepChange, 4);
+   assert.equal(changeSincePrevious(week, week[2].id, categoryA), 20);
+   assert.equal(changeSincePrevious(week, week[2].id, categoryB), 5);
+   assert.equal(changeSincePrevious(week, week[0].id, categoryA), null);
 });
 
 test("monthly change starts from the last figure before the month and ignores later months", () => {
@@ -100,21 +100,21 @@ test("monthly change starts from the last figure before the month and ignores la
       reading("2026-10-31", "18:00", { [categoryA.id]: 80 }), reading("2026-11-03", "09:00", { [categoryA.id]: 90 }),
       reading("2026-11-30", "23:59", { [categoryA.id]: 100 }), reading("2026-12-01", "00:30", { [categoryA.id]: 999 }),
    ];
-   const change = monthChange(readings, categoryA.id, "2026-11");
+   const change = monthChange(readings, categoryA, "2026-11");
    assert.equal(change.change, 20);
    assert.equal(change.percent, 25);
    assert.equal(change.start, readings[0].recorded_at);
    assert.equal(change.end, readings[2].recorded_at);
-   assert.equal(monthChange(readings.slice(1), categoryA.id, "2026-11").start, readings[1].recorded_at);
-   assert.equal(monthChange([readings[1]], categoryA.id, "2026-11"), null);
-   assert.equal(monthChange([reading("2026-11-03", "09:00", { [categoryA.id]: 0 }), reading("2026-11-04", "09:00", { [categoryA.id]: 5 })], categoryA.id, "2026-11").percent, null);
+   assert.equal(monthChange(readings.slice(1), categoryA, "2026-11").start, readings[1].recorded_at);
+   assert.equal(monthChange([readings[1]], categoryA, "2026-11"), null);
+   assert.equal(monthChange([reading("2026-11-03", "09:00", { [categoryA.id]: 0 }), reading("2026-11-04", "09:00", { [categoryA.id]: 5 })], categoryA, "2026-11").percent, null);
 });
 
 test("day view returns the day's entries plus the last earlier figure", () => {
-   const day = dayPoints(week, categoryA.id, "2026-11-09");
+   const day = dayPoints(week, categoryA, "2026-11-09");
    assert.equal(day.points.length, 2);
    assert.equal(day.before.value, 100);
-   assert.equal(dayPoints(week, categoryA.id, "2026-11-07").before, null);
+   assert.equal(dayPoints(week, categoryA, "2026-11-07").before, null);
 });
 
 function apiHarness({ deny = false, dbError = null, pages = null, rpcData = "00000000-0000-0000-0000-0000000000aa" } = {}) {
@@ -263,4 +263,139 @@ test("charts explain what is missing instead of drawing broken or empty plots", 
    assert.match(html, /No entries on Thu, Nov 12/);
    assert.match(html, /Record at least two figures/);
    assert.equal((html.match(/role="img"/g) || []).length, 1);
+});
+
+// ── Comparing months ────────────────────────────────────────────────────────────
+const { monthRange, shiftMonth, monthFigure, compareMonths, monthDailySeries, changeTone } = statistics;
+const counter = { ...students, kind: "monthly" };
+const total = { ...categoryA, kind: "total", direction: "up" };
+const debtors = { ...categoryB, kind: "total", direction: "down" };
+
+test("month ranges cross years, stay in order, and are capped", () => {
+   assert.equal(shiftMonth("2026-01", 1), "2025-12");
+   assert.equal(shiftMonth("2025-12", -1), "2026-01");
+   assert.equal(shiftMonth("2026-11", 11), "2025-12");
+   assert.equal(monthRange("2025-11", "2026-02").join(), "2025-11,2025-12,2026-01,2026-02");
+   assert.equal(monthRange("2026-11", "2026-11").length, 1);
+   assert.equal(monthRange("2024-12", "2026-11").length, 24);
+   assert.throws(() => monthRange("2024-11", "2026-11"));
+   assert.throws(() => monthRange("2026-11", "2026-10"));
+   const window = statisticMonthWindow("2025-12", "2026-11");
+   assert.equal(window.from, "2025-11-16T19:00:00.000Z");
+   assert.equal(window.to, "2026-11-30T19:00:00.000Z");
+});
+
+test("category settings default to running total and neutral and reject unknown values", () => {
+   const legacy = validateStatisticCategory({ name: "Old", color: "#10b981", unit: "number" });
+   assert.equal(legacy.kind, "total");
+   assert.equal(legacy.direction, "neutral");
+   const counterCategory = validateStatisticCategory({ ...categoryA, kind: "monthly", direction: "down" });
+   assert.equal(counterCategory.kind, "monthly");
+   assert.equal(counterCategory.direction, "down");
+   for (const body of [{ ...categoryA, kind: "weekly" }, { ...categoryA, direction: "sideways" }, { ...categoryA, kind: 1 }]) assert.throws(() => validateStatisticCategory(body));
+});
+
+// Counter restarts each month: Oct ends at 40, Nov starts again.
+const counterReadings = [
+   reading("2026-10-20", "18:00", { [counter.id]: 30 }), reading("2026-10-31", "18:00", { [counter.id]: 40 }),
+   reading("2026-11-02", "10:00", { [counter.id]: 5 }), reading("2026-11-02", "19:00", { [counter.id]: 8 }), reading("2026-11-12", "18:00", { [counter.id]: 21 }),
+];
+
+test("monthly counters never show a fake drop when they restart", () => {
+   const first = dayChange(counterReadings, counter, "2026-11-02");
+   assert.equal(first.change, 8);
+   assert.equal(first.restarted, true);
+   assert.equal(first.since, null);
+   assert.equal(first.stepChange, 3);
+   assert.equal(changeSincePrevious(counterReadings, counterReadings[2].id, counter), null);
+   assert.equal(changeSincePrevious(counterReadings, counterReadings[3].id, counter), 3);
+   assert.equal(monthChange(counterReadings, counter, "2026-11").change, 21);
+   assert.equal(monthChange(counterReadings, counter, "2026-11").start, null);
+   assert.equal(dayPoints(counterReadings, counter, "2026-11-02").before, null);
+   // The same figures as a running total compare across the month boundary.
+   assert.equal(dayChange(counterReadings, { ...counter, kind: "total" }, "2026-11-02").change, -32);
+});
+
+test("month figures use the same day of each month, carry running totals forward, and never carry counters", () => {
+   const readings = [
+      reading("2026-09-10", "12:00", { [total.id]: 100, [counter.id]: 9 }), reading("2026-09-25", "12:00", { [total.id]: 130, [counter.id]: 30 }),
+      reading("2026-10-12", "20:00", { [total.id]: 150, [counter.id]: 12 }), reading("2026-10-14", "09:00", { [total.id]: 999, [counter.id]: 999 }),
+   ];
+   assert.equal(monthFigure(readings, total, "2026-09").value, 130);
+   assert.equal(monthFigure(readings, total, "2026-09", 13).value, 100);
+   assert.equal(monthFigure(readings, total, "2026-10", 13).value, 150);
+   assert.equal(monthFigure(readings, total, "2026-10", 13).carried, false);
+   // No entry in November: the running total carries October's last figure; the counter shows nothing.
+   assert.equal(monthFigure(readings, total, "2026-11").value, 999);
+   assert.equal(monthFigure(readings, total, "2026-11").carried, true);
+   assert.equal(monthFigure(readings, counter, "2026-11"), null);
+   assert.equal(monthFigure(readings, counter, "2026-10", 5), null);
+   // Short months use their last day for "the 31st".
+   assert.equal(monthFigure([reading("2026-02-28", "22:00", { [total.id]: 7 })], total, "2026-02", 31).value, 7);
+   const cells = compareMonths(readings, counter, ["2026-09", "2026-10", "2026-11"], 13);
+   assert.equal(cells.map((cell) => cell.value).join(), "9,12,");
+   assert.equal(cells.map((cell) => cell.change).join(), ",3,");
+   const ends = compareMonths(readings, total, ["2026-09", "2026-10"]);
+   assert.equal(ends[1].change, 869);
+   assert.equal(ends[0].change, null);
+});
+
+test("daily month series carry running totals across days and start counters at their first entry", () => {
+   const readings = [reading("2026-10-31", "18:00", { [total.id]: 50, [counter.id]: 40 }), reading("2026-11-03", "09:00", { [total.id]: 60, [counter.id]: 4 })];
+   const until = Date.parse(statisticInstant("2026-11-05", "23:59"));
+   const totals = monthDailySeries(readings, total, "2026-11", until);
+   assert.equal(totals.length, 30);
+   assert.equal(totals.slice(0, 6).map((point) => point.value).join(), "50,50,60,60,60,");
+   assert.equal(totals[2].recorded, true);
+   assert.equal(totals[3].recorded, false);
+   const counts = monthDailySeries(readings, counter, "2026-11", until);
+   assert.equal(counts.slice(0, 5).map((point) => point.value).join(), ",,4,4,4");
+});
+
+test("change colours follow each category's direction", () => {
+   assert.equal(changeTone("up", 5), "good");
+   assert.equal(changeTone("up", -5), "bad");
+   assert.equal(changeTone("down", 5), "bad");
+   assert.equal(changeTone("down", -5), "good");
+   assert.equal(changeTone("neutral", 5), "neutral");
+   assert.equal(changeTone("up", 0), "neutral");
+   assert.equal(changeTone("up", null), "neutral");
+});
+
+test("compare requests load a month range and return category settings", async () => {
+   const { route, calls } = apiHarness({ pages: { statistics_categories: [total], statistics_readings: [] } });
+   const response = await route.GET({ url: "https://app.test/api/erp/statistics?from=2025-11&to=2026-11" });
+   assert.equal(response.status, 200);
+   assert.ok(calls.some((call) => call.op === "select" && call.table === "statistics_categories" && /kind, direction/.test(call.columns)));
+   assert.ok(calls.some((call) => call.op === "gte" && call.value === "2025-10-17T19:00:00.000Z"));
+   assert.ok(calls.some((call) => call.op === "lt" && call.value === "2026-11-30T19:00:00.000Z"));
+   assert.equal((await route.GET({ url: "https://app.test/api/erp/statistics?from=2023-01&to=2026-11" })).status, 400);
+   assert.equal((await route.GET({ url: "https://app.test/api/erp/statistics?from=2026-11&to=2026-01" })).status, 400);
+});
+
+const Compare = load("components/statistics/StatisticsCompare.tsx", {
+   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/chartExport": load("lib/chartExport.ts"), "@/lib/marketingMetrics": marketing,
+   "@/lib/statistics": statistics, "./StatisticsChart": Chart, "./statisticsRequest": { statisticsRequest: async () => ({ readings: [] }) },
+   "@/components/marketing/marketing.module.css": css, "./statistics.module.css": css,
+});
+
+test("month against month draws one line per month with today marked, and bars coloured by direction", () => {
+   const readings = [
+      reading("2026-10-02", "18:00", { [debtors.id]: 40 }), reading("2026-10-30", "18:00", { [debtors.id]: 60 }),
+      reading("2026-11-02", "18:00", { [debtors.id]: 55 }), reading("2026-11-12", "18:00", { [debtors.id]: 50 }),
+   ];
+   const lines = renderToStaticMarkup(React.createElement(Compare.MonthLinesChart, { category: debtors, readings, months: ["2026-10", "2026-11"], endMonth: "2026-11", today: "2026-11-13", isCurrent: true }));
+   assert.equal((lines.match(/<path d="M/g) || []).length, 2);
+   assert.match(lines, /TODAY/);
+   assert.match(lines, /Nov 2026 · 50/);
+   assert.match(lines, /Oct 2026 · 60/);
+   assert.doesNotMatch(lines, /NaN|Infinity/);
+   const cells = compareMonths(readings, debtors, ["2026-10", "2026-11"], 13);
+   const bars = renderToStaticMarkup(React.createElement(Compare.MonthBarsChart, { category: debtors, cells, endMonth: "2026-11", isCurrent: true, asOfDay: 13 }));
+   // Debtors: lower is better. As of the 13th: 40 in October, 50 in November, so +10 is bad (red).
+   assert.equal(cells[1].change, 10);
+   assert.match(bars, /fill="#fb7185"/);
+   assert.match(bars, /each month as of its 13th/);
+   const empty = renderToStaticMarkup(React.createElement(Compare.MonthLinesChart, { category: debtors, readings: [], months: [], endMonth: "2026-11", today: "2026-11-13", isCurrent: true }));
+   assert.match(empty, /Choose at least one month/);
 });

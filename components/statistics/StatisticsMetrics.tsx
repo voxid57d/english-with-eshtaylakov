@@ -3,36 +3,25 @@
 import CalendarInput from "@/components/ui/CalendarInput";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { getSupabaseAccessToken } from "@/lib/getSupabaseAccessToken";
 import { CENTRE_COLORS, monthDays } from "@/lib/marketingMetrics";
-import { changeSincePrevious, parseStatistic, sortReadings, statisticDate, statisticInstant, statisticTime, STATISTIC_UNITS, type StatisticCategory, type StatisticReading, type StatisticsData, type StatisticUnit } from "@/lib/statistics";
+import { changeSincePrevious, parseStatistic, sortReadings, statisticDate, statisticInstant, statisticTime, STATISTIC_DIRECTIONS, STATISTIC_KINDS, STATISTIC_UNITS, type StatisticCategory, type StatisticDirection, type StatisticKind, type StatisticReading, type StatisticsData, type StatisticUnit } from "@/lib/statistics";
 import { installUnsavedChangesGuard } from "@/lib/unsavedChanges";
 import { useLocalToday } from "@/lib/useLocalToday";
 import StatisticsCharts from "./StatisticsCharts";
+import StatisticsCompare from "./StatisticsCompare";
+import { statisticsRequest as request } from "./statisticsRequest";
 import { statisticStamp } from "./StatisticsChart";
 import shared from "@/components/marketing/marketing.module.css";
 import styles from "./statistics.module.css";
 
 type CategoryEditor = Omit<StatisticCategory, "id"> & { id?: string };
 type EntryForm = { id?: string; date: string; time: string; note: string; values: Record<string, string> };
-const newCategory = (index = 0): CategoryEditor => ({ name: "", color: CENTRE_COLORS[index % CENTRE_COLORS.length], unit: "number" });
+const newCategory = (index = 0): CategoryEditor => ({ name: "", color: CENTRE_COLORS[index % CENTRE_COLORS.length], unit: "number", kind: "total", direction: "neutral" });
 const newEntry = (): EntryForm => ({ date: statisticDate(Date.now()), time: statisticTime(Date.now()), note: "", values: {} });
 const emptyData: StatisticsData = { categories: [], readings: [], canManage: false };
 const numberFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const signed = (value: number) => `${value > 0 ? "+" : ""}${numberFormat.format(value)}`;
 const dayHeading = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" });
-
-async function request(path: string, body?: unknown, signal?: AbortSignal) {
-   const token = await getSupabaseAccessToken();
-   const response = await fetch(`/api/erp/statistics${path}`, {
-      method: body ? "POST" : "GET", cache: "no-store", signal,
-      headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-   });
-   const result = await response.json();
-   if (!response.ok) throw new Error(result.error || "Could not load statistics.");
-   return result;
-}
 
 export default function StatisticsMetrics() {
    const today = useLocalToday();
@@ -46,7 +35,7 @@ export default function StatisticsMetrics() {
    const [notice, setNotice] = useState("");
    const [revision, setRevision] = useState(0);
    const [saving, setSaving] = useState(false);
-   const [tab, setTab] = useState<"entries" | "charts">("entries");
+   const [tab, setTab] = useState<"entries" | "charts" | "compare">("entries");
    const [managing, setManaging] = useState(false);
    const [editor, setEditor] = useState<CategoryEditor>(newCategory());
    const [entry, setEntry] = useState<EntryForm>(newEntry);
@@ -173,6 +162,18 @@ export default function StatisticsMetrics() {
       finally { saveLock.current = false; setSaving(false); }
    }
 
+   // Quick settings table: each change saves immediately.
+   async function saveCategorySetting(category: StatisticCategory, update: Partial<Pick<StatisticCategory, "kind" | "direction">>) {
+      if (saveLock.current || !data.canManage) return;
+      saveLock.current = true; setSaving(true); setError(""); setNotice("");
+      try {
+         const result = await request("", { action: "category", ...category, ...update });
+         setData((previous) => ({ ...previous, categories: previous.categories.map((item) => item.id === category.id ? result.category : item) }));
+         setNotice(`Updated "${category.name}".`);
+      } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not update the category."); }
+      finally { saveLock.current = false; setSaving(false); }
+   }
+
    // Open charts on the latest day with entries when the selected day (often today) has none yet.
    function openCharts() {
       setTab("charts");
@@ -221,12 +222,27 @@ export default function StatisticsMetrics() {
             <form className={shared.entityForm} onSubmit={(event) => void saveCategory(event)}>
                <label className={`${shared.field} ${styles.nameField}`}>Category name<input required maxLength={80} placeholder="e.g. Active students" value={editor.name} disabled={saving} onChange={(event) => setEditor({ ...editor, name: event.target.value })} /></label>
                <label className={shared.field}>Unit<select value={editor.unit} disabled={saving} onChange={(event) => setEditor({ ...editor, unit: event.target.value as StatisticUnit })}>{Object.entries(STATISTIC_UNITS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+               <label className={shared.field}>Figure type<select value={editor.kind} disabled={saving} onChange={(event) => setEditor({ ...editor, kind: event.target.value as StatisticKind })}>{Object.entries(STATISTIC_KINDS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+               <label className={shared.field}>Direction<select value={editor.direction} disabled={saving} onChange={(event) => setEditor({ ...editor, direction: event.target.value as StatisticDirection })}>{Object.entries(STATISTIC_DIRECTIONS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
                <label className={shared.field}>Chart color<input type="color" value={editor.color} disabled={saving} onChange={(event) => setEditor({ ...editor, color: event.target.value })} /></label>
                <button className={shared.primary} disabled={saving}>{editor.id ? "Update category" : "Add category"}</button>
                {editor.id && <button type="button" className={shared.secondary} disabled={saving} onClick={() => setEditor(newCategory(data.categories.length))}>Cancel edit</button>}
                {editor.id && <button type="button" className={`${shared.secondary} ${styles.deleteButton}`} disabled={saving} onClick={() => void deleteCategory()}>Delete category</button>}
             </form>
             {editor.id && <p>Changes to the name, unit, and color apply to this category in every entry.</p>}
+            {data.categories.length > 0 && <div className={styles.settings}>
+               <h3>How each figure behaves</h3>
+               <p>Used to compare months. A running total carries over (active students, debt); a monthly counter restarts each month (trial sign-ups, enrolments). Direction colours changes green or red. Changes save immediately.</p>
+               <div className={shared.tableScroll}><table className={styles.settingsTable}>
+                  <thead><tr><th scope="col">Category</th><th scope="col">Unit</th><th scope="col">Figure type</th><th scope="col">Direction</th></tr></thead>
+                  <tbody>{data.categories.map((category) => <tr key={category.id}>
+                     <th scope="row"><i style={{ background: category.color }} />{category.name}</th>
+                     <td>{STATISTIC_UNITS[category.unit]}</td>
+                     <td><select aria-label={`Figure type for ${category.name}`} value={category.kind} disabled={saving} onChange={(event) => void saveCategorySetting(category, { kind: event.target.value as StatisticKind })}>{Object.entries(STATISTIC_KINDS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></td>
+                     <td><select aria-label={`Direction for ${category.name}`} value={category.direction} disabled={saving} onChange={(event) => void saveCategorySetting(category, { direction: event.target.value as StatisticDirection })}>{Object.entries(STATISTIC_DIRECTIONS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></td>
+                  </tr>)}</tbody>
+               </table></div>
+            </div>}
          </section>}
          <section className={shared.stats} aria-label="Statistics summary">
             <div><span>Categories</span><strong>{data.categories.length}</strong><small>Figures you track</small></div>
@@ -237,7 +253,8 @@ export default function StatisticsMetrics() {
          <div className={shared.navigation}>
             <div className={shared.tabs} role="tablist" aria-label="Statistics views">
                <button role="tab" aria-selected={tab === "entries"} id="statistics-entries-tab" aria-controls="statistics-panel" onClick={() => setTab("entries")}>Entries</button>
-               <button role="tab" aria-selected={tab === "charts"} id="statistics-charts-tab" aria-controls="statistics-panel" onClick={openCharts}>Charts & insights</button>
+               <button role="tab" aria-selected={tab === "charts"} id="statistics-charts-tab" aria-controls="statistics-panel" onClick={openCharts}>This month</button>
+               <button role="tab" aria-selected={tab === "compare"} id="statistics-compare-tab" aria-controls="statistics-panel" onClick={() => setTab("compare")}>Compare months</button>
             </div>
             <div className={shared.saveArea}><span aria-live="polite">{!data.canManage ? "View-only access" : touched ? "Unsaved entry" : "All entries saved"}</span></div>
          </div>
@@ -283,7 +300,7 @@ export default function StatisticsMetrics() {
                      {items.map((reading) => <article key={reading.id} className={`${styles.logEntry} ${entry.id === reading.id ? styles.editing : ""}`}>
                         <div className={styles.logTime}><strong>{statisticTime(reading.recorded_at)}</strong>{reading.note && <small>{reading.note}</small>}</div>
                         <ul className={styles.logValues}>{data.categories.filter((category) => Object.hasOwn(reading.values, category.id)).map((category) => {
-                           const change = changeSincePrevious(readings, reading.id, category.id);
+                           const change = changeSincePrevious(readings, reading.id, category);
                            return <li key={category.id} title={`${category.name} · ${STATISTIC_UNITS[category.unit]}`}><i style={{ background: category.color }} /><span>{category.name}</span><b>{numberFormat.format(reading.values[category.id])}</b>
                               {change !== null && <em className={change > 0 ? styles.up : change < 0 ? styles.down : ""}>{signed(change)}</em>}</li>;
                         })}</ul>
@@ -294,7 +311,7 @@ export default function StatisticsMetrics() {
                      </article>)}
                   </div>)}
                </section>
-            </div> : <>
+            </div> : tab === "compare" ? <StatisticsCompare categories={data.categories} endMonth={month} today={today} /> : <>
                {touched && <p className={shared.previewNote}>Charts show saved entries only. Save your entry to include it.</p>}
                <StatisticsCharts categories={data.categories} readings={readings} month={month} date={date} monthLabel={monthLabel} onDateChange={setDate} />
             </>}

@@ -38,19 +38,19 @@ export default function StatisticsChart({ kind, categories, readings, month, dat
       : [Date.parse(statisticInstant(days[0], "00:00")), Date.parse(statisticInstant(previousDate(days[days.length - 1], -1), "00:00"))];
 
    const lines: Line[] = useMemo(() => !isLine ? [] : categories.map((category) => kind === "day"
-      ? { ...category, ...dayPoints(readings, category.id, date) }
+      ? { ...category, ...dayPoints(readings, category, date) }
       : { ...category, before: null, points: categoryPoints(readings, category.id).filter((point) => point.at >= x0 && point.at < x1) }), [isLine, kind, categories, readings, date, x0, x1]);
    const rows = useMemo(() => isLine ? [] : categories.map((category) => {
       if (kind === "latest") {
-         const latest = dayChange(readings, category.id, date);
+         const latest = dayChange(readings, category, date);
          return { ...category, value: latest?.change ?? null, detail: latest
-            ? `${format(latest.value)} at ${statisticTime(latest.recorded_at)}${latest.since ? ` · vs ${statisticStamp(latest.since)}` : " · no figure in the 7 days before"}${latest.stepChange !== null && latest.stepSince && latest.stepSince !== latest.since ? ` · ${signed(latest.stepChange)} since ${statisticStamp(latest.stepSince)}` : ""}`
+            ? `${format(latest.value)} at ${statisticTime(latest.recorded_at)}${latest.since ? ` · vs ${statisticStamp(latest.since)}` : latest.restarted ? " · first figure this month (counter restarts at 0)" : " · no figure in the 7 days before"}${latest.stepChange !== null && latest.stepSince && latest.stepSince !== latest.since ? ` · ${signed(latest.stepChange)} since ${statisticStamp(latest.stepSince)}` : ""}`
             : "" };
       }
-      const change = monthChange(readings, category.id, month);
-      return { ...category, value: change?.change ?? null, detail: change
-         ? `${statisticStamp(change.start)} → ${statisticStamp(change.end)} · ${change.percent === null ? "% unavailable (non-positive start)" : `${change.percent > 0 ? "+" : ""}${change.percent.toFixed(2)}%`}`
-         : "" };
+      const change = monthChange(readings, category, month);
+      return { ...category, value: change?.change ?? null, detail: !change ? "" : change.start === null
+         ? `Monthly counter · month total as of ${statisticStamp(change.end)}`
+         : `${statisticStamp(change.start)} → ${statisticStamp(change.end)} · ${change.percent === null ? "% unavailable (non-positive start)" : `${change.percent > 0 ? "+" : ""}${change.percent.toFixed(2)}%`}` };
    }).sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity)), [isLine, kind, categories, readings, date, month]);
 
    const hasData = isLine ? lines.some((line) => line.points.length) : rows.some((row) => row.value !== null);

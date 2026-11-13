@@ -15,18 +15,20 @@ function databaseError(error: { code?: string }) {
    if (error.code === "23505") return new Error("That category name already exists.");
    if (error.code === "P0002") return new Error("This entry no longer exists. Reload to see the latest entries.");
    if (error.code === "23503") return new Error("A category in this entry was deleted. Reload and try again.");
-   if (["42P01", "42703", "PGRST200", "PGRST202", "PGRST204", "PGRST205", "42883"].includes(error.code || "")) return new Error("Statistics setup is required. Run supabase/statistics_schema.sql and then supabase/statistics_readings.sql in the Supabase SQL editor.");
+   if (["42P01", "42703", "PGRST200", "PGRST202", "PGRST204", "PGRST205", "42883"].includes(error.code || "")) return new Error("Statistics setup is required. Run supabase/statistics_schema.sql, supabase/statistics_readings.sql and supabase/statistics_comparison.sql in the Supabase SQL editor.");
    return new Error("Could not access statistics. Please retry; your unsaved edits are still available.");
 }
 
 export async function GET(req: Request) {
    try {
       const { staff } = await requireErpPermission(req, "statistics", "view");
-      const { from, to } = statisticMonthWindow(new URL(req.url).searchParams.get("month") || "");
+      // ?month=YYYY-MM for one month, or ?from=YYYY-MM&to=YYYY-MM to compare months.
+      const params = new URL(req.url).searchParams;
+      const { from, to } = params.has("from") ? statisticMonthWindow(params.get("from") || "", params.get("to") || "") : statisticMonthWindow(params.get("month") || "");
       const permissions = await getErpPermissions(staff.role);
       const categories: StatisticCategory[] = [];
       for (let offset = 0; ; offset += 1000) {
-         const result = await supabaseAdmin.from("statistics_categories").select("id, name, color, unit")
+         const result = await supabaseAdmin.from("statistics_categories").select("id, name, color, unit, kind, direction")
             .order("created_at").order("id").range(offset, offset + 999);
          if (result.error) throw databaseError(result.error);
          categories.push(...result.data);
@@ -74,7 +76,7 @@ export async function POST(req: Request) {
       if (body?.action !== "category") throw new Error("Choose a valid statistics action.");
       const payload = validateStatisticCategory(body);
       const query = body.id ? supabaseAdmin.from("statistics_categories").update(payload).eq("id", body.id) : supabaseAdmin.from("statistics_categories").insert(payload);
-      const { data, error } = await query.select("id, name, color, unit").single();
+      const { data, error } = await query.select("id, name, color, unit, kind, direction").single();
       if (error) throw databaseError(error);
       return NextResponse.json({ category: data });
    } catch (error) { return failure(error); }
