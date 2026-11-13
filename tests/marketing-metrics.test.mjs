@@ -18,11 +18,12 @@ function load(path, modules = {}) {
    return exports;
 }
 const metrics = load("lib/marketingMetrics.ts");
+const chartExport = load("lib/chartExport.ts");
 const logos = load("lib/marketingLogo.ts");
 const insights = load("lib/marketingInsights.ts", { "./marketingMetrics": metrics });
 const LineInteraction = load("components/marketing/LineChartInteraction.tsx", { react: React, "react/jsx-runtime": jsxRuntime, "./marketing.module.css": { default: {} } }).default;
 const insightCharts = load("components/marketing/MarketingInsightChart.tsx", {
-   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
+   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "@/lib/chartExport": chartExport, "./marketing.module.css": { default: {} },
 });
 const calendar = load("lib/marketingCalendar.ts");
 const sharedPickerModules = { react: React, "react-dom": { createPortal: (child) => child }, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics, "./CalendarInput.module.css": { default: {} } };
@@ -34,7 +35,7 @@ const pickerModules = { "@/components/ui/CalendarInput": { default: SharedPicker
 const DatePicker = load("components/marketing/MarketingDatePicker.tsx", pickerModules).default;
 const marketingChartModules = {
    react: React, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": metrics,
-   "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
+   "./LineChartInteraction": { default: LineInteraction }, "@/lib/chartExport": chartExport, "./marketing.module.css": { default: {} },
 };
 const AudienceChart = load("components/marketing/MarketingChart.tsx", marketingChartModules).default;
 const Insights = load("components/marketing/MarketingInsights.tsx", {
@@ -316,7 +317,7 @@ test("daily changes use the previous calendar day, including leap and year bound
 test("daily change exports display signed increases, decreases, zero, and missing pairs", () => {
    const Chart = load("components/marketing/MarketingChart.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "@/lib/chartExport": chartExport, "./marketing.module.css": { default: {} },
    }).default;
    const centres = ["up", "down", "zero", "missing"].map((id) => ({ id, name: id, color: "#10b981" }));
    const entries = centres.flatMap((centre, index) => [
@@ -361,7 +362,7 @@ test("daily total audience sums platforms for the exact date and preserves missi
 test("total audience chart includes all-platform totals and coverage in its export SVG", () => {
    const Chart = load("components/marketing/MarketingChart.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "@/lib/chartExport": chartExport, "./marketing.module.css": { default: {} },
    }).default;
    const html = renderToStaticMarkup(React.createElement(Chart, {
       kind: "total", centres: [{ id: centre_id, name: "IELTS ZONE", color: "#10b981" }],
@@ -383,7 +384,7 @@ function routeHarness({ deny = false, dbError = null, allowLinkWrites = false, a
    const route = load("app/api/erp/marketing/route.ts", {
       "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) } },
       "@/lib/erp": { erpJsonError: (error) => ({ message: error.message, status: error.message === "Forbidden." ? 403 : 400 }) },
-      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "@/lib/chartExport": chartExport,
       "@/lib/marketingLogo": logos,
       "@/lib/erpAuth": {
          requireErpPermission: async (_req, module, action) => { calls.push({ module, action }); if (deny) throw new Error("Forbidden."); return { user: { id: "actor" }, staff: { role: "admin" } }; },
@@ -476,7 +477,7 @@ test("invalid profile URLs never reach the database", async () => {
 test("platform names open saved URLs in a new tab and only managers can add or edit links", () => {
    const Component = load("components/marketing/PlatformProfileLink.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "@/lib/chartExport": chartExport, "./marketing.module.css": { default: {} },
    }).default;
    const props = { centreName: "IELTS ZONE", platformName: "Telegram", onSave: async () => {} };
    const render = (extra) => renderToStaticMarkup(React.createElement(Component, { ...props, ...extra }));
@@ -494,7 +495,7 @@ test("platform names open saved URLs in a new tab and only managers can add or e
 test("all export charts render valid standalone SVGs with accessible titles and no invalid coordinates", () => {
    const Chart = load("components/marketing/MarketingChart.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "@/lib/chartExport": chartExport, "./marketing.module.css": { default: {} },
    }).default;
    const centres = [{ id: centre_id, name: "Centre & Academy", color: "#10b981" }];
    for (const kind of ["daily", "trend", "growth"]) {
@@ -525,7 +526,7 @@ test("platform logos accept bounded PNG data and reject external images, SVGs, a
 test("centre checkboxes exclude centres from every chart and export while allowing an empty selection", () => {
    const Chart = load("components/marketing/MarketingChart.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
-      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "./marketing.module.css": { default: {} },
+      "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "@/lib/chartExport": chartExport, "./marketing.module.css": { default: {} },
    }).default;
    const Charts = load("components/marketing/MarketingCharts.tsx", {
       react: React, "react/jsx-runtime": jsxRuntime,
@@ -630,7 +631,7 @@ test("insight date controls accept other months and range charts preserve sheet 
          if (initial && typeof initial === "object" && "key" in initial) return [{ key: loadedKey, entries: [change(100, "2026-08-01"), change(125, "2026-10-04")], error: "" }, () => {}];
          return [initial, () => {}];
       } },
-      "react/jsx-runtime": jsxRuntime, "@/lib/marketingInsights": insights, "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction },
+      "react/jsx-runtime": jsxRuntime, "@/lib/marketingInsights": insights, "@/lib/marketingMetrics": metrics, "./LineChartInteraction": { default: LineInteraction }, "@/lib/chartExport": chartExport,
       "@/lib/getSupabaseAccessToken": { getSupabaseAccessToken: async () => "test-token" },
       "./MarketingInsightChart": insightCharts, "./MarketingDatePicker": { default: DatePicker }, "./MarketingChart": { default: AudienceChart }, "./marketing.module.css": { default: {} },
    }).default;
@@ -728,4 +729,38 @@ test("invalid or unauthorized logo changes do not reach the database", async () 
    const denied = routeHarness({ deny: true });
    assert.equal((await denied.route.POST({ json: async () => ({ ...body, logo_data_url: logo }) })).status, 403);
    assert.equal(denied.calls.length, 1);
+});
+
+const statCategoryA = { id: "00000000-0000-0000-0000-000000000001", name: "Active debt", color: "#10b981" };
+const statCategoryB = { id: "00000000-0000-0000-0000-000000000002", name: "Finished debt", color: "#6366f1" };
+const observation = (value, day, id = statCategoryA.id) => ({ centre_id: id, platform_id: "stats", entry_date: day, subscribers: value });
+
+test("opt-in daily change lookback skips unrecorded days and names the compared date", () => {
+   const centres = [statCategoryA, statCategoryB];
+   const entries = [observation(100, "2026-11-07"), observation(130, "2026-11-09"), observation(50, "2026-10-31", statCategoryB.id), observation(60, "2026-11-09", statCategoryB.id)];
+   const [a, b] = metrics.dailyChanges(centres, entries, "stats", "2026-11-09", 7);
+   assert.equal(a.value, 30);
+   assert.equal(a.since, "2026-11-07");
+   assert.equal(b.value, null);
+   assert.equal(metrics.dailyChanges(centres, entries, "stats", "2026-11-09")[0].value, null);
+   const html = renderToStaticMarkup(React.createElement(AudienceChart, { kind: "change", centres, entries, platformId: "stats", platformName: "UZS",
+      days: metrics.monthDays("2026-11"), date: "2026-11-09", monthLabel: "November 2026", lookback: { change: 7, baseline: 14 } }));
+   assert.match(html, /\+30/);
+   assert.match(html, /vs Sat 11-07 · 2 days earlier/);
+});
+
+test("opt-in growth baseline starts from the last figure before the period", () => {
+   const points = [{ date: "2026-10-30", value: 80 }, { date: "2026-10-31", value: null }, { date: "2026-11-01", value: null }, { date: "2026-11-03", value: 90 }, { date: "2026-11-12", value: 100 }];
+   assert.equal(JSON.stringify(metrics.growthWithBaseline(points, "2026-11-01")), JSON.stringify({ change: 20, percent: 25, start: "2026-10-30", end: "2026-11-12" }));
+   assert.equal(metrics.growthWithBaseline(points.slice(0, 3), "2026-11-01"), null);
+   assert.equal(metrics.growthWithBaseline(points.slice(3), "2026-11-01").start, "2026-11-03");
+});
+
+test("opt-in dashed gaps bridge unrecorded days instead of breaking the line", () => {
+   const entries = [observation(10, "2026-11-06"), observation(11, "2026-11-07"), observation(13, "2026-11-09")];
+   const props = { kind: "trend", fitTrend: true, centres: [statCategoryA], entries, platformId: "stats", platformName: "UZS", days: metrics.monthDays("2026-11"), date: "2026-11-09", monthLabel: "November 2026" };
+   const dashed = renderToStaticMarkup(React.createElement(AudienceChart, { ...props, dashGaps: true }));
+   assert.equal((dashed.match(/stroke-dasharray="5 6"/g) || []).length, 1);
+   const broken = renderToStaticMarkup(React.createElement(AudienceChart, props));
+   assert.doesNotMatch(broken, /stroke-dasharray="5 6"/);
 });

@@ -1,34 +1,56 @@
 "use client";
 
-import { calendarCoverage } from "@/lib/marketingCalendar";
+import { useState } from "react";
 import CalendarInput from "@/components/ui/CalendarInput";
-
-import { useMemo, useState } from "react";
-import MarketingChart, { type ChartPresentation } from "@/components/marketing/MarketingChart";
-import { STATISTIC_CHANGE_LOOKBACK_DAYS, STATISTIC_LOOKBACK_DAYS, STATISTIC_UNITS, type StatisticCategory, type StatisticEntry, type StatisticUnit } from "@/lib/statistics";
+import { calendarCoverage } from "@/lib/marketingCalendar";
+import { monthDays } from "@/lib/marketingMetrics";
+import { STATISTIC_CHANGE_LOOKBACK_DAYS, STATISTIC_UNITS, statisticDate, type StatisticCategory, type StatisticReading, type StatisticUnit } from "@/lib/statistics";
+import StatisticsChart, { type StatisticsChartKind, type StatisticsChartText } from "./StatisticsChart";
 import shared from "@/components/marketing/marketing.module.css";
 import styles from "./statistics.module.css";
 
-export default function StatisticsCharts({ categories, entries, days, date, monthLabel, onDateChange }: {
-   categories: StatisticCategory[]; entries: StatisticEntry[]; days: string[];
+const KINDS: StatisticsChartKind[] = ["latest", "day", "trend", "month"];
+
+export default function StatisticsCharts({ categories, readings, month, date, monthLabel, onDateChange }: {
+   categories: StatisticCategory[]; readings: StatisticReading[]; month: string;
    date: string; monthLabel: string; onDateChange: (date: string) => void;
 }) {
    const [unitChoice, setUnitChoice] = useState<StatisticUnit | "">("");
    const [excluded, setExcluded] = useState<Set<string>>(new Set());
+   const days = monthDays(month);
    const units = [...new Set(categories.map((category) => category.unit))];
    const unit = unitChoice && units.includes(unitChoice) ? unitChoice : units[0];
    const matching = categories.filter((category) => category.unit === unit);
    const selected = matching.filter((category) => !excluded.has(category.id));
-   const chartEntries = useMemo(() => entries.map((entry) => ({ centre_id: entry.category_id, platform_id: "statistics", entry_date: entry.entry_date, subscribers: entry.value })), [entries]);
    const label = unit ? STATISTIC_UNITS[unit] : "Numbers";
-   const presentation = (kind: "change" | "trend" | "growth"): ChartPresentation => ({
-      title: kind === "change" ? "Daily category change" : kind === "trend" ? "Monthly category trends" : "Change over the month",
-      subtitle: `${label} · ${kind === "change" ? `${date} vs previous recorded day` : monthLabel}`,
-      toolbar: kind === "change" ? "01 / DAILY CHANGE" : kind === "trend" ? "02 / MONTHLY TRENDS" : "03 / MONTHLY CHANGE",
-      axisLabel: label.toUpperCase(),
-      footer: kind === "change" ? `Selected day minus the latest earlier figure (up to ${STATISTIC_CHANGE_LOOKBACK_DAYS} days back)` : kind === "trend" ? "Dots are recorded figures; dashed lines bridge unrecorded days" : "From the last figure before the month to the latest recorded figure",
-      filename: `statistics-${unit}-${kind}-${kind === "change" ? date : days[0].slice(0, 7)}.jpg`,
-      emptyMessage: kind === "change" ? `Record a figure on ${date} and one in the ${STATISTIC_CHANGE_LOOKBACK_DAYS} days before it for a selected category to see its daily change.` : kind === "growth" ? "Record at least two dates for a selected category to see its change." : "Add figures for the selected categories this month.",
+   // The date picker marks days on which the selected categories have entries.
+   const coverage = calendarCoverage(readings.flatMap((reading) => Object.entries(reading.values).map(([category_id, value]) => ({
+      centre_id: category_id, platform_id: "statistics", entry_date: statisticDate(reading.recorded_at), subscribers: value,
+   }))), selected.map((category) => category.id), "statistics");
+   const dayLabel = new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+
+   const copy: Record<StatisticsChartKind, Omit<StatisticsChartText, "axisLabel" | "filename">> = {
+      latest: {
+         title: "Change on the day", subtitle: `${label} · ${dayLabel}, latest entry vs the previous day’s last entry`, toolbar: "01 / CHANGE ON THE DAY",
+         footer: `Latest figure on the day minus the last figure of an earlier day (up to ${STATISTIC_CHANGE_LOOKBACK_DAYS} days back)`,
+         emptyMessage: `Record a figure on ${dayLabel} and on an earlier day within ${STATISTIC_CHANGE_LOOKBACK_DAYS} days for a selected category to see its change.`, periodLabel: date,
+      },
+      day: {
+         title: "Through the day", subtitle: `${label} · ${dayLabel}, every entry from 00:00 to 24:00`, toolbar: "02 / DAY VIEW",
+         footer: "Dots are entries; the hollow dot is the last figure before this day", emptyMessage: `No entries on ${dayLabel} for the selected categories.`, periodLabel: date,
+      },
+      trend: {
+         title: "Over the month", subtitle: `${label} · ${monthLabel}, every entry at its recorded time`, toolbar: "03 / MONTHLY TREND",
+         footer: "Dots are entries; dashed lines cross days without entries", emptyMessage: "Add entries for the selected categories this month.", periodLabel: monthLabel,
+      },
+      month: {
+         title: "Change over the month", subtitle: `${label} · ${monthLabel}`, toolbar: "04 / MONTHLY CHANGE",
+         footer: "From the last figure before the month (or the first in it) to the latest figure", emptyMessage: "Record at least two figures for a selected category to see its change.", periodLabel: monthLabel,
+      },
+   };
+   const text = (kind: StatisticsChartKind): StatisticsChartText => ({
+      ...copy[kind], axisLabel: label.toUpperCase(),
+      filename: `statistics-${unit}-${kind}-${kind === "latest" || kind === "day" ? date : month}.jpg`,
    });
 
    return <div className={shared.charts}>
@@ -36,7 +58,7 @@ export default function StatisticsCharts({ categories, entries, days, date, mont
          <div><h2>Choose what to compare</h2><p>Compare categories with the same unit. Each chart downloads as a JPG.</p></div>
          <div className={shared.filters}>
             <label className={shared.field}>Chart unit<select value={unit || ""} onChange={(event) => setUnitChoice(event.target.value as StatisticUnit)}>{units.map((item) => <option key={item} value={item}>{STATISTIC_UNITS[item]}</option>)}</select></label>
-            <label className={shared.field}>Daily change date<CalendarInput aria-label="Daily change date" recording={{ context: `${label} ? ${selected.length} selected categories`, known: true, coverage: calendarCoverage(chartEntries, selected.map((item) => item.id), "statistics"), total: selected.length, noun: "categories", allLabel: "All categories", someLabel: "Some categories" }} type="date" min={days[0]} max={days[days.length - 1]} value={date} onChange={(event) => { if (days.includes(event.target.value)) onDateChange(event.target.value); }} /></label>
+            <label className={shared.field}>Day<CalendarInput aria-label="Day for the daily charts" recording={{ context: `${label} · ${selected.length} selected categories`, known: true, coverage, total: selected.length, noun: "categories", allLabel: "All categories", someLabel: "Some categories" }} type="date" min={days[0]} max={days[days.length - 1]} value={date} onChange={(event) => { if (days.includes(event.target.value)) onDateChange(event.target.value); }} /></label>
          </div>
       </div>
       <fieldset className={styles.categoryPicker}>
@@ -47,11 +69,8 @@ export default function StatisticsCharts({ categories, entries, days, date, mont
             return next;
          })} /><i style={{ background: category.color }} />{category.name}</label>)}
       </fieldset>
-      {!selected.length ? <p className={shared.loading}>Select at least one category to draw charts.</p> : (["change", "trend", "growth"] as const).map((kind) => <MarketingChart
-         key={kind} kind={kind} centres={selected} entries={chartEntries} platformId="statistics" platformName={label}
-         days={days} date={date} monthLabel={monthLabel} presentation={presentation(kind)} fitTrend dashGaps
-         lookback={{ change: STATISTIC_CHANGE_LOOKBACK_DAYS, baseline: STATISTIC_LOOKBACK_DAYS }}
-      />)}
-      <p className={shared.chartHint}>Missed days (weekends, forgotten entries) don’t break the charts: daily change compares with the latest earlier figure, and monthly change starts from the last figure before the month (or the first one this month). Daily figures are not added together across the month, since balances and cumulative counts may be snapshots.</p>
+      {!selected.length ? <p className={shared.loading}>Select at least one category to draw charts.</p>
+         : KINDS.map((kind) => <StatisticsChart key={kind} kind={kind} categories={selected} readings={readings} month={month} date={date} text={text(kind)} />)}
+      <p className={shared.chartHint}>Figures are totals at the moment of each entry, in Tashkent time. Days without entries never break a chart: changes compare with the latest earlier figure.</p>
    </div>;
 }

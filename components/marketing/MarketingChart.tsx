@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, type ReactElement, type SVGProps } from "react";
 import { dailyAudienceTotals, dailyChanges, dateRangeDays, growthBetween, growthWithBaseline, platformSeries, previousDate, trendBounds, type MarketingCentre, type MarketingEntry, type MarketingPlatform } from "@/lib/marketingMetrics";
+import { downloadSvgAsJpg } from "@/lib/chartExport";
 import LineChartInteraction from "./LineChartInteraction";
 import styles from "./marketing.module.css";
 
@@ -72,34 +73,10 @@ export default function MarketingChart({ kind, centres, entries, platformId, pla
    async function exportJpg() {
       if (!svg.current) return;
       setExporting(true); setError("");
-      let sourceUrl: string | undefined;
-      let downloadUrl: string | undefined;
       try {
-         const exported = svg.current.cloneNode(true) as SVGSVGElement;
-         exported.querySelectorAll("[data-chart-interaction]").forEach((element) => element.remove());
-         const source = new XMLSerializer().serializeToString(exported);
-         sourceUrl = URL.createObjectURL(new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
-         const picture = new Image();
-         picture.src = sourceUrl;
-         await picture.decode();
-         const canvas = document.createElement("canvas");
-         canvas.width = width * 2; canvas.height = height * 2;
-         const context = canvas.getContext("2d");
-         if (!context) throw new Error("Image export is unavailable in this browser.");
-         context.fillStyle = "#0b1220"; context.fillRect(0, 0, canvas.width, canvas.height);
-         context.drawImage(picture, 0, 0, canvas.width, canvas.height);
-         const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Could not create the JPG.")), "image/jpeg", 0.96));
-         downloadUrl = URL.createObjectURL(blob);
-         const anchor = document.createElement("a");
-         anchor.href = downloadUrl;
-         anchor.download = presentation?.filename ?? `marketing-${chartPlatform.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${isDaily ? date : period === "range" ? `${days[0]}-to-${days.at(-1)}` : days[0].slice(0, 7)}.jpg`;
-         document.body.appendChild(anchor); anchor.click(); anchor.remove();
+         await downloadSvgAsJpg(svg.current, width, height, presentation?.filename ?? `marketing-${chartPlatform.replace(/[^a-z0-9]+/gi, "-")}-${kind}-${isDaily ? date : period === "range" ? `${days[0]}-to-${days.at(-1)}` : days[0].slice(0, 7)}.jpg`);
       } catch (cause) { setError(cause instanceof Error ? cause.message : "JPG export failed. Please retry."); }
-      finally {
-         if (sourceUrl) URL.revokeObjectURL(sourceUrl);
-         if (downloadUrl) { const url = downloadUrl; window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
-         setExporting(false);
-      }
+      finally { setExporting(false); }
    }
 
    const wrapPlot = (plot: ReactElement<SVGProps<SVGSVGElement>>) => kind === "trend" ? <LineChartInteraction series={series} days={days} left={trendLeft} height={height} label={title} unit={presentation?.axisLabel ?? "Subscribers"}>{plot}</LineChartInteraction> : plot;

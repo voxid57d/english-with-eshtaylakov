@@ -1,25 +1,51 @@
 .nameField { flex: 2; min-width: 220px; }
 .deleteButton { color: #ef4444; border-color: #ef444460; }
-.table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: fixed; }
-.table th, .table td { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-.table thead th { position: sticky; top: 0; z-index: 3; min-width: 180px; width: 180px; max-width: 180px; padding: 15px 14px; background: var(--panel); text-align: left; font-weight: 600; overflow-wrap: anywhere; vertical-align: top; }
-.table thead th small { display: block; margin-top: 7px; color: var(--muted); font-size: 10px; font-weight: 400; }
-.table tr > :first-child { position: sticky; left: 0; z-index: 2; min-width: 100px; width: 100px; max-width: 100px; background: var(--panel); text-align: left; padding: 10px 18px; box-shadow: 5px 0 9px -7px #000; }
-.table thead tr > :first-child { z-index: 4; }
-.table tbody th strong { font-size: 13px; font-weight: 600; }
-.table tbody th small { margin-left: 10px; font-size: 10px; color: var(--muted); font-weight: 400; }
-.table tbody tr:nth-child(even) td { background: #94a3b806; }
-.table tbody tr:hover td { background: #94a3b810; }
-.table td input { width: 100%; min-width: 179px; height: 44px; padding: 10px 14px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text); background: transparent; border: 0; border-radius: 0; }
-.table td input::placeholder { color: #64748b; }
-.table td input:focus { outline: 2px solid #34d399; outline-offset: -2px; background: #10b9810c; }
-.table .today th { color: #10b981; box-shadow: inset 3px 0 #10b981; }
-.table .today td { background: #10b98108; }
-.table td.edited { background: #10b98117; box-shadow: inset 0 -2px #34d39980; }
-.table td.invalid { background: #fb718529; box-shadow: inset 0 -2px #fb7185; }
-.table i, .categoryPicker i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; flex-shrink: 0; }
+.statText { font-size: 22px !important; line-height: 1.95 !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.categoryPicker i, .figure i, .logValues i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; flex-shrink: 0; }
 .categoryPicker { display: flex; flex-wrap: wrap; gap: 9px; border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--panel); }
 .categoryPicker legend { color: var(--muted); font-size: 11px; padding: 0 7px; }
 .categoryPicker label { display: flex; align-items: center; padding: 8px 10px; border-radius: 7px; background: #94a3b80a; font-size: 12px; cursor: pointer; }
 .categoryPicker input { margin-right: 9px; accent-color: #10b981; }
-@media (max-width: 640px) { .table tr > :first-child { min-width: 78px; width: 78px; max-width: 78px; padding: 10px; } .table tbody th small { display: block; margin: 3px 0 0; } }
+
+.entries { display: grid; gap: 22px; }
+
+/* New / edit entry form */
+.entryForm { overflow: visible; }
+.figureGroup { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 0 22px 18px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.figureGroup legend { color: var(--muted); font-size: 11px; padding: 0 7px; }
+.figure { display: flex; flex-direction: column; gap: 7px; font-size: 12px; min-width: 0; }
+.figure span { display: flex; align-items: center; overflow-wrap: anywhere; }
+.figure input { color: var(--text); border: 1px solid var(--border); background: #94a3b806; padding: 10px 12px; min-height: 41px; border-radius: 9px; font: inherit; font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+.figure input::placeholder { color: #64748b; font-size: 12px; }
+.figure input:focus { outline: 2px solid #34d399; outline-offset: -1px; background: #10b9810c; }
+.figure.invalid input { border-color: #fb7185; background: #fb718518; }
+.entryFooter { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding: 4px 22px 22px; }
+.noteField { flex: 1; min-width: 220px; }
+.entryCount { font-size: 11px; color: var(--muted); padding-bottom: 13px; margin-left: auto; }
+
+/* Entry log */
+.logDay { border-top: 1px solid var(--border); }
+.logDay h3 { display: flex; align-items: baseline; gap: 10px; padding: 14px 22px; font-size: 13px; font-weight: 600; background: #94a3b806; }
+.logDay h3 em { font-style: normal; font-size: 10px; font-weight: 600; color: #10b981; border: 1px solid #10b98160; border-radius: 999px; padding: 2px 8px; }
+.logDay h3 small { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--muted); }
+.logEntry { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 16px; align-items: start; padding: 14px 22px; border-top: 1px solid #23304780; }
+.logEntry.editing { background: #10b98110; box-shadow: inset 3px 0 #10b981; }
+.logTime strong { display: block; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.logTime small { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.logValues { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.logValues li { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 8px; background: #94a3b80d; font-size: 12px; }
+.logValues span { color: var(--muted); }
+.logValues b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.logValues em { font-style: normal; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.logValues em.up { color: #34d399; }
+.logValues em.down { color: #fb7185; }
+.logActions { display: flex; gap: 8px; }
+.logActions button { min-height: 32px; padding: 6px 12px; }
+
+@media (max-width: 640px) {
+   .figureGroup { margin: 0 14px 14px; grid-template-columns: 1fr; }
+   .entryFooter { padding: 4px 14px 16px; }
+   .entryCount { margin-left: 0; padding-bottom: 0; width: 100%; }
+   .logDay h3, .logEntry { padding-left: 14px; padding-right: 14px; }
+   .logEntry { grid-template-columns: 1fr; gap: 10px; }
+}

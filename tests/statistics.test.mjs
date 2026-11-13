@@ -19,10 +19,14 @@ function load(file, modules = {}) {
 }
 const marketing = load("lib/marketingMetrics.ts");
 const statistics = load("lib/statistics.ts", { "@/lib/marketingMetrics": marketing });
-const { parseStatistic, validateStatisticChanges, validateStatisticCategory, pasteStatisticCells, applyStatisticChanges } = statistics;
+const { parseStatistic, validateStatisticCategory, validateStatisticReading, statisticInstant, statisticDate, statisticTime, statisticMonthWindow, dayChange, monthChange, dayPoints, changeSincePrevious } = statistics;
 const categoryA = { id: "00000000-0000-0000-0000-000000000001", name: "Active debt", unit: "UZS", color: "#10b981" };
 const categoryB = { id: "00000000-0000-0000-0000-000000000002", name: "Finished debt", unit: "UZS", color: "#6366f1" };
-const entry = (value, entry_date = "2026-09-14", category_id = categoryA.id) => ({ category_id, entry_date, value });
+const students = { id: "00000000-0000-0000-0000-000000000003", name: "Students", unit: "number", color: "#ff0000" };
+let nextId = 0;
+// A check-in at a Tashkent date and time holding the given category figures.
+const reading = (date, time, values, note = null) => ({ id: `00000000-0000-0000-0001-${String(++nextId).padStart(12, "0")}`, recorded_at: statisticInstant(date, time), note, values });
+const NOW = Date.parse("2026-11-13T12:00:00Z");
 
 test("statistics parses grouped currency values, decimals and negative figures without converting blanks to zero", () => {
    assert.equal(parseStatistic("23,758,000"), 23758000);
@@ -33,59 +37,104 @@ test("statistics parses grouped currency values, decimals and negative figures w
    for (const value of ["1e3", "1.234", "12,34", "1 23", "NaN", "Infinity", "1000000000000", "-1000000000000"]) assert.throws(() => parseStatistic(value));
 });
 
-test("save validation rejects invalid dates, identifiers, precision, coercion and duplicate cells", () => {
-   assert.equal(validateStatisticChanges([entry(12.5), entry(null, "2026-09-15")]).length, 2);
-   for (const value of [[entry(1, "2026-02-30")], [entry(1, "2026-09-14", "bad")], [entry("2")], [entry(undefined)], [entry(0.123)], [entry(1), entry(2)], [], Array(5001).fill(entry(1))]) assert.throws(() => validateStatisticChanges(value));
-});
-
 test("category validation preserves units and rejects unknown units, invalid colors and empty names", () => {
    assert.equal(validateStatisticCategory(categoryA).unit, "UZS");
    for (const category of [{ ...categoryA, unit: "typo" }, { ...categoryA, color: "red" }, { ...categoryA, name: "  " }, { ...categoryA, id: "bad" }]) assert.throws(() => validateStatisticCategory(category));
 });
 
-test("spreadsheet paste maps rows to days and columns to visible categories, including blank and zero cells", () => {
-   const pasted = pasteStatisticCells("23,758,000\t0\r\n\t122.50\r\n", marketing.monthDays("2026-09"), [categoryA, categoryB], 1, 0);
-   assert.equal(pasted.length, 4);
-   assert.equal(pasted[0].category_id, categoryA.id);
-   assert.equal(pasted[0].entry_date, "2026-09-02");
-   assert.equal(pasted[1].category_id, categoryB.id);
-   assert.equal(pasted[1].text, "0");
-   assert.equal(pasted[2].entry_date, "2026-09-03");
-   assert.equal(pasted[2].text, "");
-   assert.equal(pasteStatisticCells("5", ["2026-09-14"], [categoryB], 0, 0)[0].category_id, categoryB.id);
-   assert.throws(() => pasteStatisticCells("1\tbad", ["2026-09-14"], [categoryA, categoryB], 0, 0));
-   assert.throws(() => pasteStatisticCells("1\n2", ["2026-09-14"], [categoryA], 0, 0));
-   assert.throws(() => pasteStatisticCells("1\t2", ["2026-09-14"], [categoryA], 0, 0));
+test("entry times are Tashkent time and month windows include the lookback days", () => {
+   assert.equal(statisticInstant("2026-11-12", "09:30"), "2026-11-12T04:30:00.000Z");
+   assert.equal(statisticDate("2026-11-11T20:00:00Z"), "2026-11-12");
+   assert.equal(statisticTime("2026-11-11T20:00:00Z"), "01:00");
+   for (const [date, time] of [["2026-02-30", "10:00"], ["2026-11-12", "24:00"], ["2026-11-12", "9:30"], ["bad", "10:00"]]) assert.throws(() => statisticInstant(date, time));
+   const window = statisticMonthWindow("2026-11");
+   assert.equal(window.from, "2026-10-17T19:00:00.000Z");
+   assert.equal(window.to, "2026-11-30T19:00:00.000Z");
+   assert.throws(() => statisticMonthWindow("2026-13"));
 });
 
-test("saved corrections and clears update only the requested month while preserving explicit zeros", () => {
-   const originals = [entry(100), entry(200, "2026-09-15"), entry(300, "2026-10-01")];
-   const result = applyStatisticChanges(originals, [entry(0), entry(null, "2026-09-15"), entry(99, "2026-10-02")], "2026-09");
-   assert.equal(result.length, 1);
-   assert.equal(result[0].value, 0);
-   assert.equal(originals.length, 3);
-   assert.equal(originals[0].value, 100);
+test("entry validation normalises time and note and rejects future, empty, duplicate or malformed figures", () => {
+   const valid = { recorded_at: "2026-11-12T14:30:00+05:00", note: "  evening  ", values: [{ category_id: categoryA.id, value: 12.5 }, { category_id: categoryB.id, value: 0 }] };
+   const result = validateStatisticReading(valid, NOW);
+   assert.equal(result.recorded_at, "2026-11-12T09:30:00.000Z");
+   assert.equal(result.note, "evening");
+   assert.equal(result.values.length, 2);
+   assert.equal(result.id, undefined);
+   assert.equal(validateStatisticReading({ ...valid, note: "   " }, NOW).note, null);
+   assert.equal(validateStatisticReading({ ...valid, id: categoryA.id }, NOW).id, categoryA.id);
+   for (const body of [
+      null, { ...valid, values: [] }, { ...valid, values: undefined }, { ...valid, recorded_at: "2026-11-14T10:00:00Z" }, { ...valid, recorded_at: "yesterday" },
+      { ...valid, id: "bad" }, { ...valid, note: "x".repeat(201) }, { ...valid, values: [{ category_id: "bad", value: 1 }] },
+      { ...valid, values: [{ category_id: categoryA.id, value: 1 }, { category_id: categoryA.id, value: 2 }] },
+      { ...valid, values: [{ category_id: categoryA.id, value: "2" }] }, { ...valid, values: [{ category_id: categoryA.id, value: 0.123 }] },
+      { ...valid, values: Array.from({ length: 501 }, (_, index) => ({ category_id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`, value: 1 })) },
+   ]) assert.throws(() => validateStatisticReading(body, NOW));
 });
 
-function apiHarness({ deny = false, dbError = null, pages = null } = {}) {
+// Saturday evening, nothing on Sunday, then morning and night on Monday.
+const week = [
+   reading("2026-11-07", "18:00", { [categoryA.id]: 100, [categoryB.id]: 50 }),
+   reading("2026-11-09", "09:00", { [categoryA.id]: 110 }),
+   reading("2026-11-09", "21:00", { [categoryA.id]: 130, [categoryB.id]: 55 }, "after classes"),
+];
+
+test("change on the day compares the latest entry with the last entry of an earlier day, skipping empty days", () => {
+   const change = dayChange(week, categoryA.id, "2026-11-09");
+   assert.equal(change.value, 130);
+   assert.equal(change.change, 30);
+   assert.equal(change.since, week[0].recorded_at);
+   assert.equal(change.stepChange, 20);
+   assert.equal(change.stepSince, week[1].recorded_at);
+   assert.equal(dayChange(week, categoryB.id, "2026-11-09").change, 5);
+   assert.equal(dayChange(week, categoryA.id, "2026-11-08"), null);
+   const sparse = [reading("2026-10-30", "10:00", { [categoryA.id]: 1 }), reading("2026-11-09", "10:00", { [categoryA.id]: 5 })];
+   assert.equal(dayChange(sparse, categoryA.id, "2026-11-09").change, null);
+   assert.equal(dayChange(sparse, categoryA.id, "2026-11-09").stepChange, 4);
+   assert.equal(changeSincePrevious(week, week[2].id, categoryA.id), 20);
+   assert.equal(changeSincePrevious(week, week[2].id, categoryB.id), 5);
+   assert.equal(changeSincePrevious(week, week[0].id, categoryA.id), null);
+});
+
+test("monthly change starts from the last figure before the month and ignores later months", () => {
+   const readings = [
+      reading("2026-10-31", "18:00", { [categoryA.id]: 80 }), reading("2026-11-03", "09:00", { [categoryA.id]: 90 }),
+      reading("2026-11-30", "23:59", { [categoryA.id]: 100 }), reading("2026-12-01", "00:30", { [categoryA.id]: 999 }),
+   ];
+   const change = monthChange(readings, categoryA.id, "2026-11");
+   assert.equal(change.change, 20);
+   assert.equal(change.percent, 25);
+   assert.equal(change.start, readings[0].recorded_at);
+   assert.equal(change.end, readings[2].recorded_at);
+   assert.equal(monthChange(readings.slice(1), categoryA.id, "2026-11").start, readings[1].recorded_at);
+   assert.equal(monthChange([readings[1]], categoryA.id, "2026-11"), null);
+   assert.equal(monthChange([reading("2026-11-03", "09:00", { [categoryA.id]: 0 }), reading("2026-11-04", "09:00", { [categoryA.id]: 5 })], categoryA.id, "2026-11").percent, null);
+});
+
+test("day view returns the day's entries plus the last earlier figure", () => {
+   const day = dayPoints(week, categoryA.id, "2026-11-09");
+   assert.equal(day.points.length, 2);
+   assert.equal(day.before.value, 100);
+   assert.equal(dayPoints(week, categoryA.id, "2026-11-07").before, null);
+});
+
+function apiHarness({ deny = false, dbError = null, pages = null, rpcData = "00000000-0000-0000-0000-0000000000aa" } = {}) {
    const calls = [];
    const route = load("app/api/erp/statistics/route.ts", {
       "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) } },
       "@/lib/erp": { erpJsonError: (error) => ({ message: error.message, status: error.message === "Forbidden." ? 403 : 400 }) },
-      "@/lib/marketingMetrics": marketing,
       "@/lib/statistics": statistics,
       "@/lib/erpAuth": {
          requireErpPermission: async (_req, module, action) => { calls.push({ module, action }); if (deny) throw new Error("Forbidden."); return { user: { id: "authenticated-user" }, staff: { role: "admin" } }; },
          getErpPermissions: async () => ({ statistics: ["view", "manage"] }),
       },
       "@/lib/supabaseAdmin": { supabaseAdmin: {
-         rpc: async (name, payload) => { calls.push({ name, payload }); return { error: dbError }; },
+         rpc: async (name, payload) => { calls.push({ name, payload }); return { data: dbError ? null : rpcData, error: dbError }; },
          from: (table) => {
             if (!pages) throw new Error("Unexpected table access");
             const query = {
-               select: () => query, order: () => query,
+               select: (columns) => { calls.push({ table, columns, op: "select" }); return query; }, order: () => query,
                gte: (column, value) => { calls.push({ column, value, op: "gte" }); return query; },
-               lte: (column, value) => { calls.push({ column, value, op: "lte" }); return query; },
+               lt: (column, value) => { calls.push({ column, value, op: "lt" }); return query; },
                range: async (start, end) => { calls.push({ table, start, end }); return { data: (pages[table] || []).slice(start, end + 1), error: dbError }; },
             };
             return query;
@@ -94,182 +143,124 @@ function apiHarness({ deny = false, dbError = null, pages = null } = {}) {
    });
    return { route, calls };
 }
+const saveBody = (recorded_at = new Date(Date.now() - 3600_000).toISOString()) => ({ action: "saveReading", actor: "spoofed", reading: { recorded_at, note: null, values: [{ category_id: categoryA.id, value: 12.5 }] } });
 
 test("Statistics requires its own view/manage permission before accessing data", async () => {
    const { route, calls } = apiHarness({ deny: true });
    assert.equal((await route.GET({ url: "https://app.test/api/erp/statistics?month=2026-09" })).status, 403);
-   assert.equal((await route.POST({ json: async () => ({ action: "saveEntries", changes: [entry(10)] }) })).status, 403);
+   assert.equal((await route.POST({ json: async () => saveBody() })).status, 403);
    assert.equal(calls.length, 2);
    assert.equal(calls[0].module, "statistics");
    assert.equal(calls[0].action, "view");
    assert.equal(calls[1].action, "manage");
 });
 
-test("batch saving uses one atomic RPC and the authenticated user, including cleared cells", async () => {
-   const { route, calls } = apiHarness();
-   const response = await route.POST({ json: async () => ({ action: "saveEntries", actor: "spoofed", changes: [entry(12.5), entry(null, "2026-09-15")] }) });
+test("monthly reads fetch all pages of entries in the Tashkent month window with numeric figures", async () => {
+   const row = { id: "r1", recorded_at: "2024-02-10T04:30:00+00:00", note: "morning", statistics_reading_values: [{ category_id: categoryA.id, value: "12.50" }, { category_id: categoryB.id, value: "0" }] };
+   const { route, calls } = apiHarness({ pages: { statistics_categories: [categoryA], statistics_readings: Array.from({ length: 1001 }, () => row) } });
+   const response = await route.GET({ url: "https://app.test/api/erp/statistics?month=2024-02" });
    assert.equal(response.status, 200);
-   assert.equal(calls[1].name, "save_statistics_entries");
+   assert.equal(response.body.readings.length, 1001);
+   assert.equal(response.body.readings[0].values[categoryA.id], 12.5);
+   assert.equal(response.body.readings[0].values[categoryB.id], 0);
+   assert.equal(response.body.readings[0].recorded_at, "2024-02-10T04:30:00.000Z");
+   assert.ok(calls.some((call) => call.table === "statistics_readings" && call.start === 1000));
+   assert.ok(calls.some((call) => call.op === "gte" && call.column === "recorded_at" && call.value === "2024-01-17T19:00:00.000Z"));
+   assert.ok(calls.some((call) => call.op === "lt" && call.column === "recorded_at" && call.value === "2024-02-29T19:00:00.000Z"));
+   assert.equal(response.body.canManage, true);
+   assert.equal((await route.GET({ url: "https://app.test/api/erp/statistics?month=bad" })).status, 400);
+});
+
+test("saving an entry uses one atomic RPC with the authenticated user and normalised time", async () => {
+   const { route, calls } = apiHarness();
+   const response = await route.POST({ json: async () => saveBody("2026-11-12T14:30:00+05:00") });
+   assert.equal(response.status, 200);
+   assert.equal(response.body.id, "00000000-0000-0000-0000-0000000000aa");
+   assert.equal(calls[1].name, "save_statistics_reading");
    assert.equal(calls[1].payload.actor, "authenticated-user");
-   assert.equal(calls[1].payload.changes[1].value, null);
+   assert.equal(calls[1].payload.reading.recorded_at, "2026-11-12T09:30:00.000Z");
+   assert.equal(calls[1].payload.reading.values[0].value, 12.5);
+});
+
+test("invalid entries never reach the database and setup or conflict failures are explained", async () => {
+   const invalid = apiHarness();
+   assert.equal((await invalid.route.POST({ json: async () => saveBody(new Date(Date.now() + 3600_000).toISOString()) })).status, 400);
+   assert.equal((await invalid.route.POST({ json: async () => ({ action: "saveReading", reading: { recorded_at: new Date().toISOString(), values: [] } }) })).status, 400);
+   assert.equal((await invalid.route.POST({ json: async () => ({ action: "saveEntries", changes: [] }) })).status, 400);
+   assert.equal(invalid.calls.filter((call) => call.name).length, 0);
+   const setup = apiHarness({ dbError: { code: "PGRST202" } });
+   assert.match((await setup.route.POST({ json: async () => saveBody() })).body.error, /statistics_readings\.sql/);
+   const gone = apiHarness({ dbError: { code: "P0002" } });
+   assert.match((await gone.route.POST({ json: async () => saveBody() })).body.error, /no longer exists/);
+});
+
+test("deleting an entry requires manage access, a valid id, and reports entries that are already gone", async () => {
+   const body = { action: "deleteReading", id: categoryA.id };
+   const denied = apiHarness({ deny: true });
+   assert.equal((await denied.route.POST({ json: async () => body })).status, 403);
+   assert.equal(denied.calls.length, 1);
+   const allowed = apiHarness({ rpcData: true });
+   assert.equal((await allowed.route.POST({ json: async () => body })).status, 200);
+   assert.equal(allowed.calls[1].name, "delete_statistics_reading");
+   assert.equal(allowed.calls[1].payload.target_reading_id, categoryA.id);
+   assert.equal((await allowed.route.POST({ json: async () => ({ action: "deleteReading", id: "bad" }) })).status, 400);
+   const gone = apiHarness({ rpcData: false });
+   const response = await gone.route.POST({ json: async () => body });
+   assert.equal(response.status, 400);
+   assert.match(response.body.error, /no longer exists/);
 });
 
 test("deleting a category requires manage access and uses one atomic database operation", async () => {
    const body = { action: "deleteCategory", id: categoryA.id };
-   const denied = apiHarness({ deny: true });
-   assert.equal((await denied.route.POST({ json: async () => body })).status, 403);
-   assert.equal(denied.calls.length, 1);
-   const allowed = apiHarness();
+   const allowed = apiHarness({ rpcData: true });
    assert.equal((await allowed.route.POST({ json: async () => body })).status, 200);
-   assert.equal(allowed.calls[0].module, "statistics");
-   assert.equal(allowed.calls[0].action, "manage");
-   assert.equal(allowed.calls.length, 2);
    assert.equal(allowed.calls[1].name, "delete_statistics_category");
    assert.equal(allowed.calls[1].payload.target_category_id, categoryA.id);
-});
-
-test("invalid category deletion never reaches storage and failed deletion is not reported as success", async () => {
    const invalid = apiHarness();
    assert.equal((await invalid.route.POST({ json: async () => ({ action: "deleteCategory", id: "bad" }) })).status, 400);
    assert.equal(invalid.calls.length, 1);
-   const failed = apiHarness({ dbError: { code: "PGRST202" } });
-   const response = await failed.route.POST({ json: async () => ({ action: "deleteCategory", id: categoryA.id }) });
-   assert.equal(response.status, 400);
-   assert.match(response.body.error, /statistics_schema.sql/);
 });
 
-test("invalid writes never reach the database and migration failures are surfaced", async () => {
-   const invalid = apiHarness();
-   assert.equal((await invalid.route.POST({ json: async () => ({ action: "saveEntries", changes: [entry("wrong")] }) })).status, 400);
-   assert.equal(invalid.calls.length, 1);
-   const failed = apiHarness({ dbError: { code: "PGRST202" } });
-   const response = await failed.route.POST({ json: async () => ({ action: "saveEntries", changes: [entry(12.5)] }) });
-   assert.equal(response.status, 400);
-   assert.match(response.body.error, /statistics_schema.sql/);
+const css = { default: {} };
+const Chart = load("components/statistics/StatisticsChart.tsx", {
+   react: React, "react/jsx-runtime": jsxRuntime, "@/lib/chartExport": load("lib/chartExport.ts"),
+   "@/lib/marketingMetrics": marketing, "@/lib/statistics": statistics, "@/components/marketing/marketing.module.css": css,
 });
-
-test("monthly reads fetch all pages and return numeric values with calendar bounds", async () => {
-   const { route, calls } = apiHarness({ pages: { statistics_categories: [categoryA], statistics_entries: Array.from({ length: 1001 }, () => entry("12.50")) } });
-   const response = await route.GET({ url: "https://app.test/api/erp/statistics?month=2024-02" });
-   assert.equal(response.status, 200);
-   assert.equal(response.body.entries.length, 1001);
-   assert.equal(response.body.entries[0].value, 12.5);
-   assert.ok(calls.some((call) => call.table === "statistics_entries" && call.start === 1000));
-   assert.ok(calls.some((call) => call.op === "gte" && call.value === "2024-01-18"));
-   assert.ok(calls.some((call) => call.op === "lte" && call.value === "2024-02-29"));
-   assert.equal(response.body.canManage, true);
-});
-
-const Chart = load("components/marketing/MarketingChart.tsx", {
-   react: React, "react/jsx-runtime": jsxRuntime,
-   "./LineChartInteraction": { default: load("components/marketing/LineChartInteraction.tsx", { react: React, "react/jsx-runtime": jsxRuntime, "./marketing.module.css": { default: {} } }).default },
-   "@/lib/marketingMetrics": marketing, "./marketing.module.css": { default: {} },
-}).default;
-const CalendarInput = load("components/ui/CalendarInput.tsx", { react: React, "react-dom": { createPortal: (child) => child }, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": marketing, "./CalendarInput.module.css": { default: {} } }).default;
+const CalendarInput = load("components/ui/CalendarInput.tsx", { react: React, "react-dom": { createPortal: (child) => child }, "react/jsx-runtime": jsxRuntime, "@/lib/marketingMetrics": marketing, "./CalendarInput.module.css": css }).default;
 const Charts = load("components/statistics/StatisticsCharts.tsx", {
    "@/components/ui/CalendarInput": { default: CalendarInput }, "@/lib/marketingCalendar": load("lib/marketingCalendar.ts"),
    react: React, "react/jsx-runtime": jsxRuntime, "@/lib/statistics": statistics, "@/lib/marketingMetrics": marketing,
-   "@/components/marketing/MarketingChart": { default: Chart },
-   "@/components/marketing/marketing.module.css": { default: {} }, "./statistics.module.css": { default: {} },
+   "./StatisticsChart": Chart, "@/components/marketing/marketing.module.css": css, "./statistics.module.css": css,
 }).default;
+const renderCharts = (readings, date = "2026-11-09") => renderToStaticMarkup(React.createElement(Charts, {
+   categories: [categoryA, categoryB, students], readings, month: "2026-11", date, monthLabel: "November 2026", onDateChange: () => {},
+}));
 
-test("Statistics shares chart rendering but uses category labels and keeps incompatible units out", () => {
-   const html = renderToStaticMarkup(React.createElement(Charts, {
-      categories: [categoryA, categoryB, { id: "students", name: "Students", unit: "number", color: "#ff0000" }],
-      entries: [entry(23758000), entry(20000000, "2026-09-15"), entry(100, "2026-09-14", "students")],
-      days: marketing.monthDays("2026-09"), date: "2026-09-15", monthLabel: "September 2026", onDateChange: () => {},
-   }));
-   assert.equal((html.match(/role="img"/g) || []).length, 3);
-   assert.match(html, /Daily category change/);
-   assert.match(html, /Monthly category trends/);
-   assert.match(html, /Change over the month/);
-   assert.match(html, /23,758,000/);
-   assert.match(html, /STATISTICS/);
-   assert.doesNotMatch(html, /Students|SUBSCRIBERS|MARKETING METRICS|NaN|Infinity/);
-});
-
-test("shared line plots keep negative values inside the plot and decimals display cleanly", () => {
-   const props = {
-      centres: [categoryA], entries: [{ centre_id: categoryA.id, platform_id: "stats", entry_date: "2026-09-14", subscribers: -12.25 }, { centre_id: categoryA.id, platform_id: "stats", entry_date: "2026-09-15", subscribers: 1.5 }],
-      platformId: "stats", platformName: "USD", days: marketing.monthDays("2026-09"), date: "2026-09-14", monthLabel: "September 2026",
-      presentation: { title: "Trend", subtitle: "USD", toolbar: "Statistics", axisLabel: "USD", footer: "Recorded values", filename: "statistics.jpg", emptyMessage: "No data" },
-   };
-   const trend = renderToStaticMarkup(React.createElement(Chart, { ...props, kind: "trend" }));
-   for (const match of trend.matchAll(/<circle[^>]+cy="([\d.]+)"/g)) { const y = Number(match[1]); assert.ok(y >= 165 && y <= 500); }
-   assert.match(trend, /-12.25/);
-   const growth = renderToStaticMarkup(React.createElement(Chart, { ...props, kind: "growth" }));
-   assert.match(growth, /13.75/);
-   assert.match(growth, /non-positive baseline/);
-});
-
-test("monthly trends fit selected recorded extrema and show distinct ticks for small changes", () => {
-   const props = { kind: "trend", fitTrend: true, centres: [categoryA], platformId: "stats", platformName: "USD",
-      days: marketing.monthDays("2026-09"), date: "2026-09-14", monthLabel: "September 2026" };
-   const observation = (value, day, id = categoryA.id) => ({ centre_id: id, platform_id: "stats", entry_date: day, subscribers: value });
-   const entries = [observation(1000000, "2026-09-14"), observation(1000001, "2026-09-15"), observation(2000000, "2026-09-14", categoryB.id), observation(1, "2026-08-31")];
-   const render = (extra = {}) => renderToStaticMarkup(React.createElement(Chart, { ...props, entries, ...extra }));
-   const single = render();
-   assert.match(single, /cy="425"/);
-   assert.match(single, /cy="165"/);
-   assert.match(single, />1,000,000.25<\/text>/);
-   assert.match(single, />1,000,001<\/text>/);
-   assert.doesNotMatch(single, />2,000,000<\/text>|>0<\/text>|NaN|Infinity/);
-   const multiple = render({ centres: [categoryA, categoryB] });
-   assert.match(multiple, />2,000,000<\/text>/);
-   assert.match(multiple, /cy="165"/);
-   for (const value of [0, -10.25, 12.5]) {
-      const constant = render({ entries: [observation(value, "2026-09-14")] });
-      assert.match(constant, /cy="295"/);
-      assert.doesNotMatch(constant, /NaN|Infinity/);
-   }
-});
-
-test("statistics retains, updates, and clears the lookback window before the month without importing older or later figures", () => {
-   const original = [entry(100, "2026-08-31"), entry(110, "2026-09-01"), entry(90, "2026-08-18"), entry(999, "2026-08-17"), entry(5, "2026-10-01")];
-   const saved = applyStatisticChanges(original, [entry(120, "2026-09-01")], "2026-09");
-   assert.equal(saved.map((row) => row.entry_date).sort().join(), "2026-08-18,2026-08-31,2026-09-01");
-   assert.equal(saved.find((row) => row.entry_date === "2026-08-31").value, 100);
-   const preview = applyStatisticChanges(saved, [entry(105, "2026-08-31")], "2026-09");
-   assert.equal(preview.find((row) => row.entry_date === "2026-08-31").value, 105);
-   const cleared = applyStatisticChanges(preview, [entry(null, "2026-08-31")], "2026-09");
-   assert.equal(cleared.length, 2);
-});
-
-const observation = (value, day, id = categoryA.id) => ({ centre_id: id, platform_id: "stats", entry_date: day, subscribers: value });
-
-test("daily change skips unrecorded days within the lookback and names the compared date", () => {
-   const centres = [categoryA, categoryB];
-   // Saturday recorded, Sunday skipped, Monday recorded; category B last recorded 9 days earlier.
-   const entries = [observation(100, "2026-11-07"), observation(130, "2026-11-09"), observation(50, "2026-10-31", categoryB.id), observation(60, "2026-11-09", categoryB.id)];
-   const [a, b] = marketing.dailyChanges(centres, entries, "stats", "2026-11-09", 7);
-   assert.equal(a.value, 30);
-   assert.equal(a.since, "2026-11-07");
-   assert.equal(b.value, null);
-   assert.equal(marketing.dailyChanges(centres, entries, "stats", "2026-11-09")[0].value, null);
-   const html = renderToStaticMarkup(React.createElement(Chart, { kind: "change", centres, entries, platformId: "stats", platformName: "UZS",
-      days: marketing.monthDays("2026-11"), date: "2026-11-09", monthLabel: "November 2026", lookback: { change: 7, baseline: 14 } }));
+test("Statistics charts draw four views per unit from timestamped entries and keep other units out", () => {
+   const html = renderCharts([...week, reading("2026-11-09", "10:00", { [students.id]: 40 })]);
+   assert.equal((html.match(/role="img"/g) || []).length, 4);
+   for (const title of ["Change on the day", "Through the day", "Over the month", "Change over the month"]) assert.match(html, new RegExp(title));
    assert.match(html, /\+30/);
-   assert.match(html, /vs Sat 11-07 · 2 days earlier/);
+   assert.match(html, /130 at 21:00 · vs Sat 11-07 18:00 · \+20 since Mon 11-09 09:00/);
+   assert.match(html, /STATISTICS \//);
+   assert.doesNotMatch(html, /Students|NaN|Infinity|MARKETING/);
 });
 
-test("monthly change starts from the last figure before the month when the first days are missed", () => {
-   const points = [{ date: "2026-10-30", value: 80 }, { date: "2026-10-31", value: null }, { date: "2026-11-01", value: null }, { date: "2026-11-03", value: 90 }, { date: "2026-11-12", value: 100 }];
-   assert.equal(JSON.stringify(marketing.growthWithBaseline(points, "2026-11-01")), JSON.stringify({ change: 20, percent: 25, start: "2026-10-30", end: "2026-11-12" }));
-   assert.equal(marketing.growthWithBaseline(points.slice(0, 3), "2026-11-01"), null);
-   assert.equal(marketing.growthWithBaseline(points.slice(3), "2026-11-01").start, "2026-11-03");
-   const html = renderToStaticMarkup(React.createElement(Chart, { kind: "growth", centres: [categoryA], platformId: "stats", platformName: "UZS",
-      entries: [observation(80, "2026-10-30"), observation(100, "2026-11-12")], days: marketing.monthDays("2026-11"), date: "2026-11-12",
-      monthLabel: "November 2026", lookback: { change: 7, baseline: 14 }, presentation: { title: "Growth", subtitle: "UZS", toolbar: "x", axisLabel: "UZS", footer: "f", filename: "g.jpg", emptyMessage: "none" } }));
-   assert.match(html, /\+20/);
-   assert.match(html, /10-30 → 11-12 · \+25.00%/);
+test("trend lines stay solid within a day and dash across skipped days; the day view starts from the earlier figure", () => {
+   const html = renderCharts(week);
+   const trend = html.slice(html.indexOf("03 / MONTHLY TREND"), html.indexOf("04 / MONTHLY CHANGE"));
+   // A: Sat → Mon 09:00 crosses Sunday (dashed), 09:00 → 21:00 is solid. B: Sat → Mon (dashed).
+   assert.equal((trend.match(/stroke-dasharray="5 6"/g) || []).length, 2);
+   assert.equal((trend.match(/<circle[^>]+r="4" fill="#(10b981|6366f1)"/g) || []).length, 5);
+   const day = html.slice(html.indexOf("02 / DAY VIEW"), html.indexOf("03 / MONTHLY TREND"));
+   assert.match(day, /before this day, Sat 11-07 18:00: 100/);
+   assert.equal((day.match(/<circle[^>]+r="4" fill="#(10b981|6366f1)"/g) || []).length, 3);
 });
 
-test("trend lines bridge unrecorded days with a dashed segment instead of breaking", () => {
-   const entries = [observation(10, "2026-11-06"), observation(11, "2026-11-07"), observation(13, "2026-11-09")];
-   const props = { kind: "trend", fitTrend: true, centres: [categoryA], entries, platformId: "stats", platformName: "UZS", days: marketing.monthDays("2026-11"), date: "2026-11-09", monthLabel: "November 2026" };
-   const dashed = renderToStaticMarkup(React.createElement(Chart, { ...props, dashGaps: true }));
-   assert.equal((dashed.match(/stroke-dasharray="5 6"/g) || []).length, 1);
-   assert.equal((dashed.match(/<circle[^>]+r="4"/g) || []).length, 3);
-   const broken = renderToStaticMarkup(React.createElement(Chart, props));
-   assert.doesNotMatch(broken, /stroke-dasharray="5 6"/);
+test("charts explain what is missing instead of drawing broken or empty plots", () => {
+   const html = renderCharts([reading("2026-11-09", "09:00", { [categoryA.id]: 110 })], "2026-11-12");
+   assert.match(html, /Record a figure on Thu, Nov 12/);
+   assert.match(html, /No entries on Thu, Nov 12/);
+   assert.match(html, /Record at least two figures/);
+   assert.equal((html.match(/role="img"/g) || []).length, 1);
 });
